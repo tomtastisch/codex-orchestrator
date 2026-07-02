@@ -4,6 +4,7 @@ import { Store, type TaskRow, newId } from "./db.js";
 import { startSlice } from "./codex.js";
 import { buildFirstSlicePrompt, buildResumeSlicePrompt } from "./prompts.js";
 import { ensureAgentsMd } from "./agents.js";
+import { detectReportDiscrepancies } from "./events.js";
 import type { Effort, Sandbox, SliceOutcome } from "./types.js";
 
 interface Control {
@@ -249,6 +250,14 @@ export class SessionManager {
       }
 
       const sr = outcome.sliceResult;
+      const discrepancies = detectReportDiscrepancies(sr, outcome.commands);
+      const integrityOk = discrepancies.length === 0;
+      const integrity = integrityOk
+        ? { integrity_ok: true }
+        : { integrity_ok: false, discrepancies };
+      if (!integrityOk) {
+        this.store.addEvent(taskId, "report_discrepancy", { discrepancies });
+      }
       const summary = summarize(sr, outcome);
       this.store.addEvent(taskId, "slice_message", { text: (outcome.agentMessages.at(-1) ?? "").slice(0, 4000) });
       this.store.updateTask(taskId, {
@@ -271,6 +280,7 @@ export class SessionManager {
           type: "checkpoint", parsed: false, cluster: sr.cluster,
           done: sr.doneInSlice, changed_files: sr.changedFiles, tests: sr.testsRun,
           open_items: sr.openItems, next_step: sr.nextStep, blocker: null, usage: outcome.usage,
+          ...integrity,
         });
         this.finish(taskId, "blocked", "Slice-Budget überschritten (killed). Entscheidung nötig: resume mit größerem Budget oder replan.");
         return;
@@ -291,11 +301,16 @@ export class SessionManager {
         next_step: sr.nextStep,
         blocker: sr.blockerText,
         usage: outcome.usage,
+        ...integrity,
       });
       this.emit(taskId);
 
       // Terminale Slice-Typen.
       if (outcome.status === "normal" && sr.type === "submission") {
+        if (!integrityOk) {
+          this.finish(taskId, "blocked", "Ein als pass gemeldeter Check lief mit einem Exit-Code ungleich 0. Die Submission ist nicht vertrauenswürdig und benötigt eine Prüfung durch den Orchestrator.");
+          return;
+        }
         this.finish(taskId, "completed", "submission");
         return;
       }

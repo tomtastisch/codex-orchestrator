@@ -43,3 +43,15 @@ Next planned step:
 Wenn eine Annahme deine Umsetzung trägt, benenne sie explizit unter
 „Open items" und markiere Unsicherheit — der Orchestrator führt daraus
 Hypothesen. Lieber nachfragen (`blocker`) als raten.
+
+## Bekannte Sandbox-Limitierungen (umgebungsbedingt, nicht "fixen")
+- Dynamic Java Agent Attach (ByteBuddy / Mockito Mock-Maker) ist blockiert und
+  führt zu `MockMaker could not be instantiated`.
+- Schreibzugriffe außerhalb des Arbeitsverzeichnisses (z. B. `~/.m2`) sind
+  blockiert und führen zu `FileSystemException` / `Operation not permitted`.
+- Puppeteer/Chromium Headless startet unter der macOS-Sandbox möglicherweise
+  nicht; Mermaid benötigt für die In-Process-Ausführung ein DOM.
+
+Klassifiziere solche Fehler als umgebungsbedingt und markiere den betroffenen
+Check mit dem tatsächlichen Grund als `blocked` oder `skipped`. Benenne die
+Ursache niemals um und melde einen fehlgeschlagenen Befehl niemals als `pass`.

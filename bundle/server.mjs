@@ -21545,6 +21545,45 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 
 // src/events.ts
+function normalizeCommand(command) {
+  let normalized = command.toLowerCase().replace(/`/g, "").replace(/\s+/g, " ").trim();
+  const wrapper = normalized.match(
+    /^(?:\/bin\/)?(?:zsh|bash|sh)\s+-(?:l?c|cl)\s+(.+)$/
+  );
+  if (wrapper) {
+    normalized = wrapper[1].trim();
+    const quote = normalized[0];
+    if ((quote === '"' || quote === "'") && normalized.at(-1) === quote) {
+      normalized = normalized.slice(1, -1).trim();
+    }
+  }
+  return normalized;
+}
+function detectReportDiscrepancies(sliceResult, commands) {
+  const discrepancies = [];
+  for (const test of sliceResult.testsRun) {
+    if (test.result !== "pass") continue;
+    const reported = normalizeCommand(test.cmd);
+    if (!reported) continue;
+    const prefix = reported.length >= 20 ? reported.slice(0, 20) : null;
+    let matched;
+    for (let i = commands.length - 1; i >= 0; i--) {
+      const executed = normalizeCommand(commands[i].command);
+      if (executed.includes(reported) || prefix !== null && executed.includes(prefix)) {
+        matched = commands[i];
+        break;
+      }
+    }
+    if (matched && typeof matched.exit_code === "number" && matched.exit_code !== 0) {
+      discrepancies.push({
+        reported_cmd: test.cmd,
+        matched_command: matched.command,
+        exit_code: matched.exit_code
+      });
+    }
+  }
+  return discrepancies;
+}
 function parseStreamLines(lines) {
   const out = {
     threadId: null,
@@ -22170,6 +22209,12 @@ var SessionManager = class {
         }
       }
       const sr = outcome.sliceResult;
+      const discrepancies = detectReportDiscrepancies(sr, outcome.commands);
+      const integrityOk = discrepancies.length === 0;
+      const integrity = integrityOk ? { integrity_ok: true } : { integrity_ok: false, discrepancies };
+      if (!integrityOk) {
+        this.store.addEvent(taskId, "report_discrepancy", { discrepancies });
+      }
       const summary = summarize(sr, outcome);
       this.store.addEvent(taskId, "slice_message", { text: (outcome.agentMessages.at(-1) ?? "").slice(0, 4e3) });
       this.store.updateTask(taskId, {
@@ -22194,7 +22239,8 @@ var SessionManager = class {
           open_items: sr.openItems,
           next_step: sr.nextStep,
           blocker: null,
-          usage: outcome.usage
+          usage: outcome.usage,
+          ...integrity
         });
         this.finish(taskId, "blocked", "Slice-Budget \xFCberschritten (killed). Entscheidung n\xF6tig: resume mit gr\xF6\xDFerem Budget oder replan.");
         return;
@@ -22213,10 +22259,15 @@ var SessionManager = class {
         open_items: sr.openItems,
         next_step: sr.nextStep,
         blocker: sr.blockerText,
-        usage: outcome.usage
+        usage: outcome.usage,
+        ...integrity
       });
       this.emit(taskId);
       if (outcome.status === "normal" && sr.type === "submission") {
+        if (!integrityOk) {
+          this.finish(taskId, "blocked", "Ein als pass gemeldeter Check lief mit einem Exit-Code ungleich 0. Die Submission ist nicht vertrauensw\xFCrdig und ben\xF6tigt eine Pr\xFCfung durch den Orchestrator.");
+          return;
+        }
         this.finish(taskId, "completed", "submission");
         return;
       }

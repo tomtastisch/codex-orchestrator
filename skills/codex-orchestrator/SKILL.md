@@ -57,6 +57,32 @@ tests, strong+high for architecture review and complex CI fixes, strong+xhigh
 for critical sparring. Escalate one effort step (or a stronger model) after
 two consecutive failed correction slices, and document it.
 
+## Documenting anomalies as issues
+
+When you find a reproducible defect, integrity problem or notable anomaly in the
+orchestrator itself or in the user's project during orchestration, treat it as
+worth documenting.
+
+**On the first such finding in a session, you MUST ask the user once** how they
+want anomalies handled going forward, offering three modes:
+1. ask every time before opening/commenting an issue (default),
+2. always create/comment automatically without asking,
+3. never create issues (report in chat only).
+
+Honor that choice for the rest of the session (and persist it if you have a
+memory mechanism). When creating an issue:
+
+- **Deduplicate first** — search open issues; if one matches, add a comment
+  describing the new case instead of opening a duplicate.
+- **Only reproducible findings** with concrete evidence — no vague guesses.
+- **Auditable structure**: Situation → how it arose → Evidence → Proposal →
+  Acceptance criteria.
+- **Privacy is mandatory**: never include secrets, tokens, absolute paths,
+  email addresses, or person/company names. Abstract sensitive references, or
+  reference a private companion issue in the target project. Orchestrator/skill
+  findings go to the orchestrator's own repository; project-specific findings go
+  to the project's repository.
+
 ## Control constraints
 
 - Injections take effect at the next slice boundary — account for the latency.

@@ -17,6 +17,64 @@ export interface ParsedStream {
   rawEventCount: number;
 }
 
+export interface ReportDiscrepancy {
+  reported_cmd: string;
+  matched_command: string;
+  exit_code: number;
+}
+
+function normalizeCommand(command: string): string {
+  let normalized = command.toLowerCase().replace(/`/g, "").replace(/\s+/g, " ").trim();
+  const wrapper = normalized.match(
+    /^(?:\/bin\/)?(?:zsh|bash|sh)\s+-(?:l?c|cl)\s+(.+)$/,
+  );
+  if (wrapper) {
+    normalized = wrapper[1].trim();
+    const quote = normalized[0];
+    if ((quote === "\"" || quote === "'") && normalized.at(-1) === quote) {
+      normalized = normalized.slice(1, -1).trim();
+    }
+  }
+  return normalized;
+}
+
+/**
+ * Erkennt widersprüchliche Pass-Meldungen anhand der zuletzt ausgeführten,
+ * passenden Kommandoaufzeichnung. Fehlende Aufzeichnungen bleiben unbekannt.
+ */
+export function detectReportDiscrepancies(
+  sliceResult: SliceResult,
+  commands: CommandRecord[],
+): ReportDiscrepancy[] {
+  const discrepancies: ReportDiscrepancy[] = [];
+
+  for (const test of sliceResult.testsRun) {
+    if (test.result !== "pass") continue;
+    const reported = normalizeCommand(test.cmd);
+    if (!reported) continue;
+    const prefix = reported.length >= 20 ? reported.slice(0, 20) : null;
+    let matched: CommandRecord | undefined;
+
+    for (let i = commands.length - 1; i >= 0; i--) {
+      const executed = normalizeCommand(commands[i].command);
+      if (executed.includes(reported) || (prefix !== null && executed.includes(prefix))) {
+        matched = commands[i];
+        break;
+      }
+    }
+
+    if (matched && typeof matched.exit_code === "number" && matched.exit_code !== 0) {
+      discrepancies.push({
+        reported_cmd: test.cmd,
+        matched_command: matched.command,
+        exit_code: matched.exit_code,
+      });
+    }
+  }
+
+  return discrepancies;
+}
+
 export function parseStreamLines(lines: Iterable<string>): ParsedStream {
   const out: ParsedStream = {
     threadId: null,

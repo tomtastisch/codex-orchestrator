@@ -85,6 +85,7 @@ export const EVENT_KINDS = [
   "slice_command",
   "slice_message",
   "slice_result",
+  "report_discrepancy",
   "slice_error",
   "slice_killed",
   "injection_delivered",
