@@ -1,16 +1,36 @@
 {
   "name": "codex-orchestrator",
-  "version": "0.3.0",
-  "description": "Claude-Orchestrator / Codex-Executor MCP server (Plan v2, M0-M3)",
+  "version": "1.0.0",
+  "description": "MCP server that lets Claude orchestrate OpenAI Codex as a supervised implementation executor — checkpoint slices, server-enforced quality gates, persistent state.",
   "type": "module",
+  "license": "MIT",
+  "author": "Tom Werner",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomtastisch/codex-orchestrator.git"
+  },
+  "homepage": "https://github.com/tomtastisch/codex-orchestrator#readme",
+  "bugs": {
+    "url": "https://github.com/tomtastisch/codex-orchestrator/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "claude-code",
+    "codex",
+    "orchestration",
+    "agents",
+    "multi-agent"
+  ],
   "bin": {
     "codex-orchestrator": "dist/server.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "bundle": "esbuild src/server.ts --bundle --platform=node --target=node22 --format=esm --outfile=bundle/server.mjs --external:node:* --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "start": "node dist/server.js",
-    "dev": "node --experimental-strip-types src/server.ts",
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -20,6 +40,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "esbuild": "^0.24.0",
     "typescript": "^5.6.0"
   },
   "engines": {

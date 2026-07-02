@@ -1,0 +1,14 @@
+{
+  "name": "codex-orchestrator",
+  "owner": {
+    "name": "Tom Werner",
+    "url": "https://github.com/tomtastisch"
+  },
+  "plugins": [
+    {
+      "name": "codex-orchestrator",
+      "source": "./",
+      "description": "Orchestrate OpenAI Codex from Claude: supervised checkpoint slices, server-enforced gates, persistent state, per-task model/effort control."
+    }
+  ]
+}
