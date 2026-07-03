@@ -2,7 +2,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { mkdtempSync } from "node:fs"; import { tmpdir } from "node:os"; import { join } from "node:path";
 const home = mkdtempSync(join(tmpdir(),"orch-mc-"));
-const t = new StdioClientTransport({ command:"node", args:[join(process.cwd(),"dist/server.js")], env:{...process.env, ORCH_HOME:home}});
+// Gate aus: dieser Check prüft ausschließlich Modell/Effort-Validierung, nicht das Hypothesen-Gate.
+const t = new StdioClientTransport({ command:"node", args:[join(process.cwd(),"dist/server.js")], env:{...process.env, ORCH_HOME:home, ORCH_REQUIRE_HYPOTHESIS:"false"}});
 const c = new Client({name:"mc",version:"1"},{capabilities:{}}); await c.connect(t);
 const call=async(n,a)=>{const r=await c.callTool({name:n,arguments:a});return {isError:!!r.isError,data:JSON.parse(r.content[0].text)};};
 let fail=0; const ck=(cond,l,x)=>{console.log(`${cond?"✔":"✘"} ${l}`,x?JSON.stringify(x):"");if(!cond)fail++;};

@@ -1,6 +1,6 @@
 {
   "name": "codex-orchestrator",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Orchestrate OpenAI Codex from Claude: delegate implementation work in supervised checkpoint slices with server-enforced quality gates, persistent plans/hypotheses, worktree isolation and per-task model/effort control.",
   "author": {
     "name": "Tom Werner",

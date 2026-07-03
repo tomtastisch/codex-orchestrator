@@ -27,6 +27,7 @@ interface StartArgs {
   network: boolean;
   maxMinutes: number;
   extraConfig?: Record<string, string>;
+  hypothesisId?: string | null;
 }
 
 /**
@@ -128,6 +129,7 @@ export class SessionManager {
       status: "queued",
       extra_config_json: args.extraConfig ? JSON.stringify(args.extraConfig) : null,
       owner_pid: null,
+      hypothesis_id: args.hypothesisId ?? null,
     });
   }
 
@@ -335,6 +337,8 @@ export class SessionManager {
   private finish(taskId: string, status: TaskRow["status"], reason: string): void {
     this.store.updateTask(taskId, { status, ended_at: new Date().toISOString() });
     this.store.addEvent(taskId, "task_status", { status, reason });
+    // Cluster 5: zugehörigen agent_job-Audit-Datensatz abschließen.
+    try { this.store.finishAgentJobByTask(taskId, status, reason); } catch { /* best effort */ }
     this.emit(taskId);
   }
 
