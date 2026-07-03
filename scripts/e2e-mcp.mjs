@@ -64,10 +64,19 @@ check(start.data.status === "active", "cluster start -> active");
 const prematureConfirm = await call("cluster_transition", { cluster_id: "C1", action: "confirm" });
 check(prematureConfirm.isError === true, "confirm vorzeitig verweigert", { error: prematureConfirm.data.error });
 
-// 4) task_start synchron (M0-Pfad)
+// 4) Pflicht-Hypothese VOR dem Task (Cluster-2-Gate), dann task_start synchron (M0-Pfad)
+const hyp = await call("hypotheses", {
+  action: "create", plan_id: planId, cluster_id: "C1",
+  initial_assumption: "Codex kann hello.txt mit exaktem Inhalt 'hello world' anlegen.",
+  confidence_before: 0.8,
+  critical_questions: ["Schreibt Codex genau eine Zeile ohne Zusatztext?"],
+  falsification_plan: ["Datei-Inhalt gegen /hello world/i prüfen"],
+});
+check(hyp.data.ok === true, "Pflicht-Hypothese angelegt", { id: hyp.data.hypothesis?.id });
 console.log("... starte Codex-Slice (kann ~1 Min dauern) ...");
 const task = await call("task_start", {
   cluster_id: "C1",
+  hypothesis_id: hyp.data.hypothesis.id,
   instructions: "Create a file named hello.txt in the working directory whose ONLY content is the exact text: hello world  (a single line). Then you are done.",
   acceptance_criteria: ["hello.txt exists and contains 'hello world'"],
   sandbox: "workspace-write",

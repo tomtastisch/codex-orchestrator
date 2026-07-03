@@ -21114,6 +21114,7 @@ var config2 = {
   codexBin: process.env.ORCH_CODEX_BIN || "codex",
   allowedSandboxes: ["read-only", "workspace-write"],
   networkDefault: false,
+  requireHypothesis: process.env.ORCH_REQUIRE_HYPOTHESIS !== "false",
   maxWaitSeconds: 55,
   syncMaxMinutes: 8,
   limits: {
@@ -21239,6 +21240,7 @@ function nowIso() {
 function newId(prefix) {
   return `${prefix}_${randomUUID().slice(0, 12)}`;
 }
+var SCHEMA_VERSION = 2;
 var SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
   id TEXT PRIMARY KEY, goal TEXT NOT NULL, constraints TEXT,
@@ -21266,7 +21268,7 @@ CREATE TABLE IF NOT EXISTS tasks (
      'completed','failed','cancelled')),
   slice_count INTEGER DEFAULT 0, started_at TEXT, ended_at TEXT,
   last_slice_type TEXT, last_summary TEXT, extra_config_json TEXT,
-  owner_pid INTEGER, codex_pid INTEGER
+  owner_pid INTEGER, codex_pid INTEGER, hypothesis_id TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
@@ -21282,6 +21284,18 @@ CREATE TABLE IF NOT EXISTS hypotheses (
   status TEXT NOT NULL CHECK (status IN
     ('open','confirmed','rejected','superseded')),
   evidence TEXT, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS hypothesis_versions (
+  id TEXT PRIMARY KEY,
+  hypothesis_id TEXT NOT NULL REFERENCES hypotheses(id),
+  version INTEGER NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(hypothesis_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_hyp_versions ON hypothesis_versions(hypothesis_id, version);
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY, cluster_id TEXT NOT NULL, ts TEXT NOT NULL,
@@ -21323,6 +21337,30 @@ var Store = class {
     if (!taskCols.has("codex_pid")) {
       this.db.exec("ALTER TABLE tasks ADD COLUMN codex_pid INTEGER");
     }
+    if (!taskCols.has("hypothesis_id")) {
+      this.db.exec("ALTER TABLE tasks ADD COLUMN hypothesis_id TEXT");
+    }
+    const hypCols = cols("hypotheses");
+    if (!hypCols.has("task_id")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN task_id TEXT");
+    if (!hypCols.has("cluster_id")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN cluster_id TEXT");
+    if (!hypCols.has("result")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN result TEXT");
+    if (!hypCols.has("latest_version")) {
+      this.db.exec("ALTER TABLE hypotheses ADD COLUMN latest_version INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!hypCols.has("created_at")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN created_at TEXT");
+    this.setSchemaVersion(Math.max(this.getSchemaVersion(), SCHEMA_VERSION));
+  }
+  /** Aktuelle Schema-Version (0, wenn noch nie gesetzt). */
+  getSchemaVersion() {
+    try {
+      const r = this.db.prepare("SELECT value FROM meta WHERE key='schema_version'").get();
+      return r ? Number(r.value) : 0;
+    } catch {
+      return 0;
+    }
+  }
+  setSchemaVersion(v) {
+    this.db.prepare("INSERT INTO meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=?").run(String(v), String(v));
   }
   tx(fn) {
     this.db.exec("BEGIN");
@@ -21403,8 +21441,8 @@ var Store = class {
   createTask(t) {
     this.db.prepare(
       `INSERT INTO tasks(id,cluster_id,codex_session_id,worktree,branch,repo_path,
-        sandbox,model,effort,instructions,acceptance_json,max_minutes,network,status,slice_count,extra_config_json)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)`
+        sandbox,model,effort,instructions,acceptance_json,max_minutes,network,status,slice_count,extra_config_json,hypothesis_id)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`
     ).run(
       t.id,
       t.cluster_id,
@@ -21420,7 +21458,8 @@ var Store = class {
       t.max_minutes,
       t.network,
       t.status,
-      t.extra_config_json ?? null
+      t.extra_config_json ?? null,
+      t.hypothesis_id ?? null
     );
     return this.getTask(t.id);
   }
@@ -22103,7 +22142,8 @@ var SessionManager = class {
       network: args.network ? 1 : 0,
       status: "queued",
       extra_config_json: args.extraConfig ? JSON.stringify(args.extraConfig) : null,
-      owner_pid: null
+      owner_pid: null,
+      hypothesis_id: args.hypothesisId ?? null
     });
   }
   /** Startet (oder setzt fort) den Hintergrund-Slice-Loop für einen Task. */
@@ -23404,11 +23444,286 @@ function writePlanSnapshot(store2, planId, format = "toon") {
   return { format, content, path };
 }
 
+// src/hypotheses.ts
+function needsFollowUp(result) {
+  return result === "partially_confirmed" || result === "refuted";
+}
+function clampConfidence(v, field) {
+  if (typeof v !== "number" || Number.isNaN(v)) {
+    throw new Error(`${field} muss eine Zahl in [0,1] sein`);
+  }
+  if (v < 0 || v > 1) {
+    throw new Error(`${field}=${v} liegt au\xDFerhalb [0,1]`);
+  }
+  return v;
+}
+function normQuestions(qs) {
+  if (!qs) return [];
+  return qs.map(
+    (q) => typeof q === "string" ? { question: q, answer: null } : { question: q.question, answer: q.answer ?? null }
+  );
+}
+function normFalsification(fs) {
+  if (!fs) return [];
+  return fs.map(
+    (f) => typeof f === "string" ? { description: f, method: null, expectationIfFalse: null, observed: null } : {
+      description: f.description,
+      method: f.method ?? null,
+      expectationIfFalse: f.expectationIfFalse ?? null,
+      observed: f.observed ?? null
+    }
+  );
+}
+function normEvidence(es) {
+  if (!es) return [];
+  return es.map(
+    (e) => typeof e === "string" ? { source: "note", observation: e, ts: nowIso() } : { source: e.source, observation: e.observation, ts: e.ts ?? nowIso() }
+  );
+}
+var HypothesisRepo = class _HypothesisRepo {
+  constructor(store2) {
+    this.store = store2;
+  }
+  get db() {
+    return this.store.db;
+  }
+  /** Serialisiert eine Hypothese in ein stabiles, maschinenlesbares Objekt. */
+  static serialize(h) {
+    return {
+      id: h.id,
+      planId: h.planId,
+      taskId: h.taskId,
+      clusterId: h.clusterId,
+      version: h.version,
+      status: h.status,
+      initialAssumption: h.initialAssumption,
+      confidenceBefore: h.confidenceBefore,
+      criticalQuestions: h.criticalQuestions,
+      falsificationPlan: h.falsificationPlan,
+      evidence: h.evidence,
+      result: h.result,
+      confidenceAfter: h.confidenceAfter,
+      updatedAssumption: h.updatedAssumption,
+      followUpQuestions: h.followUpQuestions,
+      risks: h.risks,
+      nextAction: h.nextAction,
+      createdAt: h.createdAt,
+      updatedAt: h.updatedAt
+    };
+  }
+  /** Rehydriert eine Hypothese aus einem serialisierten Snapshot. */
+  static deserialize(o) {
+    return {
+      id: String(o.id),
+      planId: o.planId ?? null,
+      taskId: o.taskId ?? null,
+      clusterId: o.clusterId ?? null,
+      version: Number(o.version),
+      status: o.status ?? "open",
+      initialAssumption: String(o.initialAssumption ?? ""),
+      confidenceBefore: Number(o.confidenceBefore ?? 0),
+      criticalQuestions: o.criticalQuestions ?? [],
+      falsificationPlan: o.falsificationPlan ?? [],
+      evidence: o.evidence ?? [],
+      result: o.result ?? "open",
+      confidenceAfter: o.confidenceAfter ?? null,
+      updatedAssumption: o.updatedAssumption ?? null,
+      followUpQuestions: o.followUpQuestions ?? [],
+      risks: o.risks ?? [],
+      nextAction: o.nextAction ?? null,
+      createdAt: String(o.createdAt ?? ""),
+      updatedAt: String(o.updatedAt ?? "")
+    };
+  }
+  /** Legt eine neue Hypothese (Version 1) an. */
+  create(input) {
+    if (!input.initialAssumption || !input.initialAssumption.trim()) {
+      throw new Error("initialAssumption ist erforderlich");
+    }
+    const confidenceBefore = clampConfidence(input.confidenceBefore, "confidenceBefore");
+    const id = newId("H");
+    const ts = nowIso();
+    const h = {
+      id,
+      planId: input.planId ?? null,
+      taskId: input.taskId ?? null,
+      clusterId: input.clusterId ?? null,
+      version: 1,
+      status: "open",
+      initialAssumption: input.initialAssumption,
+      confidenceBefore,
+      criticalQuestions: normQuestions(input.criticalQuestions),
+      falsificationPlan: normFalsification(input.falsificationPlan),
+      evidence: [],
+      result: "open",
+      confidenceAfter: null,
+      updatedAssumption: null,
+      followUpQuestions: [],
+      risks: [],
+      nextAction: null,
+      createdAt: ts,
+      updatedAt: ts
+    };
+    return this.store.tx(() => {
+      this.db.prepare(
+        `INSERT INTO hypotheses
+             (id, plan_id, task_id, cluster_id, text, status, evidence,
+              result, latest_version, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+      ).run(
+        h.id,
+        h.planId ?? "",
+        // Header-Spalte ist NOT NULL (Legacy); Snapshot behält echtes null.
+        h.taskId,
+        h.clusterId,
+        h.initialAssumption,
+        h.status,
+        null,
+        h.result,
+        h.version,
+        h.createdAt,
+        h.updatedAt
+      );
+      this.writeVersion(h);
+      return h;
+    });
+  }
+  writeVersion(h) {
+    this.db.prepare(
+      `INSERT INTO hypothesis_versions (id, hypothesis_id, version, snapshot_json, created_at)
+         VALUES (?,?,?,?,?)`
+    ).run(newId("HV"), h.id, h.version, JSON.stringify(_HypothesisRepo.serialize(h)), h.updatedAt);
+  }
+  /**
+   * Aktualisiert eine Hypothese: erzeugt append-only eine neue Version aus der
+   * neuesten und schreibt den Header fort. Die alten Versionen bleiben
+   * unverändert erhalten (Nachvollziehbarkeit).
+   */
+  update(id, patch) {
+    return this.store.tx(() => {
+      const current = this.get(id);
+      if (!current) throw new Error(`Hypothese ${id} nicht gefunden`);
+      const ts = nowIso();
+      const result = patch.result ?? current.result;
+      const followUpQuestions = patch.followUpQuestions !== void 0 ? patch.followUpQuestions : current.followUpQuestions;
+      if (needsFollowUp(result) && followUpQuestions.length === 0) {
+        throw new Error(
+          `Ergebnis '${result}' erfordert mindestens eine Folgefrage (followUpQuestions): Was bleibt offen? Welche neue Hypothese folgt? Welche Risiken/n\xE4chste Aktion?`
+        );
+      }
+      const next = {
+        ...current,
+        version: current.version + 1,
+        status: patch.status ?? current.status,
+        result,
+        followUpQuestions,
+        risks: patch.risks !== void 0 ? patch.risks : current.risks,
+        nextAction: patch.nextAction !== void 0 ? patch.nextAction : current.nextAction,
+        confidenceAfter: patch.confidenceAfter !== void 0 ? patch.confidenceAfter === null ? null : clampConfidence(patch.confidenceAfter, "confidenceAfter") : current.confidenceAfter,
+        updatedAssumption: patch.updatedAssumption !== void 0 ? patch.updatedAssumption : current.updatedAssumption,
+        criticalQuestions: patch.criticalQuestions ? normQuestions(patch.criticalQuestions) : current.criticalQuestions,
+        falsificationPlan: patch.falsificationPlan ? normFalsification(patch.falsificationPlan) : current.falsificationPlan,
+        evidence: patch.addEvidence ? [...current.evidence, ...normEvidence(patch.addEvidence)] : current.evidence,
+        taskId: patch.taskId !== void 0 ? patch.taskId : current.taskId,
+        clusterId: patch.clusterId !== void 0 ? patch.clusterId : current.clusterId,
+        updatedAt: ts
+      };
+      this.db.prepare(
+        `UPDATE hypotheses
+             SET status=?, result=?, latest_version=?, updated_at=?,
+                 task_id=?, cluster_id=?, evidence=?
+           WHERE id=?`
+      ).run(
+        next.status,
+        next.result,
+        next.version,
+        next.updatedAt,
+        next.taskId,
+        next.clusterId,
+        next.evidence.length ? JSON.stringify(next.evidence) : null,
+        id
+      );
+      this.writeVersion(next);
+      return next;
+    });
+  }
+  /** Lädt die neueste Version einer Hypothese. */
+  get(id) {
+    const row = this.db.prepare(
+      `SELECT snapshot_json FROM hypothesis_versions
+         WHERE hypothesis_id=? ORDER BY version DESC LIMIT 1`
+    ).get(id);
+    if (!row) return void 0;
+    return _HypothesisRepo.deserialize(JSON.parse(row.snapshot_json));
+  }
+  /** Lädt eine konkrete Version. */
+  getVersion(id, version2) {
+    const row = this.db.prepare(
+      `SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? AND version=?`
+    ).get(id, version2);
+    if (!row) return void 0;
+    return _HypothesisRepo.deserialize(JSON.parse(row.snapshot_json));
+  }
+  /** Alle Versionen einer Hypothese (aufsteigend) — vollständige Historie. */
+  listVersions(id) {
+    const rows = this.db.prepare(
+      `SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version`
+    ).all(id);
+    return rows.map((r) => _HypothesisRepo.deserialize(JSON.parse(r.snapshot_json)));
+  }
+  listByColumn(column, value) {
+    const ids = this.db.prepare(`SELECT id FROM hypotheses WHERE ${column}=? ORDER BY created_at`).all(value);
+    return ids.map((r) => this.get(r.id)).filter((h) => !!h);
+  }
+  listByTask(taskId) {
+    return this.listByColumn("task_id", taskId);
+  }
+  listByCluster(clusterId) {
+    return this.listByColumn("cluster_id", clusterId);
+  }
+  listByPlan(planId) {
+    return this.listByColumn("plan_id", planId);
+  }
+  /**
+   * Bindet eine bestehende Hypothese provenienzhalber an einen Task/Cluster.
+   * Aktualisiert NUR die Header-Spalten (für listByTask/listByCluster) und lässt
+   * die versionierten Snapshots unangetastet — Binden ist Provenienz, keine
+   * inhaltliche Revision, erzeugt daher keine neue Version.
+   */
+  bindToTask(id, taskId, clusterId) {
+    this.db.prepare("UPDATE hypotheses SET task_id=?, cluster_id=COALESCE(?, cluster_id) WHERE id=?").run(taskId, clusterId, id);
+  }
+  /** Neueste (rich) Hypothese, die an einen Task gebunden ist — für das Gate. */
+  latestForTask(taskId) {
+    const rows = this.listByTask(taskId);
+    return rows.length ? rows[rows.length - 1] : void 0;
+  }
+};
+
+// src/gate.ts
+var MISSING_MSG = "Start blockiert: F\xFCr jeden Codex-Agentenjob ist zwingend eine Hypothese erforderlich. Bilde zuerst eine Hypothese (hypotheses \u2192 create: initialAssumption, criticalQuestions, falsificationPlan, confidenceBefore) und \xFCbergib deren id als 'hypothesis_id' an task_start.";
+function checkHypothesisGate(repo, input, require2) {
+  if (!require2) return { ok: true };
+  const id = input.hypothesisId?.trim();
+  if (!id) {
+    return { ok: false, error: MISSING_MSG };
+  }
+  const h = repo.get(id);
+  if (!h) {
+    return {
+      ok: false,
+      error: `Start blockiert: hypothesis_id '${id}' existiert nicht. Lege die Hypothese zuerst an (hypotheses \u2192 create) oder korrigiere die id.`
+    };
+  }
+  return { ok: true, hypothesis: h };
+}
+
 // src/types.ts
 var EFFORT_LADDER = ["low", "medium", "high", "xhigh"];
 
 // src/server.ts
 var store = new Store(config2.dbPath);
+var hypRepo = new HypothesisRepo(store);
 var sessions = new SessionManager(store);
 var machine = new ClusterStateMachine(store);
 var worktrees = new WorktreeManager();
@@ -23446,6 +23761,7 @@ server.registerTool(
     inputSchema: {
       cluster_id: external_exports.string().optional().describe("Cluster, zu dem der Task geh\xF6rt (bestimmt Repo-Pfad)."),
       repo_path: external_exports.string().optional().describe("Repo-Pfad, falls kein cluster_id angegeben ist."),
+      hypothesis_id: external_exports.string().optional().describe("PFLICHT: id der zuvor gebildeten Hypothese (hypotheses \u2192 create). Ohne verkn\xFCpfte Hypothese wird der Start blockiert."),
       instructions: external_exports.string().describe("Konkrete Arbeitsanweisung f\xFCr Codex."),
       acceptance_criteria: external_exports.array(external_exports.string()).optional(),
       sandbox: external_exports.enum(["read-only", "workspace-write"]),
@@ -23478,6 +23794,10 @@ server.registerTool(
         ok: false,
         error: `wait_for='completed' nur bei slice_budget.max_minutes <= ${config2.syncMaxMinutes} zul\xE4ssig`
       });
+    }
+    const gate = checkHypothesisGate(hypRepo, { hypothesisId: a.hypothesis_id }, config2.requireHypothesis);
+    if (!gate.ok) {
+      return err({ ok: false, error: gate.error, hint: "hypotheses \u2192 create, dann hypothesis_id an task_start \xFCbergeben." });
     }
     const wantAutoWorktree = a.worktree === "auto";
     let worktree = null;
@@ -23518,8 +23838,15 @@ server.registerTool(
       effort,
       network: a.network ?? config2.networkDefault,
       maxMinutes,
-      extraConfig
+      extraConfig,
+      hypothesisId: a.hypothesis_id ?? null
     });
+    if (a.hypothesis_id) {
+      try {
+        hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null);
+      } catch {
+      }
+    }
     if (wantAutoWorktree) {
       try {
         const wt = worktrees.create(repoPath, task.id);
@@ -23771,33 +24098,111 @@ server.registerTool(
 server.registerTool(
   "hypotheses",
   {
-    title: "Hypothesen f\xFChren",
-    description: "list|add|confirm|reject|supersede. Provenienz \xFCber evidence.",
+    title: "Hypothesen f\xFChren (versioniert)",
+    description: "Legacy: list|add|confirm|reject|supersede (plan-weite Freitext-Hypothesen). Reiches, versioniertes Modell: create|update|get|versions. 'create' bildet die Pflicht-Hypothese VOR einer Aufgabe (initialAssumption + criticalQuestions + falsificationPlan). 'update' aktualisiert append-only NACH der Aufgabe (result + evidence + updatedAssumption).",
     inputSchema: {
-      plan_id: external_exports.string(),
-      action: external_exports.enum(["list", "add", "confirm", "reject", "supersede"]),
+      plan_id: external_exports.string().optional().describe("F\xFCr list/add/create (plan-weite Gruppierung)."),
+      action: external_exports.enum([
+        "list",
+        "add",
+        "confirm",
+        "reject",
+        "supersede",
+        "create",
+        "update",
+        "get",
+        "versions"
+      ]),
       id: external_exports.string().optional(),
-      text: external_exports.string().optional(),
-      evidence: external_exports.string().optional()
+      text: external_exports.string().optional().describe("Legacy add: Freitext."),
+      evidence: external_exports.string().optional().describe("Legacy: Provenienz."),
+      // --- reiches Modell ---
+      task_id: external_exports.string().optional(),
+      cluster_id: external_exports.string().optional(),
+      initial_assumption: external_exports.string().optional().describe("create: die Ausgangsannahme."),
+      confidence_before: external_exports.number().min(0).max(1).optional().describe("create: Konfidenz [0,1] vor der Aufgabe."),
+      critical_questions: external_exports.array(external_exports.string()).optional().describe("create: aktives Hinterfragen."),
+      falsification_plan: external_exports.array(external_exports.string()).optional().describe("create: wie k\xF6nnte die Annahme scheitern?"),
+      result: external_exports.enum(["open", "confirmed", "partially_confirmed", "refuted"]).optional().describe("update: Pr\xFCfergebnis."),
+      confidence_after: external_exports.number().min(0).max(1).optional().describe("update: Konfidenz [0,1] nach der Aufgabe."),
+      updated_assumption: external_exports.string().optional().describe("update: revidierte Annahme / Folgehypothese."),
+      add_evidence: external_exports.array(external_exports.string()).optional().describe("update: gefundene Evidenz."),
+      follow_up_questions: external_exports.array(external_exports.string()).optional().describe("update: PFLICHT bei partially_confirmed/refuted \u2014 was bleibt offen?"),
+      risks: external_exports.array(external_exports.string()).optional().describe("update: erkannte Risiken/Folgeprobleme."),
+      next_action: external_exports.string().optional().describe("update: n\xE4chste sinnvolle Aktion."),
+      status: external_exports.enum(["open", "confirmed", "rejected", "superseded"]).optional(),
+      version: external_exports.number().int().positive().optional().describe("get: konkrete Version (sonst neueste).")
     }
   },
   async (a) => {
-    switch (a.action) {
-      case "list":
-        return ok({ plan_id: a.plan_id, hypotheses: store.listHypotheses(a.plan_id) });
-      case "add": {
-        if (!a.text) return err({ ok: false, error: "add erfordert 'text'" });
-        const id = store.addHypothesis(a.plan_id, a.text, a.evidence ?? null);
-        return ok({ ok: true, id });
+    try {
+      switch (a.action) {
+        case "list":
+          if (!a.plan_id) return err({ ok: false, error: "list erfordert 'plan_id'" });
+          return ok({
+            plan_id: a.plan_id,
+            hypotheses: store.listHypotheses(a.plan_id),
+            rich: hypRepo.listByPlan(a.plan_id).map((h) => HypothesisRepo.serialize(h))
+          });
+        case "add": {
+          if (!a.plan_id) return err({ ok: false, error: "add erfordert 'plan_id'" });
+          if (!a.text) return err({ ok: false, error: "add erfordert 'text'" });
+          const id = store.addHypothesis(a.plan_id, a.text, a.evidence ?? null);
+          return ok({ ok: true, id });
+        }
+        case "confirm":
+        case "reject":
+        case "supersede": {
+          if (!a.id) return err({ ok: false, error: `${a.action} erfordert 'id'` });
+          const status = a.action === "confirm" ? "confirmed" : a.action === "reject" ? "rejected" : "superseded";
+          store.setHypothesis(a.id, status, a.evidence ?? null);
+          return ok({ ok: true, id: a.id, status });
+        }
+        case "create": {
+          if (!a.initial_assumption) return err({ ok: false, error: "create erfordert 'initial_assumption'" });
+          if (a.confidence_before === void 0) return err({ ok: false, error: "create erfordert 'confidence_before' [0,1]" });
+          const h = hypRepo.create({
+            planId: a.plan_id ?? null,
+            taskId: a.task_id ?? null,
+            clusterId: a.cluster_id ?? null,
+            initialAssumption: a.initial_assumption,
+            confidenceBefore: a.confidence_before,
+            criticalQuestions: a.critical_questions,
+            falsificationPlan: a.falsification_plan
+          });
+          return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
+        }
+        case "update": {
+          if (!a.id) return err({ ok: false, error: "update erfordert 'id'" });
+          const h = hypRepo.update(a.id, {
+            status: a.status,
+            result: a.result,
+            confidenceAfter: a.confidence_after,
+            updatedAssumption: a.updated_assumption,
+            addEvidence: a.add_evidence,
+            followUpQuestions: a.follow_up_questions,
+            risks: a.risks,
+            nextAction: a.next_action,
+            criticalQuestions: a.critical_questions,
+            falsificationPlan: a.falsification_plan,
+            taskId: a.task_id,
+            clusterId: a.cluster_id
+          });
+          return ok({ ok: true, needs_follow_up: needsFollowUp(h.result), hypothesis: HypothesisRepo.serialize(h) });
+        }
+        case "get": {
+          if (!a.id) return err({ ok: false, error: "get erfordert 'id'" });
+          const h = a.version ? hypRepo.getVersion(a.id, a.version) : hypRepo.get(a.id);
+          if (!h) return err({ ok: false, error: `Hypothese ${a.id} (v${a.version ?? "latest"}) nicht gefunden` });
+          return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
+        }
+        case "versions": {
+          if (!a.id) return err({ ok: false, error: "versions erfordert 'id'" });
+          return ok({ ok: true, id: a.id, versions: hypRepo.listVersions(a.id).map((h) => HypothesisRepo.serialize(h)) });
+        }
       }
-      case "confirm":
-      case "reject":
-      case "supersede": {
-        if (!a.id) return err({ ok: false, error: `${a.action} erfordert 'id'` });
-        const status = a.action === "confirm" ? "confirmed" : a.action === "reject" ? "rejected" : "superseded";
-        store.setHypothesis(a.id, status, a.evidence ?? null);
-        return ok({ ok: true, id: a.id, status });
-      }
+    } catch (e) {
+      return err({ ok: false, error: e?.message ?? String(e) });
     }
   }
 );

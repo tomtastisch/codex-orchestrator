@@ -27,6 +27,7 @@ interface StartArgs {
   network: boolean;
   maxMinutes: number;
   extraConfig?: Record<string, string>;
+  hypothesisId?: string | null;
 }
 
 /**
@@ -128,6 +129,7 @@ export class SessionManager {
       status: "queued",
       extra_config_json: args.extraConfig ? JSON.stringify(args.extraConfig) : null,
       owner_pid: null,
+      hypothesis_id: args.hypothesisId ?? null,
     });
   }
 

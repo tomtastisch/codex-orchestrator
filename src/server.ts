@@ -16,10 +16,13 @@ import { centralAgentsMd } from "./agents.js";
 import { maybeAutoUpdate, checkForUpdate, runUpdate, type Channel } from "./updater.js";
 import { checkPluginUpdate, applyPluginUpdate, maybePluginUpdate, installedVersion } from "./plugin.js";
 import { writePlanSnapshot } from "./snapshot.js";
+import { HypothesisRepo, needsFollowUp, type HypothesisResult } from "./hypotheses.js";
+import { checkHypothesisGate } from "./gate.js";
 import { EFFORT_LADDER } from "./types.js";
 import type { Effort, Sandbox } from "./types.js";
 
 const store = new Store(config.dbPath);
+const hypRepo = new HypothesisRepo(store);
 const sessions = new SessionManager(store);
 const machine = new ClusterStateMachine(store);
 const worktrees = new WorktreeManager();
@@ -65,6 +68,7 @@ server.registerTool(
     inputSchema: {
       cluster_id: z.string().optional().describe("Cluster, zu dem der Task gehört (bestimmt Repo-Pfad)."),
       repo_path: z.string().optional().describe("Repo-Pfad, falls kein cluster_id angegeben ist."),
+      hypothesis_id: z.string().optional().describe("PFLICHT: id der zuvor gebildeten Hypothese (hypotheses → create). Ohne verknüpfte Hypothese wird der Start blockiert."),
       instructions: z.string().describe("Konkrete Arbeitsanweisung für Codex."),
       acceptance_criteria: z.array(z.string()).optional(),
       sandbox: z.enum(["read-only", "workspace-write"]),
@@ -101,6 +105,12 @@ server.registerTool(
         ok: false,
         error: `wait_for='completed' nur bei slice_budget.max_minutes <= ${config.syncMaxMinutes} zulässig`,
       });
+    }
+
+    // Cluster 2: Pflicht-Hypothesen-Gate. Kein Agentenjob ohne verknüpfte Hypothese.
+    const gate = checkHypothesisGate(hypRepo, { hypothesisId: a.hypothesis_id }, config.requireHypothesis);
+    if (!gate.ok) {
+      return err({ ok: false, error: gate.error, hint: "hypotheses → create, dann hypothesis_id an task_start übergeben." });
     }
 
     // Worktree-Isolation. 'auto' wird NACH der Task-Erstellung mit der echten
@@ -150,7 +160,13 @@ server.registerTool(
       network: a.network ?? config.networkDefault,
       maxMinutes,
       extraConfig,
+      hypothesisId: a.hypothesis_id ?? null,
     });
+
+    // Hypothese provenienzhalber an Task/Cluster binden (Header-Update, keine neue Version).
+    if (a.hypothesis_id) {
+      try { hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null); } catch { /* best effort */ }
+    }
 
     // Auto-Worktree jetzt mit echter task.id anlegen -> Verzeichnis/Branch = task.id.
     if (wantAutoWorktree) {
@@ -436,33 +452,108 @@ server.registerTool(
 server.registerTool(
   "hypotheses",
   {
-    title: "Hypothesen führen",
-    description: "list|add|confirm|reject|supersede. Provenienz über evidence.",
+    title: "Hypothesen führen (versioniert)",
+    description:
+      "Legacy: list|add|confirm|reject|supersede (plan-weite Freitext-Hypothesen). " +
+      "Reiches, versioniertes Modell: create|update|get|versions. " +
+      "'create' bildet die Pflicht-Hypothese VOR einer Aufgabe (initialAssumption + criticalQuestions + falsificationPlan). " +
+      "'update' aktualisiert append-only NACH der Aufgabe (result + evidence + updatedAssumption).",
     inputSchema: {
-      plan_id: z.string(),
-      action: z.enum(["list", "add", "confirm", "reject", "supersede"]),
+      plan_id: z.string().optional().describe("Für list/add/create (plan-weite Gruppierung)."),
+      action: z.enum([
+        "list", "add", "confirm", "reject", "supersede",
+        "create", "update", "get", "versions",
+      ]),
       id: z.string().optional(),
-      text: z.string().optional(),
-      evidence: z.string().optional(),
+      text: z.string().optional().describe("Legacy add: Freitext."),
+      evidence: z.string().optional().describe("Legacy: Provenienz."),
+      // --- reiches Modell ---
+      task_id: z.string().optional(),
+      cluster_id: z.string().optional(),
+      initial_assumption: z.string().optional().describe("create: die Ausgangsannahme."),
+      confidence_before: z.number().min(0).max(1).optional().describe("create: Konfidenz [0,1] vor der Aufgabe."),
+      critical_questions: z.array(z.string()).optional().describe("create: aktives Hinterfragen."),
+      falsification_plan: z.array(z.string()).optional().describe("create: wie könnte die Annahme scheitern?"),
+      result: z.enum(["open", "confirmed", "partially_confirmed", "refuted"]).optional().describe("update: Prüfergebnis."),
+      confidence_after: z.number().min(0).max(1).optional().describe("update: Konfidenz [0,1] nach der Aufgabe."),
+      updated_assumption: z.string().optional().describe("update: revidierte Annahme / Folgehypothese."),
+      add_evidence: z.array(z.string()).optional().describe("update: gefundene Evidenz."),
+      follow_up_questions: z.array(z.string()).optional().describe("update: PFLICHT bei partially_confirmed/refuted — was bleibt offen?"),
+      risks: z.array(z.string()).optional().describe("update: erkannte Risiken/Folgeprobleme."),
+      next_action: z.string().optional().describe("update: nächste sinnvolle Aktion."),
+      status: z.enum(["open", "confirmed", "rejected", "superseded"]).optional(),
+      version: z.number().int().positive().optional().describe("get: konkrete Version (sonst neueste)."),
     },
   },
   async (a) => {
-    switch (a.action) {
-      case "list":
-        return ok({ plan_id: a.plan_id, hypotheses: store.listHypotheses(a.plan_id) });
-      case "add": {
-        if (!a.text) return err({ ok: false, error: "add erfordert 'text'" });
-        const id = store.addHypothesis(a.plan_id, a.text, a.evidence ?? null);
-        return ok({ ok: true, id });
+    try {
+      switch (a.action) {
+        case "list":
+          if (!a.plan_id) return err({ ok: false, error: "list erfordert 'plan_id'" });
+          return ok({
+            plan_id: a.plan_id,
+            hypotheses: store.listHypotheses(a.plan_id),
+            rich: hypRepo.listByPlan(a.plan_id).map((h) => HypothesisRepo.serialize(h)),
+          });
+        case "add": {
+          if (!a.plan_id) return err({ ok: false, error: "add erfordert 'plan_id'" });
+          if (!a.text) return err({ ok: false, error: "add erfordert 'text'" });
+          const id = store.addHypothesis(a.plan_id, a.text, a.evidence ?? null);
+          return ok({ ok: true, id });
+        }
+        case "confirm":
+        case "reject":
+        case "supersede": {
+          if (!a.id) return err({ ok: false, error: `${a.action} erfordert 'id'` });
+          const status = a.action === "confirm" ? "confirmed" : a.action === "reject" ? "rejected" : "superseded";
+          store.setHypothesis(a.id, status, a.evidence ?? null);
+          return ok({ ok: true, id: a.id, status });
+        }
+        case "create": {
+          if (!a.initial_assumption) return err({ ok: false, error: "create erfordert 'initial_assumption'" });
+          if (a.confidence_before === undefined) return err({ ok: false, error: "create erfordert 'confidence_before' [0,1]" });
+          const h = hypRepo.create({
+            planId: a.plan_id ?? null,
+            taskId: a.task_id ?? null,
+            clusterId: a.cluster_id ?? null,
+            initialAssumption: a.initial_assumption,
+            confidenceBefore: a.confidence_before,
+            criticalQuestions: a.critical_questions,
+            falsificationPlan: a.falsification_plan,
+          });
+          return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
+        }
+        case "update": {
+          if (!a.id) return err({ ok: false, error: "update erfordert 'id'" });
+          const h = hypRepo.update(a.id, {
+            status: a.status,
+            result: a.result as HypothesisResult | undefined,
+            confidenceAfter: a.confidence_after,
+            updatedAssumption: a.updated_assumption,
+            addEvidence: a.add_evidence,
+            followUpQuestions: a.follow_up_questions,
+            risks: a.risks,
+            nextAction: a.next_action,
+            criticalQuestions: a.critical_questions,
+            falsificationPlan: a.falsification_plan,
+            taskId: a.task_id,
+            clusterId: a.cluster_id,
+          });
+          return ok({ ok: true, needs_follow_up: needsFollowUp(h.result), hypothesis: HypothesisRepo.serialize(h) });
+        }
+        case "get": {
+          if (!a.id) return err({ ok: false, error: "get erfordert 'id'" });
+          const h = a.version ? hypRepo.getVersion(a.id, a.version) : hypRepo.get(a.id);
+          if (!h) return err({ ok: false, error: `Hypothese ${a.id} (v${a.version ?? "latest"}) nicht gefunden` });
+          return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
+        }
+        case "versions": {
+          if (!a.id) return err({ ok: false, error: "versions erfordert 'id'" });
+          return ok({ ok: true, id: a.id, versions: hypRepo.listVersions(a.id).map((h) => HypothesisRepo.serialize(h)) });
+        }
       }
-      case "confirm":
-      case "reject":
-      case "supersede": {
-        if (!a.id) return err({ ok: false, error: `${a.action} erfordert 'id'` });
-        const status = a.action === "confirm" ? "confirmed" : a.action === "reject" ? "rejected" : "superseded";
-        store.setHypothesis(a.id, status, a.evidence ?? null);
-        return ok({ ok: true, id: a.id, status });
-      }
+    } catch (e: any) {
+      return err({ ok: false, error: e?.message ?? String(e) });
     }
   },
 );

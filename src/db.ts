@@ -17,6 +17,9 @@ export function newId(prefix: string): string {
   return `${prefix}_${randomUUID().slice(0, 12)}`;
 }
 
+/** Aktuelle Schema-Version. Bei additiven Migrationen hochzählen. */
+export const SCHEMA_VERSION = 2;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
   id TEXT PRIMARY KEY, goal TEXT NOT NULL, constraints TEXT,
@@ -44,7 +47,7 @@ CREATE TABLE IF NOT EXISTS tasks (
      'completed','failed','cancelled')),
   slice_count INTEGER DEFAULT 0, started_at TEXT, ended_at TEXT,
   last_slice_type TEXT, last_summary TEXT, extra_config_json TEXT,
-  owner_pid INTEGER, codex_pid INTEGER
+  owner_pid INTEGER, codex_pid INTEGER, hypothesis_id TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
@@ -60,6 +63,18 @@ CREATE TABLE IF NOT EXISTS hypotheses (
   status TEXT NOT NULL CHECK (status IN
     ('open','confirmed','rejected','superseded')),
   evidence TEXT, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS hypothesis_versions (
+  id TEXT PRIMARY KEY,
+  hypothesis_id TEXT NOT NULL REFERENCES hypotheses(id),
+  version INTEGER NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(hypothesis_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_hyp_versions ON hypothesis_versions(hypothesis_id, version);
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY, cluster_id TEXT NOT NULL, ts TEXT NOT NULL,
@@ -93,6 +108,7 @@ export interface TaskRow {
   status: TaskStatus; slice_count: number; started_at: string | null;
   ended_at: string | null; last_slice_type: string | null; last_summary: string | null;
   extra_config_json: string | null; owner_pid: number | null; codex_pid: number | null;
+  hypothesis_id: string | null;
 }
 export interface EventRow {
   seq: number; task_id: string; ts: string; kind: string; payload_json: string;
@@ -128,6 +144,42 @@ export class Store {
     if (!taskCols.has("codex_pid")) {
       this.db.exec("ALTER TABLE tasks ADD COLUMN codex_pid INTEGER");
     }
+    // Cluster 2: verknüpfte Pflicht-Hypothese (authoritativer Link Task->Hypothese).
+    if (!taskCols.has("hypothesis_id")) {
+      this.db.exec("ALTER TABLE tasks ADD COLUMN hypothesis_id TEXT");
+    }
+
+    // Cluster 1: reiches, versioniertes Hypothesenmodell — Header-Spalten
+    // additiv nachrüsten (Snapshot-Inhalt lebt in hypothesis_versions).
+    const hypCols = cols("hypotheses");
+    if (!hypCols.has("task_id")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN task_id TEXT");
+    if (!hypCols.has("cluster_id")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN cluster_id TEXT");
+    if (!hypCols.has("result")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN result TEXT");
+    if (!hypCols.has("latest_version")) {
+      this.db.exec("ALTER TABLE hypotheses ADD COLUMN latest_version INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!hypCols.has("created_at")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN created_at TEXT");
+
+    // Schema-Version festhalten (Grundlage für die Migrations-Schicht in Cluster 5).
+    this.setSchemaVersion(Math.max(this.getSchemaVersion(), SCHEMA_VERSION));
+  }
+
+  /** Aktuelle Schema-Version (0, wenn noch nie gesetzt). */
+  getSchemaVersion(): number {
+    try {
+      const r = this.db.prepare("SELECT value FROM meta WHERE key='schema_version'").get() as
+        | { value: string }
+        | undefined;
+      return r ? Number(r.value) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  setSchemaVersion(v: number): void {
+    this.db
+      .prepare("INSERT INTO meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=?")
+      .run(String(v), String(v));
   }
 
   tx<T>(fn: () => T): T {
@@ -190,11 +242,11 @@ export class Store {
   createTask(t: Omit<TaskRow, "slice_count" | "started_at" | "ended_at" | "last_slice_type" | "last_summary" | "codex_pid">): TaskRow {
     this.db.prepare(
       `INSERT INTO tasks(id,cluster_id,codex_session_id,worktree,branch,repo_path,
-        sandbox,model,effort,instructions,acceptance_json,max_minutes,network,status,slice_count,extra_config_json)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)`
+        sandbox,model,effort,instructions,acceptance_json,max_minutes,network,status,slice_count,extra_config_json,hypothesis_id)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`
     ).run(t.id, t.cluster_id, t.codex_session_id, t.worktree, t.branch, t.repo_path,
       t.sandbox, t.model, t.effort, t.instructions, t.acceptance_json, t.max_minutes,
-      t.network, t.status, t.extra_config_json ?? null);
+      t.network, t.status, t.extra_config_json ?? null, t.hypothesis_id ?? null);
     return this.getTask(t.id)!;
   }
   getTask(id: string): TaskRow | undefined {

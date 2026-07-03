@@ -102,9 +102,18 @@ polls with a long-poll `task_wait`.
 /plugin install codex-orchestrator
 ```
 
-This registers the MCP server (pre-bundled, no build step) and the
-`codex-orchestrator` skill, which teaches Claude the full orchestration
-workflow.
+This registers the MCP server (pre-bundled, no build step), the
+`codex-orchestrator` skill (which teaches Claude the full orchestration
+workflow) and two slash commands:
+
+- **`/codex-orchestrator [task]`** — entry point: adopts the orchestrator role,
+  verifies the MCP server, records a hypothesis and starts the cluster-based
+  workflow for the given task.
+- **`/orchestrator-status [plan_id]`** — prints the current plan, clusters,
+  hypotheses and review status from the persistent store.
+
+The skill still auto-activates when you describe an orchestration task in
+natural language; the slash commands are just an explicit way to invoke it.
 
 ### As a plain MCP server
 
