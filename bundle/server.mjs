@@ -2981,7 +2981,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve4.call(this, root, ref);
+      let _sch = resolve5.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3008,7 +3008,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve4(root, ref) {
+    function resolve5(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3639,7 +3639,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve4(baseURI, relativeURI, options) {
+    function resolve5(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse4(baseURI, schemelessOptions), parse4(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3897,7 +3897,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve4,
+      resolve: resolve5,
       resolveComponent,
       equal,
       serialize,
@@ -18978,7 +18978,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve4) => setTimeout(resolve4, pollInterval));
+        await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -18995,7 +18995,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19073,7 +19073,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve4(parseResult.data);
+            resolve5(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19334,12 +19334,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve4, interval);
+      const timeoutId = setTimeout(resolve5, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20439,7 +20439,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve4) => setTimeout(resolve4, pollInterval));
+      await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -21088,12 +21088,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve4) => {
+    return new Promise((resolve5) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve4();
+        resolve5();
       } else {
-        this._stdout.once("drain", resolve4);
+        this._stdout.once("drain", resolve5);
       }
     });
   }
@@ -22373,7 +22373,7 @@ var SessionManager = class {
     if (evs.length > 0 || !task) {
       return this.pack(taskId, evs, cursor, task?.status ?? "unknown", false);
     }
-    await new Promise((resolve4) => {
+    await new Promise((resolve5) => {
       let settled = false;
       const done = () => {
         if (settled) return;
@@ -22381,7 +22381,7 @@ var SessionManager = class {
         this.emitter.off(taskId, onEvent);
         clearTimeout(timer);
         clearInterval(poll);
-        resolve4();
+        resolve5();
       };
       const onEvent = () => done();
       const timer = setTimeout(done, Math.max(0, deadline - Date.now()));
@@ -22661,7 +22661,7 @@ var WorktreeManager = class {
 // src/checks.ts
 import { spawn as spawn2 } from "node:child_process";
 function runArgv(argv, cwd, timeoutMs = 15 * 6e4) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     const child = spawn2(argv[0], argv.slice(1), { cwd, env: process.env });
     let out = "";
     const cap = (d) => {
@@ -22673,11 +22673,11 @@ function runArgv(argv, cwd, timeoutMs = 15 * 6e4) {
     const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve4({ code, out });
+      resolve5({ code, out });
     });
     child.on("error", (err2) => {
       clearTimeout(timer);
-      resolve4({ code: null, out: `spawn error: ${err2.message}` });
+      resolve5({ code: null, out: `spawn error: ${err2.message}` });
     });
   });
 }
@@ -22778,13 +22778,13 @@ function checkForUpdate(channel, codexBin = "codex") {
   return { installed, latest, channel, updateAvailable };
 }
 function runUpdate(channel) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     const child = spawn3("npm", ["install", "-g", `@openai/codex@${channel}`], { encoding: "utf8" });
     let out = "";
     child.stdout?.on("data", (d) => out += d.toString());
     child.stderr?.on("data", (d) => out += d.toString());
-    child.on("close", (code) => resolve4({ ok: code === 0, output: out.slice(-4e3) }));
-    child.on("error", (err2) => resolve4({ ok: false, output: String(err2) }));
+    child.on("close", (code) => resolve5({ ok: code === 0, output: out.slice(-4e3) }));
+    child.on("error", (err2) => resolve5({ ok: false, output: String(err2) }));
   });
 }
 async function maybeAutoUpdate(log) {
@@ -22798,6 +22798,160 @@ async function maybeAutoUpdate(log) {
   log(`[updater] Update ${check2.installed} -> ${check2.latest} (${channel}) wird installiert\u2026`);
   const res = await runUpdate(channel);
   log(res.ok ? `[updater] Codex aktualisiert auf ${check2.latest}.` : `[updater] Update fehlgeschlagen: ${res.output.slice(-300)}`);
+}
+
+// src/plugin.ts
+import { readFileSync as readFileSync2, existsSync as existsSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync4 } from "node:fs";
+import { dirname as dirname3, resolve as resolve4, join as join2 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { spawnSync as spawnSync3 } from "node:child_process";
+var __dirname2 = dirname3(fileURLToPath2(import.meta.url));
+var PLUGIN_REPO = process.env.ORCH_PLUGIN_REPO || "tomtastisch/codex-orchestrator";
+var CHECK_TTL_MS = Number(process.env.ORCH_PLUGIN_CHECK_TTL_MS || 6 * 60 * 60 * 1e3);
+function pluginRoot() {
+  return resolve4(__dirname2, "..");
+}
+function installedVersion2() {
+  for (const rel of ["package.json", ".claude-plugin/plugin.json"]) {
+    const p = resolve4(pluginRoot(), rel);
+    if (existsSync3(p)) {
+      try {
+        const v = JSON.parse(readFileSync2(p, "utf8")).version;
+        if (typeof v === "string" && v) return v;
+      } catch {
+      }
+    }
+  }
+  return "0.0.0";
+}
+function installKind() {
+  return existsSync3(resolve4(pluginRoot(), ".git")) ? "git" : "managed";
+}
+function gitClean() {
+  const r = spawnSync3("git", ["status", "--porcelain"], { cwd: pluginRoot(), encoding: "utf8" });
+  return r.status === 0 && (r.stdout || "").trim() === "";
+}
+function cachePath() {
+  return join2(config2.home, "plugin-update-check.json");
+}
+function readCache() {
+  try {
+    return JSON.parse(readFileSync2(cachePath(), "utf8"));
+  } catch {
+    return null;
+  }
+}
+function writeCache(entry) {
+  try {
+    mkdirSync4(config2.home, { recursive: true });
+    writeFileSync2(cachePath(), JSON.stringify(entry), "utf8");
+  } catch {
+  }
+}
+async function latestVersion2(now, force = false) {
+  const cached2 = readCache();
+  if (!force && cached2 && now - cached2.checkedAt < CHECK_TTL_MS) {
+    return cached2.latest;
+  }
+  let latest = null;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${PLUGIN_REPO}/releases/latest`, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "codex-orchestrator" }
+    });
+    if (res.ok) {
+      const j = await res.json();
+      if (typeof j.tag_name === "string") latest = j.tag_name.replace(/^v/, "");
+    }
+  } catch {
+  }
+  writeCache({ checkedAt: now, latest });
+  return latest;
+}
+async function checkPluginUpdate(now, force = false) {
+  const installed = installedVersion2();
+  const latest = await latestVersion2(now, force);
+  const updateAvailable = !!latest && latest !== installed && isOlder(installed, latest);
+  const kind = installKind();
+  const how = kind === "git" ? "plugin_update(action:apply) \u2014 git pull + rebuild; danach Server/Session neu starten." : "In Claude Code: `/plugin marketplace update codex-orchestrator`, dann Plugin neu installieren/aktivieren. (Ein Marketplace-Plugin kann sich nicht selbst \xFCberschreiben.)";
+  return { installed, latest, updateAvailable, install_kind: kind, how_to_update: how };
+}
+async function applyPluginUpdate(now) {
+  const chk = await checkPluginUpdate(now, true);
+  if (!chk.updateAvailable) {
+    return { ok: true, applied: false, from: chk.installed, to: chk.latest, restart_required: false, note: "bereits aktuell" };
+  }
+  if (chk.install_kind !== "git") {
+    return {
+      ok: true,
+      applied: false,
+      from: chk.installed,
+      to: chk.latest,
+      restart_required: false,
+      note: chk.how_to_update
+    };
+  }
+  if (!gitClean()) {
+    return {
+      ok: false,
+      applied: false,
+      from: chk.installed,
+      to: chk.latest,
+      restart_required: false,
+      note: "Arbeitsbaum nicht sauber \u2014 Auto-Update \xFCbersprungen (uncommittete \xC4nderungen)."
+    };
+  }
+  const root = pluginRoot();
+  const steps = [
+    ["git", ["pull", "--ff-only"]],
+    ["npm", ["ci"]],
+    ["npm", ["run", "build"]],
+    ["npm", ["run", "bundle"]]
+  ];
+  let output = "";
+  for (const [cmd, args] of steps) {
+    const r = spawnSync3(cmd, args, { cwd: root, encoding: "utf8" });
+    output += `
+$ ${cmd} ${args.join(" ")}
+${(r.stdout || "") + (r.stderr || "")}`.slice(0, 4e3);
+    if (r.status !== 0) {
+      return {
+        ok: false,
+        applied: false,
+        from: chk.installed,
+        to: chk.latest,
+        restart_required: false,
+        note: `Schritt '${cmd} ${args.join(" ")}' fehlgeschlagen`,
+        output: output.slice(-2e3)
+      };
+    }
+  }
+  return {
+    ok: true,
+    applied: true,
+    from: chk.installed,
+    to: chk.latest,
+    restart_required: true,
+    note: "Aktualisiert. Neue Version wird beim n\xE4chsten Serverstart aktiv.",
+    output: output.slice(-1500)
+  };
+}
+async function maybePluginUpdate(now, log) {
+  let chk;
+  try {
+    chk = await checkPluginUpdate(now);
+  } catch {
+    return;
+  }
+  if (!chk.updateAvailable) {
+    log(`[plugin] v${chk.installed} aktuell (latest ${chk.latest ?? "?"}, ${chk.install_kind}).`);
+    return;
+  }
+  log(`[plugin] Update verf\xFCgbar: v${chk.installed} -> v${chk.latest}. ${chk.how_to_update}`);
+  if (process.env.ORCH_PLUGIN_AUTO_UPDATE === "true" && chk.install_kind === "git") {
+    log(`[plugin] Auto-Update aktiv, wende an\u2026`);
+    const res = await applyPluginUpdate(now);
+    log(res.applied ? `[plugin] ${res.note}` : `[plugin] Auto-Update: ${res.note}`);
+  }
 }
 
 // node_modules/@toon-format/toon/dist/index.mjs
@@ -23195,8 +23349,8 @@ function resolveOptions(options) {
 }
 
 // src/snapshot.ts
-import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join2 } from "node:path";
+import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join3 } from "node:path";
 function parse3(json) {
   if (!json) return null;
   try {
@@ -23243,10 +23397,10 @@ function writePlanSnapshot(store2, planId, format = "toon") {
   const snap = buildPlanSnapshot(store2, planId);
   if (!snap) return null;
   const content = format === "toon" ? encode(snap) : JSON.stringify(snap, null, 2);
-  const dir = join2(config2.home, "snapshots");
-  mkdirSync4(dir, { recursive: true });
-  const path = join2(dir, `${planId}.${format}`);
-  writeFileSync2(path, content, "utf8");
+  const dir = join3(config2.home, "snapshots");
+  mkdirSync5(dir, { recursive: true });
+  const path = join3(dir, `${planId}.${format}`);
+  writeFileSync3(path, content, "utf8");
   return { format, content, path };
 }
 
@@ -23762,6 +23916,24 @@ server.registerTool(
     return res.ok ? ok({ ok: true, applied: true, from: chk.installed, to: chk.latest, channel }) : err({ ok: false, applied: false, error: "npm install fehlgeschlagen", output: res.output });
   }
 );
+server.registerTool(
+  "plugin_update",
+  {
+    title: "Orchestrator-Plugin pr\xFCfen/aktualisieren",
+    description: "Pr\xFCft (check) ob eine neuere Plugin-Version als GitHub-Release vorliegt, oder wendet sie an (apply). git-Install: self-update via git pull + rebuild (Restart n\xF6tig). Marketplace-Install: liefert die /plugin-Update-Anleitung. Nutzt einen TTL-Cache.",
+    inputSchema: {
+      action: external_exports.enum(["check", "apply"]).default("check"),
+      force: external_exports.boolean().default(false).describe("Cache umgehen und frisch bei GitHub pr\xFCfen.")
+    }
+  },
+  async (a) => {
+    const now = Date.now();
+    if (a.action === "check") return ok({ ok: true, ...await checkPluginUpdate(now, a.force) });
+    const running = store.listTasks({ status: "running" }).length;
+    if (running > 0) return err({ ok: false, error: `Update abgelehnt: ${running} Task(s) aktiv.` });
+    return ok(await applyPluginUpdate(now));
+  }
+);
 centralAgentsMd();
 var shuttingDown = false;
 function gracefulShutdown(sig) {
@@ -23784,5 +23956,6 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 var transport = new StdioServerTransport();
 await server.connect(transport);
-console.error("[orchestrator] codex-orchestrator MCP-Server l\xE4uft (stdio). DB:", config2.dbPath);
+console.error(`[orchestrator] codex-orchestrator v${installedVersion2()} l\xE4uft (stdio). DB: ${config2.dbPath}`);
 void maybeAutoUpdate((s) => console.error(s));
+void maybePluginUpdate(Date.now(), (s) => console.error(s));

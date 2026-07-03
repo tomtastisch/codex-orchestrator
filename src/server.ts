@@ -14,6 +14,7 @@ import { resolveModel, repoPathForCluster, latestWorktreeForCluster } from "./re
 import { isBlockedConfigKey } from "./codex.js";
 import { centralAgentsMd } from "./agents.js";
 import { maybeAutoUpdate, checkForUpdate, runUpdate, type Channel } from "./updater.js";
+import { checkPluginUpdate, applyPluginUpdate, maybePluginUpdate, installedVersion } from "./plugin.js";
 import { writePlanSnapshot } from "./snapshot.js";
 import { EFFORT_LADDER } from "./types.js";
 import type { Effort, Sandbox } from "./types.js";
@@ -593,6 +594,27 @@ server.registerTool(
   },
 );
 
+// -------------------------------------------------- plugin_update (Selbst-Update)
+server.registerTool(
+  "plugin_update",
+  {
+    title: "Orchestrator-Plugin prüfen/aktualisieren",
+    description:
+      "Prüft (check) ob eine neuere Plugin-Version als GitHub-Release vorliegt, oder wendet sie an (apply). git-Install: self-update via git pull + rebuild (Restart nötig). Marketplace-Install: liefert die /plugin-Update-Anleitung. Nutzt einen TTL-Cache.",
+    inputSchema: {
+      action: z.enum(["check", "apply"]).default("check"),
+      force: z.boolean().default(false).describe("Cache umgehen und frisch bei GitHub prüfen."),
+    },
+  },
+  async (a) => {
+    const now = Date.now();
+    if (a.action === "check") return ok({ ok: true, ...(await checkPluginUpdate(now, a.force)) });
+    const running = store.listTasks({ status: "running" }).length;
+    if (running > 0) return err({ ok: false, error: `Update abgelehnt: ${running} Task(s) aktiv.` });
+    return ok(await applyPluginUpdate(now));
+  },
+);
+
 // Zentrale Executor-AGENTS.md bereitstellen.
 centralAgentsMd();
 
@@ -617,7 +639,9 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error("[orchestrator] codex-orchestrator MCP-Server läuft (stdio). DB:", config.dbPath);
+console.error(`[orchestrator] codex-orchestrator v${installedVersion()} läuft (stdio). DB: ${config.dbPath}`);
 
 // Auto-Update im Hintergrund (blockiert den Handshake nicht).
 void maybeAutoUpdate((s) => console.error(s));
+// Plugin-Selbstprüfung im Hintergrund (TTL-gecacht, meldet neue Version).
+void maybePluginUpdate(Date.now(), (s) => console.error(s));
