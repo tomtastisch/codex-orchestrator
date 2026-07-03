@@ -39,20 +39,45 @@ instead of chat history.
 
 ## How it works
 
+```mermaid
+flowchart TD
+    User(["User"]) --> Claude["Claude<br/>orchestrator + reviewer"]
+    Claude -->|"MCP tools"| SM
+
+    subgraph SRV["codex-orchestrator MCP server"]
+        direction TB
+        SM["Session manager<br/>slice loop, resume, inject, limits, reaper"]
+        FSM["State machine<br/>confirm gated on review + green checks"]
+        Checks["Check runner<br/>allow-listed commands only"]
+        WT["Worktree manager<br/>isolation + gated merge"]
+        Store[("SQLite store<br/>plans, clusters, tasks, events,<br/>hypotheses, reviews, checks")]
+    end
+
+    SM -->|"codex exec / resume (--json)"| Codex["Codex CLI<br/>sandbox, model, effort per task"]
+    Codex -->|"SLICE_RESULT"| SM
+    Checks -->|"exit codes"| FSM
+    WT --> Git[("git worktrees")]
+    Codex --> Git
+    SM --> Store
+    FSM --> Store
+    Checks --> Store
 ```
-Claude (orchestrator)
-  │  13 MCP tools
-codex-orchestrator (this server)
-  ├─ Session manager   — slice loop, resume, pause/cancel/inject, limits, reaper
-  ├─ State store       — SQLite: plans, clusters, tasks, events, hypotheses,
-  │                      reviews, retrospectives, checks (append-only audit)
-  ├─ State machine     — planned → active → submitted → in_review → confirmed,
-  │                      confirm gated on review + green checks
-  ├─ Check runner      — allow-listed argv commands only, no free-form shell
-  └─ Worktree manager  — git worktree isolation for parallel tasks, gated merge
-  │
-Codex CLI  →  codex exec / resume  (--json, isolated from user config,
-              sandbox + model + reasoning effort set per task)
+
+The cluster lifecycle is enforced by the server — a cluster reaches `confirmed`
+only with a passing review **and** green server-run checks:
+
+```mermaid
+stateDiagram-v2
+    [*] --> planned
+    planned --> active: start (predecessors confirmed + retro done)
+    active --> submitted: submit
+    submitted --> in_review: review (runs declared checks)
+    in_review --> needs_changes: request_changes
+    needs_changes --> active: targeted fix, resume Codex
+    in_review --> confirmed: confirm — only if review confirmed AND checks green
+    in_review --> blocked: block
+    active --> blocked: limit breach
+    confirmed --> [*]: retro (mandatory), then next cluster
 ```
 
 Each Codex assignment runs as a sequence of bounded slices. At every slice
