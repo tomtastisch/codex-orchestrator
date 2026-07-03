@@ -23976,7 +23976,10 @@ function buildResultArtifact(store2, planId, opts = {}) {
     })(),
     checks: store2.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code }))
   }));
-  const tasks = store2.listTasks().filter((t) => clusters.some((c) => c.id === t.cluster_id) || t.cluster_id === null).map((t) => ({
+  const clusterIds = new Set(clusters.map((c) => c.id));
+  const planTasks = store2.listTasks().filter((t) => t.cluster_id !== null && clusterIds.has(t.cluster_id));
+  const taskIds = new Set(planTasks.map((t) => t.id));
+  const tasks = planTasks.map((t) => ({
     id: t.id,
     cluster_id: t.cluster_id,
     status: t.status,
@@ -23987,7 +23990,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
     slice_count: t.slice_count,
     last_slice_type: t.last_slice_type
   }));
-  const agentJobs = store2.listAgentJobs().map((j) => ({
+  const agentJobs = store2.listAgentJobs().filter((j) => j.cluster_id && clusterIds.has(j.cluster_id) || j.task_id && taskIds.has(j.task_id)).map((j) => ({
     id: j.id,
     task_id: j.task_id,
     cluster_id: j.cluster_id,
@@ -24000,9 +24003,12 @@ function buildResultArtifact(store2, planId, opts = {}) {
     ended_at: j.ended_at
   }));
   const richIds = /* @__PURE__ */ new Set();
-  const headers = store2.db.prepare(
-    "SELECT id FROM hypotheses WHERE (plan_id=? OR task_id IS NOT NULL) ORDER BY created_at"
-  ).all(planId);
+  const allHeaders = store2.db.prepare(
+    "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
+  ).all();
+  const headers = allHeaders.filter(
+    (h) => h.plan_id === planId || h.cluster_id && clusterIds.has(h.cluster_id) || h.task_id && taskIds.has(h.task_id)
+  );
   const hypotheses = [];
   const hypothesisUpdates = [];
   for (const { id } of headers) {
@@ -24017,7 +24023,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
       const r = store2.latestReview(c.id);
       return r ? [{ kind: "cluster", cluster_id: c.id, status: r.status, findings: parseJson(r.findings_json), ts: r.ts }] : [];
     }),
-    ...store2.listHypothesisReviews().map((r) => ({
+    ...store2.listHypothesisReviews().filter((r) => r.cluster_id && clusterIds.has(r.cluster_id) || r.hypothesis_id && richIds.has(r.hypothesis_id)).map((r) => ({
       kind: "hypothesis",
       hypothesis_id: r.hypothesis_id,
       cluster_id: r.cluster_id,
@@ -24027,7 +24033,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
       synthesis: r.synthesis
     }))
   ];
-  const userDecisions = store2.listDecisions().map((d) => ({
+  const userDecisions = store2.listDecisions().filter((d) => d.plan_id === planId || d.cluster_id && clusterIds.has(d.cluster_id)).map((d) => ({
     id: d.id,
     cluster_id: d.cluster_id,
     topic: d.topic,

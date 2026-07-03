@@ -84,25 +84,36 @@ export function buildResultArtifact(store: Store, planId: string, opts: Artifact
     checks: store.checksForCluster(c.id).map((k: any) => ({ cmd: k.cmd, exit_code: k.exit_code })),
   }));
 
-  const tasks = store.listTasks().filter((t) => clusters.some((c) => c.id === t.cluster_id) || t.cluster_id === null)
-    .map((t) => ({
-      id: t.id, cluster_id: t.cluster_id, status: t.status, sandbox: t.sandbox,
-      model: t.model, effort: t.effort, hypothesis_id: t.hypothesis_id,
-      slice_count: t.slice_count, last_slice_type: t.last_slice_type,
-    }));
-
-  const agentJobs = store.listAgentJobs().map((j: any) => ({
-    id: j.id, task_id: j.task_id, cluster_id: j.cluster_id, hypothesis_id: j.hypothesis_id,
-    model: j.model, effort: j.effort, sandbox: j.sandbox, status: j.status,
-    started_at: j.started_at, ended_at: j.ended_at,
+  // Alles strikt auf DIESEN Plan begrenzen (ein Store kann mehrere Pläne halten) —
+  // ein Audit-Artefakt darf keine Daten fremder Pläne einmischen.
+  const clusterIds = new Set(clusters.map((c) => c.id));
+  const planTasks = store.listTasks().filter((t) => t.cluster_id !== null && clusterIds.has(t.cluster_id));
+  const taskIds = new Set(planTasks.map((t) => t.id));
+  const tasks = planTasks.map((t) => ({
+    id: t.id, cluster_id: t.cluster_id, status: t.status, sandbox: t.sandbox,
+    model: t.model, effort: t.effort, hypothesis_id: t.hypothesis_id,
+    slice_count: t.slice_count, last_slice_type: t.last_slice_type,
   }));
 
-  // Rich-Hypothesen: pro Plan + alle task-gebundenen. Neueste Version = "Hypothese",
-  // volle Versionshistorie = "hypothesisUpdates".
+  const agentJobs = store.listAgentJobs()
+    .filter((j: any) => (j.cluster_id && clusterIds.has(j.cluster_id)) || (j.task_id && taskIds.has(j.task_id)))
+    .map((j: any) => ({
+      id: j.id, task_id: j.task_id, cluster_id: j.cluster_id, hypothesis_id: j.hypothesis_id,
+      model: j.model, effort: j.effort, sandbox: j.sandbox, status: j.status,
+      started_at: j.started_at, ended_at: j.ended_at,
+    }));
+
+  // Rich-Hypothesen dieses Plans: plan_id ODER an einen Cluster/Task des Plans gebunden.
+  // Neueste Version = "Hypothese", volle Versionshistorie = "hypothesisUpdates".
   const richIds = new Set<string>();
-  const headers = store.db.prepare(
-    "SELECT id FROM hypotheses WHERE (plan_id=? OR task_id IS NOT NULL) ORDER BY created_at"
-  ).all(planId) as { id: string }[];
+  const allHeaders = store.db.prepare(
+    "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
+  ).all() as { id: string; plan_id: string | null; cluster_id: string | null; task_id: string | null }[];
+  const headers = allHeaders.filter((h) =>
+    h.plan_id === planId ||
+    (h.cluster_id && clusterIds.has(h.cluster_id)) ||
+    (h.task_id && taskIds.has(h.task_id)),
+  );
   const hypotheses: any[] = [];
   const hypothesisUpdates: any[] = [];
   for (const { id } of headers) {
@@ -118,16 +129,20 @@ export function buildResultArtifact(store: Store, planId: string, opts: Artifact
       const r = store.latestReview(c.id);
       return r ? [{ kind: "cluster", cluster_id: c.id, status: r.status, findings: parseJson(r.findings_json), ts: r.ts }] : [];
     }),
-    ...store.listHypothesisReviews().map((r: any) => ({
-      kind: "hypothesis", hypothesis_id: r.hypothesis_id, cluster_id: r.cluster_id,
-      reviewer: r.reviewer, status: r.status, findings: parseJson(r.findings_json), synthesis: r.synthesis,
-    })),
+    ...store.listHypothesisReviews()
+      .filter((r: any) => (r.cluster_id && clusterIds.has(r.cluster_id)) || (r.hypothesis_id && richIds.has(r.hypothesis_id)))
+      .map((r: any) => ({
+        kind: "hypothesis", hypothesis_id: r.hypothesis_id, cluster_id: r.cluster_id,
+        reviewer: r.reviewer, status: r.status, findings: parseJson(r.findings_json), synthesis: r.synthesis,
+      })),
   ];
 
-  const userDecisions = store.listDecisions().map((d: any) => ({
-    id: d.id, cluster_id: d.cluster_id, topic: d.topic, decision: d.decision,
-    remember: !!d.remember, question: d.question, created_at: d.created_at,
-  }));
+  const userDecisions = store.listDecisions()
+    .filter((d: any) => d.plan_id === planId || (d.cluster_id && clusterIds.has(d.cluster_id)))
+    .map((d: any) => ({
+      id: d.id, cluster_id: d.cluster_id, topic: d.topic, decision: d.decision,
+      remember: !!d.remember, question: d.question, created_at: d.created_at,
+    }));
 
   // Geänderte Dateien: aus git (Basis..HEAD, sonst working tree), best effort.
   let filesChanged: string[] = [];

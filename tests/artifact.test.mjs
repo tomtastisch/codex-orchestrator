@@ -84,6 +84,27 @@ test("TOML-Rendering (.toln) enthält Pflicht-Top-Level-Keys und Tabellen", () =
   assert.ok(!/= "[^"]*\n[^"]*"/.test(toln) || true);
 });
 
+test("Artefakt bleibt auf seinen Plan begrenzt (kein Leak fremder Pläne)", () => {
+  const { store, planId, hid } = seed();
+  // Zweiter Plan im selben Store mit eigenem Cluster/Hypothese/Decision.
+  const p2 = store.createPlan("anderer Plan", null, "/tmp/other-repo");
+  store.upsertCluster({
+    id: "CX", plan_id: p2.id, ordinal: 0, name: "other", goal: "x",
+    tasks_json: "[]", acceptance_json: "[]", risks_json: "[]",
+    model_policy_json: "{}", review_strategy_json: "{}", parallel_ok: 0,
+  });
+  const hyp = new HypothesisRepo(store);
+  const otherH = hyp.create({ planId: p2.id, clusterId: "CX", initialAssumption: "fremd", confidenceBefore: 0.5 });
+  store.recordDecision({ planId: p2.id, clusterId: "CX", topic: "cluster_findings", question: "?", decision: "fix", remember: false });
+
+  const a = buildResultArtifact(store, planId);
+  assert.equal(a.clusters.length, 1);
+  assert.equal(a.clusters[0].id, "C1");
+  assert.ok(a.hypotheses.every((h) => h.id !== otherH.id), "fremde Hypothese ist eingesickert");
+  assert.ok(a.hypotheses.some((h) => h.id === hid));
+  assert.ok(a.userDecisions.every((d) => d.cluster_id !== "CX"), "fremde Entscheidung ist eingesickert");
+});
+
 test("summary.md nennt Cluster, Hypothesen und Bewertung", () => {
   const { store, planId } = seed();
   const a = buildResultArtifact(store, planId);
