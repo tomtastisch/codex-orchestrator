@@ -67,7 +67,27 @@ export class ClusterStateMachine {
     return { ok: blocking.length === 0, blocking };
   }
 
-  /** Harte confirm-Bedingung (Plan §6.2): REVIEW=confirmed UND alle Checks grün. */
+  /** Prüft, ob offene Review-Findings durch eine Nutzerentscheidung freigegeben sind. */
+  private findingsCleared(cluster: ClusterRow, review: any): { ok: boolean; reason?: string } {
+    let findings: unknown = null;
+    try { findings = JSON.parse(review?.findings_json ?? "null"); } catch { /* ignore */ }
+    const hasFindings = Array.isArray(findings) && findings.length > 0;
+    if (!hasFindings) return { ok: true };
+    // Auffälligkeiten -> es braucht eine explizite Nutzerentscheidung (oder stehende Präferenz).
+    const accepts = (d: any) => d && (d.decision === "accept" || d.decision === "proceed");
+    const pref = this.store.standingPreference(cluster.plan_id, "cluster_findings");
+    if (accepts(pref)) return { ok: true };
+    const decision = this.store.latestDecision(cluster.id, "cluster_findings");
+    if (accepts(decision)) return { ok: true };
+    return {
+      ok: false,
+      reason:
+        `Review meldet ${(findings as unknown[]).length} Auffälligkeit(en) — Abschluss blockiert bis zur ` +
+        "Nutzerentscheidung (user_decision topic='cluster_findings', decision 'accept'|'fix').",
+    };
+  }
+
+  /** Harte confirm-Bedingung (Plan §6.2): REVIEW=confirmed UND alle Checks grün UND Findings freigegeben. */
   private confirmConditions(cluster: ClusterRow): { ok: boolean; reasons: string[] } {
     const reasons: string[] = [];
     const review = this.store.latestReview(cluster.id);
@@ -75,6 +95,10 @@ export class ClusterStateMachine {
       reasons.push("kein REVIEW_RESULT vorhanden");
     } else if (review.status !== "confirmed") {
       reasons.push(`REVIEW_RESULT-Status ist '${review.status}', nicht 'confirmed'`);
+    } else {
+      // Cluster 4: Auffälligkeiten blockieren Abschluss bis zur Nutzerentscheidung.
+      const cleared = this.findingsCleared(cluster, review);
+      if (!cleared.ok) reasons.push(cleared.reason!);
     }
     const strategy = parseStrategy(cluster.review_strategy_json);
     const declared = strategy.checks ?? [];

@@ -18,7 +18,7 @@ export function newId(prefix: string): string {
 }
 
 /** Aktuelle Schema-Version. Bei additiven Migrationen hochzählen. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
@@ -76,6 +76,17 @@ CREATE INDEX IF NOT EXISTS idx_hyp_versions ON hypothesis_versions(hypothesis_id
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY, value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS user_decisions (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT,
+  cluster_id TEXT,
+  topic TEXT NOT NULL,
+  question TEXT,
+  decision TEXT NOT NULL,
+  remember INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_decisions ON user_decisions(topic, cluster_id, created_at);
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY, cluster_id TEXT NOT NULL, ts TEXT NOT NULL,
   status TEXT NOT NULL, findings_json TEXT, fixes_json TEXT, impact_json TEXT
@@ -360,5 +371,38 @@ export class Store {
   }
   checksForCluster(clusterId: string): any[] {
     return this.db.prepare("SELECT * FROM checks WHERE cluster_id=? ORDER BY ts").all(clusterId);
+  }
+
+  // ---- user_decisions (Cluster 4: Nachkontrolle-Gate + Präferenzen) ----
+  recordDecision(d: {
+    planId: string | null; clusterId: string | null; topic: string;
+    question: string | null; decision: string; remember: boolean;
+  }): string {
+    const id = newId("UD");
+    this.db.prepare(
+      "INSERT INTO user_decisions(id,plan_id,cluster_id,topic,question,decision,remember,created_at) VALUES(?,?,?,?,?,?,?,?)"
+    ).run(id, d.planId, d.clusterId, d.topic, d.question, d.decision, d.remember ? 1 : 0, nowIso());
+    return id;
+  }
+  /** Neueste Entscheidung zu einem Thema für einen Cluster. */
+  latestDecision(clusterId: string, topic: string): any | undefined {
+    return this.db.prepare(
+      "SELECT * FROM user_decisions WHERE cluster_id=? AND topic=? ORDER BY created_at DESC LIMIT 1"
+    ).get(clusterId, topic);
+  }
+  /** Stehende Präferenz (remember=1) für einen Plan/ein Thema — plan-weit gültig. */
+  standingPreference(planId: string | null, topic: string): any | undefined {
+    return this.db.prepare(
+      "SELECT * FROM user_decisions WHERE topic=? AND remember=1 AND (plan_id IS ? OR plan_id=?) ORDER BY created_at DESC LIMIT 1"
+    ).get(topic, planId, planId);
+  }
+  listDecisions(filter?: { clusterId?: string; planId?: string }): any[] {
+    if (filter?.clusterId) {
+      return this.db.prepare("SELECT * FROM user_decisions WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
+    }
+    if (filter?.planId) {
+      return this.db.prepare("SELECT * FROM user_decisions WHERE plan_id=? ORDER BY created_at").all(filter.planId);
+    }
+    return this.db.prepare("SELECT * FROM user_decisions ORDER BY created_at").all();
   }
 }

@@ -558,6 +558,49 @@ server.registerTool(
   },
 );
 
+// ---------------------------------------------------------------- 7.9b user_decision
+server.registerTool(
+  "user_decision",
+  {
+    title: "Nutzerentscheidungen & Präferenzen (Cluster-Gate)",
+    description:
+      "record|list|preference. Bei Review-Auffälligkeiten fragt Claude den Nutzer, ob nachgebessert werden soll; " +
+      "die Antwort wird hier persistiert. 'accept'/'proceed' gibt den Cluster-Abschluss trotz Findings frei, " +
+      "'fix' fordert Nachbesserung. Mit remember=true wird die Antwort zur stehenden Präferenz (plan-weit).",
+    inputSchema: {
+      action: z.enum(["record", "list", "preference"]),
+      plan_id: z.string().optional(),
+      cluster_id: z.string().optional(),
+      topic: z.string().default("cluster_findings").describe("Entscheidungsthema. Default: Review-Auffälligkeiten."),
+      question: z.string().optional().describe("Die dem Nutzer gestellte Frage (für Audit)."),
+      decision: z.enum(["accept", "proceed", "fix", "always_ask"]).optional(),
+      remember: z.boolean().default(false).describe("Als stehende Präferenz merken (künftig automatisch anwenden)."),
+    },
+  },
+  async (a) => {
+    switch (a.action) {
+      case "record": {
+        if (!a.decision) return err({ ok: false, error: "record erfordert 'decision'" });
+        const id = store.recordDecision({
+          planId: a.plan_id ?? null,
+          clusterId: a.cluster_id ?? null,
+          topic: a.topic,
+          question: a.question ?? null,
+          decision: a.decision,
+          remember: a.remember,
+        });
+        return ok({ ok: true, id, decision: a.decision, remember: a.remember });
+      }
+      case "list":
+        return ok({ ok: true, decisions: store.listDecisions({ clusterId: a.cluster_id, planId: a.plan_id }) });
+      case "preference": {
+        const pref = store.standingPreference(a.plan_id ?? null, a.topic);
+        return ok({ ok: true, topic: a.topic, preference: pref ?? null });
+      }
+    }
+  },
+);
+
 // ---------------------------------------------------------------- 7.10 repo_check
 server.registerTool(
   "repo_check",

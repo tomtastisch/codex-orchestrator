@@ -31,17 +31,28 @@ context — use the summaries from `task_result` and `repo_check`.
 4. **Execute** only clusters in state `active`:
    - `cluster_transition(start)` — the server refuses if predecessors are not
      confirmed (+ retrospective done), unless `parallel_ok`.
+   - **Hypothesis before every task (mandatory).** `hypotheses → create` with
+     `initialAssumption`, `criticalQuestions`, `falsificationPlan`,
+     `confidenceBefore`; decide the sandbox from the task. `task_start`
+     **refuses to start without a linked `hypothesis_id`**.
    - `task_start` with a bounded slice budget (prefer 5–10 min slices).
    - Loop on `task_wait`. On **checkpoint**: evaluate, inject corrections via
      `task_control(inject)` (takes effect at the next slice boundary). On
      **blocker**: decide — provide information, approve an alternative,
      replan, or ask the user. Codex must never improvise around missing
      information.
+   - **Update the hypothesis after the job** (`hypotheses → update`): evidence
+     found, result (`confirmed`/`partially_confirmed`/`refuted`), revised
+     assumption, risks, next action. Partial/refuted **must** yield follow-up
+     questions.
    - On **submission**: `cluster_transition(submit)` →
      `cluster_transition(review)` (runs the declared checks).
 5. **Gate**: a cluster is complete only when `cluster_transition(confirm)`
    succeeds — the server refuses without a REVIEW_RESULT of `confirmed` AND
    green declared checks. "Codex says done" is structurally meaningless.
+   If the review carries **findings**, confirm stays blocked until you ask the
+   user and record the answer (`user_decision` → `accept`/`fix`, optionally
+   `remember` as a standing preference).
 6. **Retrospective** after every confirm: `cluster_transition(retro)`, update
    hypotheses (confirm/reject/supersede with evidence), reassess later
    clusters and `replan` them if implementation deviated.

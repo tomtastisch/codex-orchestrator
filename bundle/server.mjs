@@ -21240,7 +21240,7 @@ function nowIso() {
 function newId(prefix) {
   return `${prefix}_${randomUUID().slice(0, 12)}`;
 }
-var SCHEMA_VERSION = 2;
+var SCHEMA_VERSION = 3;
 var SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
   id TEXT PRIMARY KEY, goal TEXT NOT NULL, constraints TEXT,
@@ -21297,6 +21297,17 @@ CREATE INDEX IF NOT EXISTS idx_hyp_versions ON hypothesis_versions(hypothesis_id
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY, value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS user_decisions (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT,
+  cluster_id TEXT,
+  topic TEXT NOT NULL,
+  question TEXT,
+  decision TEXT NOT NULL,
+  remember INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_decisions ON user_decisions(topic, cluster_id, created_at);
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY, cluster_id TEXT NOT NULL, ts TEXT NOT NULL,
   status TEXT NOT NULL, findings_json TEXT, fixes_json TEXT, impact_json TEXT
@@ -21573,6 +21584,35 @@ var Store = class {
   }
   checksForCluster(clusterId) {
     return this.db.prepare("SELECT * FROM checks WHERE cluster_id=? ORDER BY ts").all(clusterId);
+  }
+  // ---- user_decisions (Cluster 4: Nachkontrolle-Gate + Präferenzen) ----
+  recordDecision(d) {
+    const id = newId("UD");
+    this.db.prepare(
+      "INSERT INTO user_decisions(id,plan_id,cluster_id,topic,question,decision,remember,created_at) VALUES(?,?,?,?,?,?,?,?)"
+    ).run(id, d.planId, d.clusterId, d.topic, d.question, d.decision, d.remember ? 1 : 0, nowIso());
+    return id;
+  }
+  /** Neueste Entscheidung zu einem Thema für einen Cluster. */
+  latestDecision(clusterId, topic) {
+    return this.db.prepare(
+      "SELECT * FROM user_decisions WHERE cluster_id=? AND topic=? ORDER BY created_at DESC LIMIT 1"
+    ).get(clusterId, topic);
+  }
+  /** Stehende Präferenz (remember=1) für einen Plan/ein Thema — plan-weit gültig. */
+  standingPreference(planId, topic) {
+    return this.db.prepare(
+      "SELECT * FROM user_decisions WHERE topic=? AND remember=1 AND (plan_id IS ? OR plan_id=?) ORDER BY created_at DESC LIMIT 1"
+    ).get(topic, planId, planId);
+  }
+  listDecisions(filter) {
+    if (filter?.clusterId) {
+      return this.db.prepare("SELECT * FROM user_decisions WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
+    }
+    if (filter?.planId) {
+      return this.db.prepare("SELECT * FROM user_decisions WHERE plan_id=? ORDER BY created_at").all(filter.planId);
+    }
+    return this.db.prepare("SELECT * FROM user_decisions ORDER BY created_at").all();
   }
 };
 
@@ -22522,7 +22562,26 @@ var ClusterStateMachine = class {
     }
     return { ok: blocking.length === 0, blocking };
   }
-  /** Harte confirm-Bedingung (Plan §6.2): REVIEW=confirmed UND alle Checks grün. */
+  /** Prüft, ob offene Review-Findings durch eine Nutzerentscheidung freigegeben sind. */
+  findingsCleared(cluster, review) {
+    let findings = null;
+    try {
+      findings = JSON.parse(review?.findings_json ?? "null");
+    } catch {
+    }
+    const hasFindings = Array.isArray(findings) && findings.length > 0;
+    if (!hasFindings) return { ok: true };
+    const accepts = (d) => d && (d.decision === "accept" || d.decision === "proceed");
+    const pref = this.store.standingPreference(cluster.plan_id, "cluster_findings");
+    if (accepts(pref)) return { ok: true };
+    const decision = this.store.latestDecision(cluster.id, "cluster_findings");
+    if (accepts(decision)) return { ok: true };
+    return {
+      ok: false,
+      reason: `Review meldet ${findings.length} Auff\xE4lligkeit(en) \u2014 Abschluss blockiert bis zur Nutzerentscheidung (user_decision topic='cluster_findings', decision 'accept'|'fix').`
+    };
+  }
+  /** Harte confirm-Bedingung (Plan §6.2): REVIEW=confirmed UND alle Checks grün UND Findings freigegeben. */
   confirmConditions(cluster) {
     const reasons = [];
     const review = this.store.latestReview(cluster.id);
@@ -22530,6 +22589,9 @@ var ClusterStateMachine = class {
       reasons.push("kein REVIEW_RESULT vorhanden");
     } else if (review.status !== "confirmed") {
       reasons.push(`REVIEW_RESULT-Status ist '${review.status}', nicht 'confirmed'`);
+    } else {
+      const cleared = this.findingsCleared(cluster, review);
+      if (!cleared.ok) reasons.push(cleared.reason);
     }
     const strategy = parseStrategy(cluster.review_strategy_json);
     const declared = strategy.checks ?? [];
@@ -24203,6 +24265,44 @@ server.registerTool(
       }
     } catch (e) {
       return err({ ok: false, error: e?.message ?? String(e) });
+    }
+  }
+);
+server.registerTool(
+  "user_decision",
+  {
+    title: "Nutzerentscheidungen & Pr\xE4ferenzen (Cluster-Gate)",
+    description: "record|list|preference. Bei Review-Auff\xE4lligkeiten fragt Claude den Nutzer, ob nachgebessert werden soll; die Antwort wird hier persistiert. 'accept'/'proceed' gibt den Cluster-Abschluss trotz Findings frei, 'fix' fordert Nachbesserung. Mit remember=true wird die Antwort zur stehenden Pr\xE4ferenz (plan-weit).",
+    inputSchema: {
+      action: external_exports.enum(["record", "list", "preference"]),
+      plan_id: external_exports.string().optional(),
+      cluster_id: external_exports.string().optional(),
+      topic: external_exports.string().default("cluster_findings").describe("Entscheidungsthema. Default: Review-Auff\xE4lligkeiten."),
+      question: external_exports.string().optional().describe("Die dem Nutzer gestellte Frage (f\xFCr Audit)."),
+      decision: external_exports.enum(["accept", "proceed", "fix", "always_ask"]).optional(),
+      remember: external_exports.boolean().default(false).describe("Als stehende Pr\xE4ferenz merken (k\xFCnftig automatisch anwenden).")
+    }
+  },
+  async (a) => {
+    switch (a.action) {
+      case "record": {
+        if (!a.decision) return err({ ok: false, error: "record erfordert 'decision'" });
+        const id = store.recordDecision({
+          planId: a.plan_id ?? null,
+          clusterId: a.cluster_id ?? null,
+          topic: a.topic,
+          question: a.question ?? null,
+          decision: a.decision,
+          remember: a.remember
+        });
+        return ok({ ok: true, id, decision: a.decision, remember: a.remember });
+      }
+      case "list":
+        return ok({ ok: true, decisions: store.listDecisions({ clusterId: a.cluster_id, planId: a.plan_id }) });
+      case "preference": {
+        const pref = store.standingPreference(a.plan_id ?? null, a.topic);
+        return ok({ ok: true, topic: a.topic, preference: pref ?? null });
+      }
     }
   }
 );

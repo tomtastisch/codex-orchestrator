@@ -147,7 +147,7 @@ project directories are isolated automatically.
 
 | Tool | Purpose |
 |---|---|
-| `task_start` | Start a Codex assignment (slice budget, sandbox, model, effort, worktree, wait mode) |
+| `task_start` | Start a Codex assignment (slice budget, sandbox, model, effort, worktree, wait mode). **Requires a linked `hypothesis_id`** — refuses to start without one |
 | `task_wait` | Long-poll for new events / slice boundaries — the core orchestration primitive |
 | `task_events` | Cursor-based event history, filterable by kind |
 | `task_control` | `pause` \| `resume` \| `cancel` \| `inject` (delivered at the next slice boundary) |
@@ -156,7 +156,8 @@ project directories are isolated automatically.
 | `cluster_plan` | Create/update a persistent plan with gated clusters (idempotent) |
 | `cluster_transition` | `start`/`submit`/`review`/`confirm`/`retro`/… — server-enforced state machine |
 | `cluster_merge` | Merge a reviewed worktree branch back (conflicts abort cleanly) |
-| `hypotheses` | Record, confirm, reject, supersede assumptions with evidence |
+| `hypotheses` | Versioned, self-critical hypotheses: `create` (initialAssumption, criticalQuestions, falsificationPlan) before a task; `update` (evidence, result, follow-ups) after — plus legacy `add/confirm/reject/supersede` |
+| `user_decision` | Record user decisions/preferences at the cluster gate; findings block confirm until `accept`/`fix` (with optional standing preference) |
 | `repo_check` | Run allow-listed checks (tests, lint, typecheck, diff stats) |
 | `plan_snapshot` | Durable TOON/JSON snapshot of the full plan state |
 | `codex_update` | Check/apply Codex CLI updates (stable or pre-release channel) |
