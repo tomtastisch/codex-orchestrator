@@ -160,6 +160,8 @@ project directories are isolated automatically.
 | `user_decision` | Record user decisions/preferences at the cluster gate; findings block confirm until `accept`/`fix` (with optional standing preference) |
 | `repo_check` | Run allow-listed checks (tests, lint, typecheck, diff stats) |
 | `plan_snapshot` | Durable TOON/JSON snapshot of the full plan state |
+| `result_artifact` | Generate the versioned final `.toln` (TOML) run artifact + `summary.md` with checksum |
+| `audit_log` | Read the security-relevant, secret-redacted audit trail |
 | `codex_update` | Check/apply Codex CLI updates (stable or pre-release channel) |
 | `plugin_update` | Check for / apply a newer plugin release (self-update for git installs) |
 

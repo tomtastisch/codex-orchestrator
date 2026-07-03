@@ -8,6 +8,7 @@ import type {
   HypothesisStatus,
   TaskStatus,
 } from "./types.js";
+import { redactDeep, redactText } from "./redact.js";
 
 export function nowIso(): string {
   return new Date().toISOString();
@@ -18,7 +19,7 @@ export function newId(prefix: string): string {
 }
 
 /** Aktuelle Schema-Version. Bei additiven Migrationen hochzählen. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
@@ -87,6 +88,26 @@ CREATE TABLE IF NOT EXISTS user_decisions (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_decisions ON user_decisions(topic, cluster_id, created_at);
+CREATE TABLE IF NOT EXISTS agent_jobs (
+  id TEXT PRIMARY KEY, task_id TEXT, cluster_id TEXT, hypothesis_id TEXT,
+  model TEXT, effort TEXT, sandbox TEXT, status TEXT NOT NULL,
+  started_at TEXT NOT NULL, ended_at TEXT, summary TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_task ON agent_jobs(task_id);
+CREATE TABLE IF NOT EXISTS hypothesis_reviews (
+  id TEXT PRIMARY KEY, hypothesis_id TEXT, cluster_id TEXT,
+  reviewer TEXT, status TEXT NOT NULL, findings_json TEXT, synthesis TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY, plan_id TEXT, kind TEXT NOT NULL, path TEXT NOT NULL,
+  schema_version INTEGER, artifact_version INTEGER, checksum TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audit_events (
+  id TEXT PRIMARY KEY, ts TEXT NOT NULL, actor TEXT, action TEXT NOT NULL,
+  resource TEXT, detail_json TEXT, redacted INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts);
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY, cluster_id TEXT NOT NULL, ts TEXT NOT NULL,
   status TEXT NOT NULL, findings_json TEXT, fixes_json TEXT, impact_json TEXT
@@ -136,43 +157,57 @@ export class Store {
     // Schreibkonflikte gleichzeitiger Instanzen abfedern statt SQLITE_BUSY werfen.
     this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec(SCHEMA);
-    this.migrate();
+    this.runMigrations();
   }
 
-  /** Additive Migrationen für bestehende DBs (fehlende Spalten nachrüsten). */
-  private migrate(): void {
-    const cols = (table: string): Set<string> => {
-      const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
-      return new Set(rows.map((r) => r.name));
-    };
-    const taskCols = cols("tasks");
-    if (!taskCols.has("extra_config_json")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN extra_config_json TEXT");
-    }
-    if (!taskCols.has("owner_pid")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN owner_pid INTEGER");
-    }
-    if (!taskCols.has("codex_pid")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN codex_pid INTEGER");
-    }
-    // Cluster 2: verknüpfte Pflicht-Hypothese (authoritativer Link Task->Hypothese).
-    if (!taskCols.has("hypothesis_id")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN hypothesis_id TEXT");
-    }
+  private columns(table: string): Set<string> {
+    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
+    return new Set(rows.map((r) => r.name));
+  }
 
-    // Cluster 1: reiches, versioniertes Hypothesenmodell — Header-Spalten
-    // additiv nachrüsten (Snapshot-Inhalt lebt in hypothesis_versions).
-    const hypCols = cols("hypotheses");
-    if (!hypCols.has("task_id")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN task_id TEXT");
-    if (!hypCols.has("cluster_id")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN cluster_id TEXT");
-    if (!hypCols.has("result")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN result TEXT");
-    if (!hypCols.has("latest_version")) {
-      this.db.exec("ALTER TABLE hypotheses ADD COLUMN latest_version INTEGER NOT NULL DEFAULT 0");
-    }
-    if (!hypCols.has("created_at")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN created_at TEXT");
+  private ensureColumn(table: string, col: string, ddl: string): void {
+    if (!this.columns(table).has(col)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
 
-    // Schema-Version festhalten (Grundlage für die Migrations-Schicht in Cluster 5).
-    this.setSchemaVersion(Math.max(this.getSchemaVersion(), SCHEMA_VERSION));
+  /**
+   * Geordneter, transaktionaler Migrations-Runner (Cluster 5). Jede Migration
+   * hat eine Zielversion und läuft nur, wenn die aktuelle schema_version kleiner
+   * ist. Die `up`-Schritte sind idempotent (Spalten-/Tabellen-Existenzprüfung),
+   * damit Bestands-DBs beliebiger Version sicher aufsteigen. Tabellen werden vom
+   * Basis-SCHEMA (CREATE IF NOT EXISTS) angelegt; Migrationen ergänzen Spalten
+   * und schreiben die Versionsmarke fort — beides in einer Transaktion.
+   */
+  private runMigrations(): void {
+    const migrations: { version: number; up: () => void }[] = [
+      { version: 2, up: () => {
+        // Cluster 1: reiches, versioniertes Hypothesenmodell (Header-Spalten).
+        this.ensureColumn("hypotheses", "task_id", "task_id TEXT");
+        this.ensureColumn("hypotheses", "cluster_id", "cluster_id TEXT");
+        this.ensureColumn("hypotheses", "result", "result TEXT");
+        this.ensureColumn("hypotheses", "latest_version", "latest_version INTEGER NOT NULL DEFAULT 0");
+        this.ensureColumn("hypotheses", "created_at", "created_at TEXT");
+      } },
+      { version: 3, up: () => {
+        // Frühere additive Task-Spalten + Cluster-2-Link + user_decisions (Tabelle via SCHEMA).
+        this.ensureColumn("tasks", "extra_config_json", "extra_config_json TEXT");
+        this.ensureColumn("tasks", "owner_pid", "owner_pid INTEGER");
+        this.ensureColumn("tasks", "codex_pid", "codex_pid INTEGER");
+        this.ensureColumn("tasks", "hypothesis_id", "hypothesis_id TEXT");
+      } },
+      { version: 4, up: () => {
+        // Cluster 5: agent_jobs, hypothesis_reviews, artifacts, audit_events (Tabellen via SCHEMA).
+      } },
+    ];
+    let current = this.getSchemaVersion();
+    for (const m of migrations) {
+      if (current < m.version) {
+        this.tx(() => {
+          m.up();
+          this.setSchemaVersion(m.version);
+        });
+        current = m.version;
+      }
+    }
   }
 
   /** Aktuelle Schema-Version (0, wenn noch nie gesetzt). */
@@ -404,5 +439,93 @@ export class Store {
       return this.db.prepare("SELECT * FROM user_decisions WHERE plan_id=? ORDER BY created_at").all(filter.planId);
     }
     return this.db.prepare("SELECT * FROM user_decisions ORDER BY created_at").all();
+  }
+
+  // ---- agent_jobs (Cluster 5: auditierbare Codex-Job-Historie) ----
+  recordAgentJob(j: {
+    taskId: string | null; clusterId: string | null; hypothesisId: string | null;
+    model: string; effort: string; sandbox: string; status: string;
+  }): string {
+    const id = newId("AJ");
+    this.db.prepare(
+      `INSERT INTO agent_jobs(id,task_id,cluster_id,hypothesis_id,model,effort,sandbox,status,started_at)
+       VALUES(?,?,?,?,?,?,?,?,?)`
+    ).run(id, j.taskId, j.clusterId, j.hypothesisId, j.model, j.effort, j.sandbox, j.status, nowIso());
+    return id;
+  }
+  /** Schließt den letzten offenen Job eines Tasks ab (Status + Zusammenfassung). */
+  finishAgentJobByTask(taskId: string, status: string, summary: string | null): void {
+    const row = this.db.prepare(
+      "SELECT id FROM agent_jobs WHERE task_id=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1"
+    ).get(taskId) as { id: string } | undefined;
+    if (!row) return;
+    this.db.prepare("UPDATE agent_jobs SET status=?, summary=COALESCE(?,summary), ended_at=? WHERE id=?")
+      .run(status, summary, nowIso(), row.id);
+  }
+  listAgentJobs(filter?: { clusterId?: string; taskId?: string }): any[] {
+    if (filter?.taskId) return this.db.prepare("SELECT * FROM agent_jobs WHERE task_id=? ORDER BY started_at").all(filter.taskId);
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM agent_jobs WHERE cluster_id=? ORDER BY started_at").all(filter.clusterId);
+    return this.db.prepare("SELECT * FROM agent_jobs ORDER BY started_at").all();
+  }
+
+  // ---- hypothesis_reviews (Cluster 5: lokale Nachkontrolle je Hypothese) ----
+  addHypothesisReview(r: {
+    hypothesisId: string | null; clusterId: string | null; reviewer: string;
+    status: string; findings: unknown; synthesis: string | null;
+  }): string {
+    const id = newId("HR");
+    this.db.prepare(
+      `INSERT INTO hypothesis_reviews(id,hypothesis_id,cluster_id,reviewer,status,findings_json,synthesis,created_at)
+       VALUES(?,?,?,?,?,?,?,?)`
+    ).run(id, r.hypothesisId, r.clusterId, r.reviewer, r.status,
+      JSON.stringify(r.findings ?? null), r.synthesis, nowIso());
+    return id;
+  }
+  listHypothesisReviews(filter?: { hypothesisId?: string; clusterId?: string }): any[] {
+    if (filter?.hypothesisId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE hypothesis_id=? ORDER BY created_at").all(filter.hypothesisId);
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
+    return this.db.prepare("SELECT * FROM hypothesis_reviews ORDER BY created_at").all();
+  }
+
+  // ---- artifacts (Cluster 5/6: versionierte Ergebnisartefakte) ----
+  addArtifact(a: {
+    planId: string | null; kind: string; path: string;
+    schemaVersion: number | null; artifactVersion: number | null; checksum: string | null;
+  }): string {
+    const id = newId("AF");
+    this.db.prepare(
+      `INSERT INTO artifacts(id,plan_id,kind,path,schema_version,artifact_version,checksum,created_at)
+       VALUES(?,?,?,?,?,?,?,?)`
+    ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, nowIso());
+    return id;
+  }
+  listArtifacts(planId?: string): any[] {
+    if (planId) return this.db.prepare("SELECT * FROM artifacts WHERE plan_id=? ORDER BY created_at").all(planId);
+    return this.db.prepare("SELECT * FROM artifacts ORDER BY created_at").all();
+  }
+  latestArtifactVersion(planId: string | null, kind: string): number {
+    const r = this.db.prepare(
+      "SELECT MAX(artifact_version) AS m FROM artifacts WHERE (plan_id IS ? OR plan_id=?) AND kind=?"
+    ).get(planId, planId, kind) as { m: number | null };
+    return r?.m ?? 0;
+  }
+
+  // ---- audit_events (Cluster 5/7: sicherheitsrelevanter Audit-Trail) ----
+  addAuditEvent(e: {
+    actor: string | null; action: string; resource: string | null;
+    detail: unknown; redacted?: boolean;
+  }): string {
+    const id = newId("AU");
+    // Cluster 7: Detail immer durch die Redaction schicken — nie ungescrubbte Secrets im Audit-Log.
+    const safeDetail = redactDeep(e.detail ?? null);
+    this.db.prepare(
+      `INSERT INTO audit_events(id,ts,actor,action,resource,detail_json,redacted)
+       VALUES(?,?,?,?,?,?,?)`
+    ).run(id, nowIso(), e.actor, e.action, redactText(e.resource ?? "") || null,
+      JSON.stringify(safeDetail), 1);
+    return id;
+  }
+  listAuditEvents(limit = 500): any[] {
+    return this.db.prepare("SELECT * FROM audit_events ORDER BY ts DESC LIMIT ?").all(limit);
   }
 }

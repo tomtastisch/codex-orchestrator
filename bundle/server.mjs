@@ -21234,13 +21234,61 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+
+// src/redact.ts
+var PLACEHOLDER = "\xABredacted\xBB";
+var PATTERNS = [
+  // Private-Key-Blöcke (PEM).
+  { re: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----/g },
+  // OpenAI-Keys (sk-..., inkl. sk-proj-).
+  { re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b/g },
+  // GitHub-Tokens (ghp_, gho_, ghu_, ghs_, ghr_, github_pat_).
+  { re: /\bgh[posru]_[A-Za-z0-9]{20,}\b/g },
+  { re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
+  // AWS Access Key IDs.
+  { re: /\bAKIA[0-9A-Z]{16}\b/g },
+  // Slack-Tokens.
+  { re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
+  // Google API keys.
+  { re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  // JWTs (header.payload.signature).
+  { re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+  // Bearer-Header.
+  { re: /\bBearer\s+[A-Za-z0-9._-]{12,}/gi, replace: () => `Bearer ${PLACEHOLDER}` },
+  // key=value / key: value für sensible Schlüsselnamen (Env-Vars, Passwörter, Tokens).
+  // Werte-Klasse schließt Backslash aus: verhindert das Fressen von JSON-Escapes
+  // (z. B. in eingebettetem JSON des .toln) und hält die Redaction idempotent.
+  {
+    re: /\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|AUTH|CREDENTIAL)[A-Za-z0-9_]*)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s"'\\]+)/gi,
+    replace: (_m, key, sep) => `${key}${sep}${PLACEHOLDER}`
+  }
+];
+function redactText(input) {
+  let out = input;
+  for (const p of PATTERNS) {
+    out = p.replace ? out.replace(p.re, p.replace) : out.replace(p.re, PLACEHOLDER);
+  }
+  return out;
+}
+function redactDeep(value) {
+  if (typeof value === "string") return redactText(value);
+  if (Array.isArray(value)) return value.map((v) => redactDeep(v));
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = redactDeep(v);
+    return out;
+  }
+  return value;
+}
+
+// src/db.ts
 function nowIso() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function newId(prefix) {
   return `${prefix}_${randomUUID().slice(0, 12)}`;
 }
-var SCHEMA_VERSION = 3;
+var SCHEMA_VERSION = 4;
 var SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
   id TEXT PRIMARY KEY, goal TEXT NOT NULL, constraints TEXT,
@@ -21308,6 +21356,26 @@ CREATE TABLE IF NOT EXISTS user_decisions (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_decisions ON user_decisions(topic, cluster_id, created_at);
+CREATE TABLE IF NOT EXISTS agent_jobs (
+  id TEXT PRIMARY KEY, task_id TEXT, cluster_id TEXT, hypothesis_id TEXT,
+  model TEXT, effort TEXT, sandbox TEXT, status TEXT NOT NULL,
+  started_at TEXT NOT NULL, ended_at TEXT, summary TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_task ON agent_jobs(task_id);
+CREATE TABLE IF NOT EXISTS hypothesis_reviews (
+  id TEXT PRIMARY KEY, hypothesis_id TEXT, cluster_id TEXT,
+  reviewer TEXT, status TEXT NOT NULL, findings_json TEXT, synthesis TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY, plan_id TEXT, kind TEXT NOT NULL, path TEXT NOT NULL,
+  schema_version INTEGER, artifact_version INTEGER, checksum TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audit_events (
+  id TEXT PRIMARY KEY, ts TEXT NOT NULL, actor TEXT, action TEXT NOT NULL,
+  resource TEXT, detail_json TEXT, redacted INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts);
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY, cluster_id TEXT NOT NULL, ts TEXT NOT NULL,
   status TEXT NOT NULL, findings_json TEXT, fixes_json TEXT, impact_json TEXT
@@ -21330,36 +21398,51 @@ var Store = class {
     this.db.exec("PRAGMA foreign_keys = ON;");
     this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec(SCHEMA);
-    this.migrate();
+    this.runMigrations();
   }
-  /** Additive Migrationen für bestehende DBs (fehlende Spalten nachrüsten). */
-  migrate() {
-    const cols = (table) => {
-      const rows = this.db.prepare(`PRAGMA table_info(${table})`).all();
-      return new Set(rows.map((r) => r.name));
-    };
-    const taskCols = cols("tasks");
-    if (!taskCols.has("extra_config_json")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN extra_config_json TEXT");
+  columns(table) {
+    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all();
+    return new Set(rows.map((r) => r.name));
+  }
+  ensureColumn(table, col, ddl) {
+    if (!this.columns(table).has(col)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+  /**
+   * Geordneter, transaktionaler Migrations-Runner (Cluster 5). Jede Migration
+   * hat eine Zielversion und läuft nur, wenn die aktuelle schema_version kleiner
+   * ist. Die `up`-Schritte sind idempotent (Spalten-/Tabellen-Existenzprüfung),
+   * damit Bestands-DBs beliebiger Version sicher aufsteigen. Tabellen werden vom
+   * Basis-SCHEMA (CREATE IF NOT EXISTS) angelegt; Migrationen ergänzen Spalten
+   * und schreiben die Versionsmarke fort — beides in einer Transaktion.
+   */
+  runMigrations() {
+    const migrations = [
+      { version: 2, up: () => {
+        this.ensureColumn("hypotheses", "task_id", "task_id TEXT");
+        this.ensureColumn("hypotheses", "cluster_id", "cluster_id TEXT");
+        this.ensureColumn("hypotheses", "result", "result TEXT");
+        this.ensureColumn("hypotheses", "latest_version", "latest_version INTEGER NOT NULL DEFAULT 0");
+        this.ensureColumn("hypotheses", "created_at", "created_at TEXT");
+      } },
+      { version: 3, up: () => {
+        this.ensureColumn("tasks", "extra_config_json", "extra_config_json TEXT");
+        this.ensureColumn("tasks", "owner_pid", "owner_pid INTEGER");
+        this.ensureColumn("tasks", "codex_pid", "codex_pid INTEGER");
+        this.ensureColumn("tasks", "hypothesis_id", "hypothesis_id TEXT");
+      } },
+      { version: 4, up: () => {
+      } }
+    ];
+    let current = this.getSchemaVersion();
+    for (const m of migrations) {
+      if (current < m.version) {
+        this.tx(() => {
+          m.up();
+          this.setSchemaVersion(m.version);
+        });
+        current = m.version;
+      }
     }
-    if (!taskCols.has("owner_pid")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN owner_pid INTEGER");
-    }
-    if (!taskCols.has("codex_pid")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN codex_pid INTEGER");
-    }
-    if (!taskCols.has("hypothesis_id")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN hypothesis_id TEXT");
-    }
-    const hypCols = cols("hypotheses");
-    if (!hypCols.has("task_id")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN task_id TEXT");
-    if (!hypCols.has("cluster_id")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN cluster_id TEXT");
-    if (!hypCols.has("result")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN result TEXT");
-    if (!hypCols.has("latest_version")) {
-      this.db.exec("ALTER TABLE hypotheses ADD COLUMN latest_version INTEGER NOT NULL DEFAULT 0");
-    }
-    if (!hypCols.has("created_at")) this.db.exec("ALTER TABLE hypotheses ADD COLUMN created_at TEXT");
-    this.setSchemaVersion(Math.max(this.getSchemaVersion(), SCHEMA_VERSION));
   }
   /** Aktuelle Schema-Version (0, wenn noch nie gesetzt). */
   getSchemaVersion() {
@@ -21613,6 +21696,91 @@ var Store = class {
       return this.db.prepare("SELECT * FROM user_decisions WHERE plan_id=? ORDER BY created_at").all(filter.planId);
     }
     return this.db.prepare("SELECT * FROM user_decisions ORDER BY created_at").all();
+  }
+  // ---- agent_jobs (Cluster 5: auditierbare Codex-Job-Historie) ----
+  recordAgentJob(j) {
+    const id = newId("AJ");
+    this.db.prepare(
+      `INSERT INTO agent_jobs(id,task_id,cluster_id,hypothesis_id,model,effort,sandbox,status,started_at)
+       VALUES(?,?,?,?,?,?,?,?,?)`
+    ).run(id, j.taskId, j.clusterId, j.hypothesisId, j.model, j.effort, j.sandbox, j.status, nowIso());
+    return id;
+  }
+  /** Schließt den letzten offenen Job eines Tasks ab (Status + Zusammenfassung). */
+  finishAgentJobByTask(taskId, status, summary) {
+    const row = this.db.prepare(
+      "SELECT id FROM agent_jobs WHERE task_id=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1"
+    ).get(taskId);
+    if (!row) return;
+    this.db.prepare("UPDATE agent_jobs SET status=?, summary=COALESCE(?,summary), ended_at=? WHERE id=?").run(status, summary, nowIso(), row.id);
+  }
+  listAgentJobs(filter) {
+    if (filter?.taskId) return this.db.prepare("SELECT * FROM agent_jobs WHERE task_id=? ORDER BY started_at").all(filter.taskId);
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM agent_jobs WHERE cluster_id=? ORDER BY started_at").all(filter.clusterId);
+    return this.db.prepare("SELECT * FROM agent_jobs ORDER BY started_at").all();
+  }
+  // ---- hypothesis_reviews (Cluster 5: lokale Nachkontrolle je Hypothese) ----
+  addHypothesisReview(r) {
+    const id = newId("HR");
+    this.db.prepare(
+      `INSERT INTO hypothesis_reviews(id,hypothesis_id,cluster_id,reviewer,status,findings_json,synthesis,created_at)
+       VALUES(?,?,?,?,?,?,?,?)`
+    ).run(
+      id,
+      r.hypothesisId,
+      r.clusterId,
+      r.reviewer,
+      r.status,
+      JSON.stringify(r.findings ?? null),
+      r.synthesis,
+      nowIso()
+    );
+    return id;
+  }
+  listHypothesisReviews(filter) {
+    if (filter?.hypothesisId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE hypothesis_id=? ORDER BY created_at").all(filter.hypothesisId);
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
+    return this.db.prepare("SELECT * FROM hypothesis_reviews ORDER BY created_at").all();
+  }
+  // ---- artifacts (Cluster 5/6: versionierte Ergebnisartefakte) ----
+  addArtifact(a) {
+    const id = newId("AF");
+    this.db.prepare(
+      `INSERT INTO artifacts(id,plan_id,kind,path,schema_version,artifact_version,checksum,created_at)
+       VALUES(?,?,?,?,?,?,?,?)`
+    ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, nowIso());
+    return id;
+  }
+  listArtifacts(planId) {
+    if (planId) return this.db.prepare("SELECT * FROM artifacts WHERE plan_id=? ORDER BY created_at").all(planId);
+    return this.db.prepare("SELECT * FROM artifacts ORDER BY created_at").all();
+  }
+  latestArtifactVersion(planId, kind) {
+    const r = this.db.prepare(
+      "SELECT MAX(artifact_version) AS m FROM artifacts WHERE (plan_id IS ? OR plan_id=?) AND kind=?"
+    ).get(planId, planId, kind);
+    return r?.m ?? 0;
+  }
+  // ---- audit_events (Cluster 5/7: sicherheitsrelevanter Audit-Trail) ----
+  addAuditEvent(e) {
+    const id = newId("AU");
+    const safeDetail = redactDeep(e.detail ?? null);
+    this.db.prepare(
+      `INSERT INTO audit_events(id,ts,actor,action,resource,detail_json,redacted)
+       VALUES(?,?,?,?,?,?,?)`
+    ).run(
+      id,
+      nowIso(),
+      e.actor,
+      e.action,
+      redactText(e.resource ?? "") || null,
+      JSON.stringify(safeDetail),
+      1
+    );
+    return id;
+  }
+  listAuditEvents(limit = 500) {
+    return this.db.prepare("SELECT * FROM audit_events ORDER BY ts DESC LIMIT ?").all(limit);
   }
 };
 
@@ -22368,6 +22536,10 @@ var SessionManager = class {
   finish(taskId, status, reason) {
     this.store.updateTask(taskId, { status, ended_at: (/* @__PURE__ */ new Date()).toISOString() });
     this.store.addEvent(taskId, "task_status", { status, reason });
+    try {
+      this.store.finishAgentJobByTask(taskId, status, reason);
+    } catch {
+    }
     this.emit(taskId);
   }
   limitBreach(taskId, reason) {
@@ -23506,6 +23678,12 @@ function writePlanSnapshot(store2, planId, format = "toon") {
   return { format, content, path };
 }
 
+// src/artifact.ts
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { basename, join as join4 } from "node:path";
+
 // src/hypotheses.ts
 function needsFollowUp(result) {
   return result === "partially_confirmed" || result === "refuted";
@@ -23762,6 +23940,274 @@ var HypothesisRepo = class _HypothesisRepo {
   }
 };
 
+// src/artifact.ts
+var ARTIFACT_SCHEMA_VERSION = SCHEMA_VERSION;
+function git2(repo, args) {
+  try {
+    return execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+}
+function parseJson(s) {
+  if (!s) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return s;
+  }
+}
+function buildResultArtifact(store2, planId, opts = {}) {
+  const plan = store2.getPlan(planId);
+  if (!plan) return null;
+  const repo = plan.repo_path;
+  const hyp = new HypothesisRepo(store2);
+  const clusters = store2.listClusters(planId).map((c) => ({
+    id: c.id,
+    ordinal: c.ordinal,
+    name: c.name,
+    status: c.status,
+    goal: c.goal,
+    acceptance: parseJson(c.acceptance_json),
+    review_strategy: parseJson(c.review_strategy_json),
+    latest_review: (() => {
+      const r = store2.latestReview(c.id);
+      return r ? { status: r.status, ts: r.ts } : null;
+    })(),
+    checks: store2.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code }))
+  }));
+  const tasks = store2.listTasks().filter((t) => clusters.some((c) => c.id === t.cluster_id) || t.cluster_id === null).map((t) => ({
+    id: t.id,
+    cluster_id: t.cluster_id,
+    status: t.status,
+    sandbox: t.sandbox,
+    model: t.model,
+    effort: t.effort,
+    hypothesis_id: t.hypothesis_id,
+    slice_count: t.slice_count,
+    last_slice_type: t.last_slice_type
+  }));
+  const agentJobs = store2.listAgentJobs().map((j) => ({
+    id: j.id,
+    task_id: j.task_id,
+    cluster_id: j.cluster_id,
+    hypothesis_id: j.hypothesis_id,
+    model: j.model,
+    effort: j.effort,
+    sandbox: j.sandbox,
+    status: j.status,
+    started_at: j.started_at,
+    ended_at: j.ended_at
+  }));
+  const richIds = /* @__PURE__ */ new Set();
+  const headers = store2.db.prepare(
+    "SELECT id FROM hypotheses WHERE (plan_id=? OR task_id IS NOT NULL) ORDER BY created_at"
+  ).all(planId);
+  const hypotheses = [];
+  const hypothesisUpdates = [];
+  for (const { id } of headers) {
+    const versions = hyp.listVersions(id);
+    if (!versions.length) continue;
+    richIds.add(id);
+    hypotheses.push(HypothesisRepo.serialize(versions[versions.length - 1]));
+    for (const v of versions) hypothesisUpdates.push(HypothesisRepo.serialize(v));
+  }
+  const reviews = [
+    ...clusters.flatMap((c) => {
+      const r = store2.latestReview(c.id);
+      return r ? [{ kind: "cluster", cluster_id: c.id, status: r.status, findings: parseJson(r.findings_json), ts: r.ts }] : [];
+    }),
+    ...store2.listHypothesisReviews().map((r) => ({
+      kind: "hypothesis",
+      hypothesis_id: r.hypothesis_id,
+      cluster_id: r.cluster_id,
+      reviewer: r.reviewer,
+      status: r.status,
+      findings: parseJson(r.findings_json),
+      synthesis: r.synthesis
+    }))
+  ];
+  const userDecisions = store2.listDecisions().map((d) => ({
+    id: d.id,
+    cluster_id: d.cluster_id,
+    topic: d.topic,
+    decision: d.decision,
+    remember: !!d.remember,
+    question: d.question,
+    created_at: d.created_at
+  }));
+  let filesChanged = [];
+  const before = opts.gitCommitBefore ?? null;
+  const nameOnly = before ? git2(repo, ["--no-pager", "diff", "--name-only", `${before}..HEAD`]) : git2(repo, ["--no-pager", "diff", "--name-only", "HEAD~1..HEAD"]);
+  if (nameOnly) filesChanged = nameOnly.split("\n").filter(Boolean);
+  const testsRun = clusters.flatMap(
+    (c) => store2.checksForCluster(c.id).map((k) => ({ cluster_id: c.id, cmd: k.cmd, exit_code: k.exit_code }))
+  );
+  const findings = reviews.flatMap(
+    (r) => Array.isArray(r.findings) ? r.findings.map((f) => ({ source: r.kind, cluster_id: r.cluster_id ?? null, finding: typeof f === "string" ? f : JSON.stringify(f) })) : []
+  );
+  const unresolvedIssues = [];
+  for (const c of clusters) if (c.status !== "confirmed") unresolvedIssues.push(`Cluster ${c.id} ist ${c.status}, nicht confirmed`);
+  for (const h of hypotheses) {
+    if (h.result === "refuted" || h.result === "partially_confirmed") {
+      for (const q of h.followUpQuestions ?? []) unresolvedIssues.push(`Folgefrage (${h.id}): ${q}`);
+    } else if (h.result === "open") {
+      unresolvedIssues.push(`Hypothese ${h.id} noch offen`);
+    }
+  }
+  const recommendedNextSteps = opts.recommendedNextSteps ?? (() => {
+    const steps = hypotheses.flatMap((h) => h.nextAction ? [h.nextAction] : []);
+    return steps.length ? steps : ["Alle Cluster confirmed \u2014 keine offenen Folgeschritte."];
+  })();
+  const artifact = redactDeep({
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    artifactVersion: store2.latestArtifactVersion(planId, "toln") + 1,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    projectName: basename(repo),
+    gitBranch: git2(repo, ["rev-parse", "--abbrev-ref", "HEAD"]),
+    gitCommitBefore: before,
+    gitCommitAfter: git2(repo, ["rev-parse", "HEAD"]),
+    originalUserRequest: opts.originalUserRequest ?? plan.goal,
+    interpretedGoal: opts.interpretedGoal ?? plan.goal,
+    clusters,
+    tasks,
+    agentJobs,
+    hypotheses,
+    hypothesisUpdates,
+    reviews,
+    userDecisions,
+    filesChanged,
+    testsRun,
+    findings,
+    unresolvedIssues,
+    finalAssessment: opts.finalAssessment ?? (unresolvedIssues.length === 0 ? "Alle Cluster confirmed, keine offenen Punkte." : `${unresolvedIssues.length} offene(r) Punkt(e) verbleiben.`),
+    recommendedNextSteps
+  });
+  const checksum = computeChecksum(artifact);
+  return { ...artifact, checksum };
+}
+function computeChecksum(artifact) {
+  return "sha256:" + createHash("sha256").update(stableStringify(artifact)).digest("hex");
+}
+function stableStringify(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map(stableStringify).join(",") + "]";
+  const keys = Object.keys(v).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableStringify(v[k])).join(",") + "}";
+}
+function tomlStr(s) {
+  return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t") + '"';
+}
+function tomlValue(v) {
+  if (v === null || v === void 0) return '""';
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : '""';
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (Array.isArray(v)) {
+    if (v.every((x) => typeof x === "string")) return "[" + v.map((x) => tomlStr(x)).join(", ") + "]";
+    return tomlStr(JSON.stringify(v));
+  }
+  if (typeof v === "object") return tomlStr(JSON.stringify(v));
+  return tomlStr(String(v));
+}
+function emitTable(item) {
+  return Object.entries(item).map(([k, val]) => `${k} = ${tomlValue(val)}`).join("\n") + "\n";
+}
+function renderToln(a) {
+  const scalars = [
+    "schemaVersion",
+    "artifactVersion",
+    "timestamp",
+    "projectName",
+    "gitBranch",
+    "gitCommitBefore",
+    "gitCommitAfter",
+    "originalUserRequest",
+    "interpretedGoal",
+    "finalAssessment",
+    "checksum"
+  ];
+  const stringArrays = ["filesChanged", "unresolvedIssues", "recommendedNextSteps"];
+  const tableArrays = [
+    "clusters",
+    "tasks",
+    "agentJobs",
+    "hypotheses",
+    "hypothesisUpdates",
+    "reviews",
+    "userDecisions",
+    "testsRun",
+    "findings"
+  ];
+  let out = "# codex-orchestration-result \u2014 versioned run artifact (.toln / TOML)\n\n";
+  for (const k of scalars) out += `${k} = ${tomlValue(a[k])}
+`;
+  out += "\n";
+  for (const k of stringArrays) out += `${k} = ${tomlValue(a[k])}
+`;
+  out += "\n";
+  for (const k of tableArrays) {
+    const items = a[k];
+    for (const item of items) out += `[[${k}]]
+${emitTable(item)}
+`;
+  }
+  return out;
+}
+function renderSummaryMd(a) {
+  const confirmed = a.clusters.filter((c) => c.status === "confirmed").length;
+  const lines = [
+    `# Orchestration Summary \u2014 ${a.projectName}`,
+    "",
+    `- **Timestamp:** ${a.timestamp}`,
+    `- **Artifact:** v${a.artifactVersion} (schema v${a.schemaVersion})`,
+    `- **Branch:** ${a.gitBranch ?? "?"} @ ${a.gitCommitAfter?.slice(0, 12) ?? "?"}`,
+    `- **Goal:** ${a.interpretedGoal}`,
+    "",
+    `## Clusters (${confirmed}/${a.clusters.length} confirmed)`,
+    ...a.clusters.map((c) => `- \`${c.id}\` ${c.name} \u2014 **${c.status}**`),
+    "",
+    `## Hypotheses (${a.hypotheses.length})`,
+    ...a.hypotheses.map((h) => `- \`${h.id}\` result: **${h.result}**, v${h.version} \u2014 ${h.initialAssumption}`),
+    "",
+    `## Files changed (${a.filesChanged.length})`,
+    ...a.filesChanged.length ? a.filesChanged.map((f) => `- \`${f}\``) : ["- (none detected)"],
+    "",
+    `## Unresolved (${a.unresolvedIssues.length})`,
+    ...a.unresolvedIssues.length ? a.unresolvedIssues.map((u) => `- ${u}`) : ["- none"],
+    "",
+    `## Final assessment`,
+    a.finalAssessment,
+    "",
+    `## Recommended next steps`,
+    ...a.recommendedNextSteps.map((s) => `- ${s}`),
+    "",
+    `_checksum: ${a.checksum}_`,
+    ""
+  ];
+  return lines.join("\n");
+}
+function writeResultArtifact(store2, planId, opts = {}) {
+  const artifact = buildResultArtifact(store2, planId, opts);
+  if (!artifact) return null;
+  const dir = join4(config2.home, "artifacts");
+  mkdirSync6(dir, { recursive: true });
+  const stamp = artifact.timestamp.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  const base = `codex-orchestration-result.v${artifact.schemaVersion}.${stamp}`;
+  const tolnPath = join4(dir, `${base}.toln`);
+  const summaryPath = join4(dir, `${base}.summary.md`);
+  writeFileSync4(tolnPath, renderToln(artifact), "utf8");
+  writeFileSync4(summaryPath, renderSummaryMd(artifact), "utf8");
+  store2.addArtifact({
+    planId,
+    kind: "toln",
+    path: tolnPath,
+    schemaVersion: artifact.schemaVersion,
+    artifactVersion: artifact.artifactVersion,
+    checksum: artifact.checksum
+  });
+  return { tolnPath, summaryPath, artifact };
+}
+
 // src/gate.ts
 var MISSING_MSG = "Start blockiert: F\xFCr jeden Codex-Agentenjob ist zwingend eine Hypothese erforderlich. Bilde zuerst eine Hypothese (hypotheses \u2192 create: initialAssumption, criticalQuestions, falsificationPlan, confidenceBefore) und \xFCbergib deren id als 'hypothesis_id' an task_start.";
 function checkHypothesisGate(repo, input, require2) {
@@ -23778,6 +24224,34 @@ function checkHypothesisGate(repo, input, require2) {
     };
   }
   return { ok: true, hypothesis: h };
+}
+
+// src/sandbox.ts
+var ALLOWED_SANDBOXES = ["read-only", "workspace-write"];
+function classifySandbox(s) {
+  const v = s.trim().toLowerCase();
+  if (v === "read-only") return "read-only";
+  if (v === "workspace-write") return "workspace-write";
+  if (v.includes("danger") || v.includes("full-access")) return "danger";
+  return "unknown";
+}
+function checkSandboxPolicy(requested) {
+  const cls = classifySandbox(requested);
+  if (cls === "danger") {
+    return {
+      ok: false,
+      dangerous: true,
+      error: "Sandbox 'danger-full-access' ist serverseitig deaktiviert und ben\xF6tigt eine explizite Nutzerfreigabe. W\xE4hle 'read-only' (Research/Review) oder 'workspace-write' (Implementierung)."
+    };
+  }
+  if (cls === "unknown") {
+    return {
+      ok: false,
+      dangerous: false,
+      error: `Unbekannter Sandbox-Modus '${requested}'. Erlaubt: ${ALLOWED_SANDBOXES.join(", ")}.`
+    };
+  }
+  return { ok: true, sandbox: cls, dangerous: false };
 }
 
 // src/types.ts
@@ -23838,7 +24312,18 @@ server.registerTool(
   },
   async (a) => {
     const effort = a.effort;
-    const sandbox = a.sandbox;
+    const sandboxCheck = checkSandboxPolicy(a.sandbox);
+    if (!sandboxCheck.ok) {
+      store.addAuditEvent({
+        actor: "claude",
+        action: sandboxCheck.dangerous ? "danger_mode_denied" : "sandbox_rejected",
+        resource: a.cluster_id ?? a.repo_path ?? null,
+        detail: { requested: a.sandbox },
+        redacted: false
+      });
+      return err({ ok: false, error: sandboxCheck.error });
+    }
+    const sandbox = sandboxCheck.sandbox;
     const maxMinutes = a.slice_budget?.max_minutes ?? 8;
     const stopCondition = a.slice_budget?.stop_condition ?? null;
     const waitFor = a.wait_for;
@@ -23908,6 +24393,28 @@ server.registerTool(
         hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null);
       } catch {
       }
+    }
+    try {
+      store.recordAgentJob({
+        taskId: task.id,
+        clusterId: a.cluster_id ?? null,
+        hypothesisId: a.hypothesis_id ?? null,
+        model,
+        effort,
+        sandbox,
+        status: "queued"
+      });
+    } catch {
+    }
+    try {
+      store.addAuditEvent({
+        actor: "claude",
+        action: "task_started",
+        resource: task.id,
+        detail: { sandbox, model, effort, network: a.network ?? config2.networkDefault, dropped_config_keys: droppedConfig },
+        redacted: false
+      });
+    } catch {
     }
     if (wantAutoWorktree) {
       try {
@@ -24307,6 +24814,15 @@ server.registerTool(
   }
 );
 server.registerTool(
+  "audit_log",
+  {
+    title: "Sicherheitsrelevanter Audit-Trail",
+    description: "Liest die Audit-Events (Sandbox-Wahl, abgelehnte Gefahrmodi, verworfene Config-Keys, Artefakt-Erzeugung). Alle Details sind bereits Secret-redacted. F\xFCr Firmeneinsatz/Nachvollziehbarkeit.",
+    inputSchema: { limit: external_exports.number().int().positive().max(1e3).default(200) }
+  },
+  async (a) => ok({ ok: true, events: store.listAuditEvents(a.limit) })
+);
+server.registerTool(
   "repo_check",
   {
     title: "Allowlisted Repo-Checks",
@@ -24396,6 +24912,49 @@ server.registerTool(
     const res = writePlanSnapshot(store, a.plan_id, a.format);
     if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
     return ok({ ok: true, format: res.format, path: res.path, content: res.content });
+  }
+);
+server.registerTool(
+  "result_artifact",
+  {
+    title: "Finales Gesamtartefakt erzeugen (.toln)",
+    description: "Erzeugt am Ende eines Orchestrator-Laufs ein versioniertes, maschinenlesbares Ergebnisartefakt: TOML mit Endung .toln (+ summary.md). Enth\xE4lt Plan, Cluster, Tasks, Agentenjobs, alle Hypothesen und ihre Aktualisierungen, Reviews, Nutzerentscheidungen, ge\xE4nderte Dateien, Tests, Findings, offene Punkte, Gesamtbewertung und Pr\xFCfsumme. Registriert das Artefakt in der DB.",
+    inputSchema: {
+      plan_id: external_exports.string(),
+      original_request: external_exports.string().optional(),
+      interpreted_goal: external_exports.string().optional(),
+      final_assessment: external_exports.string().optional(),
+      recommended_next_steps: external_exports.array(external_exports.string()).optional(),
+      git_commit_before: external_exports.string().optional().describe("Basis-Commit f\xFCr die Datei-Diff-Ermittlung (sonst HEAD~1).")
+    }
+  },
+  async (a) => {
+    const res = writeResultArtifact(store, a.plan_id, {
+      originalUserRequest: a.original_request,
+      interpretedGoal: a.interpreted_goal,
+      finalAssessment: a.final_assessment,
+      recommendedNextSteps: a.recommended_next_steps,
+      gitCommitBefore: a.git_commit_before ?? null
+    });
+    if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
+    store.addAuditEvent({
+      actor: "claude",
+      action: "result_artifact_generated",
+      resource: a.plan_id,
+      detail: { path: res.tolnPath, artifactVersion: res.artifact.artifactVersion, checksum: res.artifact.checksum },
+      redacted: false
+    });
+    return ok({
+      ok: true,
+      toln_path: res.tolnPath,
+      summary_path: res.summaryPath,
+      schema_version: res.artifact.schemaVersion,
+      artifact_version: res.artifact.artifactVersion,
+      checksum: res.artifact.checksum,
+      clusters: res.artifact.clusters.length,
+      hypotheses: res.artifact.hypotheses.length,
+      unresolved: res.artifact.unresolvedIssues.length
+    });
   }
 );
 server.registerTool(

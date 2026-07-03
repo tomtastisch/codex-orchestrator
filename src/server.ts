@@ -16,8 +16,10 @@ import { centralAgentsMd } from "./agents.js";
 import { maybeAutoUpdate, checkForUpdate, runUpdate, type Channel } from "./updater.js";
 import { checkPluginUpdate, applyPluginUpdate, maybePluginUpdate, installedVersion } from "./plugin.js";
 import { writePlanSnapshot } from "./snapshot.js";
+import { writeResultArtifact } from "./artifact.js";
 import { HypothesisRepo, needsFollowUp, type HypothesisResult } from "./hypotheses.js";
 import { checkHypothesisGate } from "./gate.js";
+import { checkSandboxPolicy } from "./sandbox.js";
 import { EFFORT_LADDER } from "./types.js";
 import type { Effort, Sandbox } from "./types.js";
 
@@ -85,7 +87,16 @@ server.registerTool(
   },
   async (a) => {
     const effort = a.effort as Effort;
-    const sandbox = a.sandbox as Sandbox;
+    // Cluster 7: Sandbox-Policy fail-closed prüfen (gefährliche Modi -> klare Ablehnung + Audit).
+    const sandboxCheck = checkSandboxPolicy(a.sandbox);
+    if (!sandboxCheck.ok) {
+      store.addAuditEvent({
+        actor: "claude", action: sandboxCheck.dangerous ? "danger_mode_denied" : "sandbox_rejected",
+        resource: a.cluster_id ?? a.repo_path ?? null, detail: { requested: a.sandbox }, redacted: false,
+      });
+      return err({ ok: false, error: sandboxCheck.error });
+    }
+    const sandbox = sandboxCheck.sandbox as Sandbox;
     const maxMinutes = a.slice_budget?.max_minutes ?? 8;
     const stopCondition = a.slice_budget?.stop_condition ?? null;
     const waitFor = a.wait_for;
@@ -167,6 +178,23 @@ server.registerTool(
     if (a.hypothesis_id) {
       try { hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null); } catch { /* best effort */ }
     }
+
+    // Cluster 5: auditierbaren agent_job-Datensatz anlegen (wird bei Task-Ende abgeschlossen).
+    try {
+      store.recordAgentJob({
+        taskId: task.id, clusterId: a.cluster_id ?? null, hypothesisId: a.hypothesis_id ?? null,
+        model, effort, sandbox, status: "queued",
+      });
+    } catch { /* best effort */ }
+
+    // Cluster 7: sicherheitsrelevantes Audit-Event (gewählte Sandbox, verworfene Config-Keys).
+    try {
+      store.addAuditEvent({
+        actor: "claude", action: "task_started", resource: task.id,
+        detail: { sandbox, model, effort, network: a.network ?? config.networkDefault, dropped_config_keys: droppedConfig },
+        redacted: false,
+      });
+    } catch { /* best effort */ }
 
     // Auto-Worktree jetzt mit echter task.id anlegen -> Verzeichnis/Branch = task.id.
     if (wantAutoWorktree) {
@@ -601,6 +629,19 @@ server.registerTool(
   },
 );
 
+// ---------------------------------------------------------------- 7.9c audit_log
+server.registerTool(
+  "audit_log",
+  {
+    title: "Sicherheitsrelevanter Audit-Trail",
+    description:
+      "Liest die Audit-Events (Sandbox-Wahl, abgelehnte Gefahrmodi, verworfene Config-Keys, Artefakt-Erzeugung). " +
+      "Alle Details sind bereits Secret-redacted. Für Firmeneinsatz/Nachvollziehbarkeit.",
+    inputSchema: { limit: z.number().int().positive().max(1000).default(200) },
+  },
+  async (a) => ok({ ok: true, events: store.listAuditEvents(a.limit) }),
+);
+
 // ---------------------------------------------------------------- 7.10 repo_check
 server.registerTool(
   "repo_check",
@@ -697,6 +738,53 @@ server.registerTool(
     const res = writePlanSnapshot(store, a.plan_id, a.format);
     if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
     return ok({ ok: true, format: res.format, path: res.path, content: res.content });
+  },
+);
+
+// -------------------------------------------------- result_artifact (.toln)
+server.registerTool(
+  "result_artifact",
+  {
+    title: "Finales Gesamtartefakt erzeugen (.toln)",
+    description:
+      "Erzeugt am Ende eines Orchestrator-Laufs ein versioniertes, maschinenlesbares Ergebnisartefakt: " +
+      "TOML mit Endung .toln (+ summary.md). Enthält Plan, Cluster, Tasks, Agentenjobs, alle Hypothesen und " +
+      "ihre Aktualisierungen, Reviews, Nutzerentscheidungen, geänderte Dateien, Tests, Findings, offene Punkte, " +
+      "Gesamtbewertung und Prüfsumme. Registriert das Artefakt in der DB.",
+    inputSchema: {
+      plan_id: z.string(),
+      original_request: z.string().optional(),
+      interpreted_goal: z.string().optional(),
+      final_assessment: z.string().optional(),
+      recommended_next_steps: z.array(z.string()).optional(),
+      git_commit_before: z.string().optional().describe("Basis-Commit für die Datei-Diff-Ermittlung (sonst HEAD~1)."),
+    },
+  },
+  async (a) => {
+    const res = writeResultArtifact(store, a.plan_id, {
+      originalUserRequest: a.original_request,
+      interpretedGoal: a.interpreted_goal,
+      finalAssessment: a.final_assessment,
+      recommendedNextSteps: a.recommended_next_steps,
+      gitCommitBefore: a.git_commit_before ?? null,
+    });
+    if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
+    store.addAuditEvent({
+      actor: "claude", action: "result_artifact_generated", resource: a.plan_id,
+      detail: { path: res.tolnPath, artifactVersion: res.artifact.artifactVersion, checksum: res.artifact.checksum },
+      redacted: false,
+    });
+    return ok({
+      ok: true,
+      toln_path: res.tolnPath,
+      summary_path: res.summaryPath,
+      schema_version: res.artifact.schemaVersion,
+      artifact_version: res.artifact.artifactVersion,
+      checksum: res.artifact.checksum,
+      clusters: res.artifact.clusters.length,
+      hypotheses: res.artifact.hypotheses.length,
+      unresolved: res.artifact.unresolvedIssues.length,
+    });
   },
 );
 
