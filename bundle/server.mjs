@@ -23228,6 +23228,92 @@ async function maybePluginUpdate(now, log) {
   }
 }
 
+// src/doctor.ts
+import { spawn as spawn4 } from "node:child_process";
+function isAuthenticated(loginStatusOutput) {
+  if (/not\s+logged\s+in/i.test(loginStatusOutput)) return false;
+  return /logged\s+in/i.test(loginStatusOutput);
+}
+function buildDoctorReport(probe) {
+  const present = probe.codexVersion != null;
+  const authenticated = present && isAuthenticated(probe.loginStatus);
+  const marketplaceSkipped = process.env.SKIP_PLUGIN_MARKETPLACE === "true";
+  const guidance = [];
+  if (!present) {
+    guidance.push(
+      `Codex-CLI nicht gefunden (codexBin='${config2.codexBin}'). Installieren via 'npm i -g @openai/codex' oder ORCH_CODEX_BIN auf den Bin\xE4rpfad setzen.`
+    );
+  } else if (!authenticated) {
+    guidance.push(
+      "Codex ist installiert, aber nicht angemeldet. 'codex login' ausf\xFChren (oder OPENAI_API_KEY in der Umgebung bereitstellen)."
+    );
+  }
+  if (marketplaceSkipped) {
+    guidance.push(
+      "SKIP_PLUGIN_MARKETPLACE=true: Der Plugin-Marketplace ist in dieser Umgebung deaktiviert (z. B. Claude Code Web/Remote). Den MCP-Server direkt registrieren ('claude mcp add \u2026' bzw. .mcp.json/mcpServers), statt \xFCber '/plugin marketplace add'."
+    );
+  }
+  if (present && authenticated && guidance.length === 0) {
+    guidance.push("Bereit: Codex-CLI vorhanden und angemeldet.");
+  }
+  return {
+    ok: present && authenticated,
+    node: process.version,
+    store: config2.home,
+    codexBin: config2.codexBin,
+    codex: { present, version: probe.codexVersion, authenticated },
+    pluginMarketplaceSkipped: marketplaceSkipped,
+    allowedSandboxes: config2.allowedSandboxes,
+    guidance
+  };
+}
+function spawnCapture(bin, args, timeoutMs = 1e4) {
+  return new Promise((resolve5) => {
+    let out = "";
+    let settled = false;
+    const done = (r) => {
+      if (!settled) {
+        settled = true;
+        resolve5(r);
+      }
+    };
+    let child;
+    try {
+      child = spawn4(bin, args, { env: process.env });
+    } catch (e) {
+      done({ code: null, out: e.message });
+      return;
+    }
+    const cap = (d) => {
+      out += d.toString();
+      if (out.length > 2e4) out = out.slice(-2e4);
+    };
+    child.stdout.on("data", cap);
+    child.stderr.on("data", cap);
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+      }
+      done({ code: null, out });
+    }, timeoutMs);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      done({ code, out });
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      done({ code: null, out });
+    });
+  });
+}
+async function runDoctor() {
+  const version2 = await spawnCapture(config2.codexBin, ["--version"]);
+  const codexVersion = version2.code === 0 ? version2.out.trim().split(/\r?\n/)[0] || null : null;
+  const login = codexVersion != null ? await spawnCapture(config2.codexBin, ["login", "status"]) : { code: null, out: "" };
+  return buildDoctorReport({ codexVersion, loginStatus: login.out });
+}
+
 // node_modules/@toon-format/toon/dist/index.mjs
 var NULL_LITERAL = "null";
 var DELIMITERS = {
@@ -25003,6 +25089,15 @@ server.registerTool(
     if (running > 0) return err({ ok: false, error: `Update abgelehnt: ${running} Task(s) aktiv.` });
     return ok(await applyPluginUpdate(now));
   }
+);
+server.registerTool(
+  "orchestrator_doctor",
+  {
+    title: "Umgebungs-Preflight (Codex, Auth, Store)",
+    description: "Diagnostiziert die Umgebung, bevor Slices scheitern: ist die Codex-CLI vorhanden und angemeldet, wo liegt der Store, welche Sandboxes sind erlaubt, und ist der Plugin-Marketplace deaktiviert (SKIP_PLUGIN_MARKETPLACE, z. B. Claude Code Web/Remote). Liefert klare Handlungsanweisungen statt stiller Nicht-Verf\xFCgbarkeit.",
+    inputSchema: {}
+  },
+  async () => ok(await runDoctor())
 );
 centralAgentsMd();
 var shuttingDown = false;
