@@ -143,6 +143,20 @@ projects fully separated:
 Without `ORCH_HOME` the store defaults to `<cwd>/.orchestrator`, so separate
 project directories are isolated automatically.
 
+### Environment support (local CLI vs. Claude Code web/remote)
+
+| Environment | Plugin marketplace | How to install | Live orchestration |
+|---|---|---|---|
+| **Local Claude Code CLI** | enabled | `/plugin marketplace add …` (recommended) | works once the Codex CLI is installed & logged in |
+| **Claude Code web / remote** | **disabled** (`SKIP_PLUGIN_MARKETPLACE=true`) | register the MCP server directly (`claude mcp add …` / `.mcp.json` `mcpServers`) — `/plugin marketplace add` is a no-op there | only if the Codex CLI **and** its auth are provisioned in that environment; managed web sandboxes ship neither by default |
+
+Managed web/remote sandboxes deliberately disable the plugin marketplace and
+usually ship without the Codex CLI or OpenAI credentials. The MCP server itself
+still starts (it is a self-contained `node bundle/server.mjs`), so its tools
+load — but slices can only run where `codex` is present and authenticated.
+Call **`orchestrator_doctor`** to get an explicit readiness report instead of a
+silent failure at the first slice.
+
 ## Tools
 
 | Tool | Purpose |
@@ -164,6 +178,7 @@ project directories are isolated automatically.
 | `audit_log` | Read the security-relevant, secret-redacted audit trail |
 | `codex_update` | Check/apply Codex CLI updates (stable or pre-release channel) |
 | `plugin_update` | Check for / apply a newer plugin release (self-update for git installs) |
+| `orchestrator_doctor` | Environment preflight: is the Codex CLI present and logged in, where is the store, which sandboxes are allowed, and is the plugin marketplace disabled (`SKIP_PLUGIN_MARKETPLACE`)? Returns actionable guidance instead of silently failing later |
 
 ## Example: from a goal to a confirmed change
 

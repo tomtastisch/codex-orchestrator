@@ -15,6 +15,7 @@ import { isBlockedConfigKey } from "./codex.js";
 import { centralAgentsMd } from "./agents.js";
 import { maybeAutoUpdate, checkForUpdate, runUpdate, type Channel } from "./updater.js";
 import { checkPluginUpdate, applyPluginUpdate, maybePluginUpdate, installedVersion } from "./plugin.js";
+import { runDoctor } from "./doctor.js";
 import { writePlanSnapshot } from "./snapshot.js";
 import { writeResultArtifact } from "./artifact.js";
 import { HypothesisRepo, needsFollowUp, type HypothesisResult } from "./hypotheses.js";
@@ -835,6 +836,20 @@ server.registerTool(
     if (running > 0) return err({ ok: false, error: `Update abgelehnt: ${running} Task(s) aktiv.` });
     return ok(await applyPluginUpdate(now));
   },
+);
+
+server.registerTool(
+  "orchestrator_doctor",
+  {
+    title: "Umgebungs-Preflight (Codex, Auth, Store)",
+    description:
+      "Diagnostiziert die Umgebung, bevor Slices scheitern: ist die Codex-CLI vorhanden und angemeldet, " +
+      "wo liegt der Store, welche Sandboxes sind erlaubt, und ist der Plugin-Marketplace deaktiviert " +
+      "(SKIP_PLUGIN_MARKETPLACE, z. B. Claude Code Web/Remote). Liefert klare Handlungsanweisungen statt " +
+      "stiller Nicht-Verfügbarkeit.",
+    inputSchema: {},
+  },
+  async () => ok(await runDoctor()),
 );
 
 // Zentrale Executor-AGENTS.md bereitstellen.
