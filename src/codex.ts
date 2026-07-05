@@ -6,6 +6,8 @@ import { startManagedProcess } from "./runtime/process.js";
 import type { Effort, Sandbox, SliceOutcome } from "./types.js";
 
 export interface RunSliceOptions {
+  /** Target-specific Codex binary. Defaults to the local configured binary. */
+  codexBin?: string;
   repoPath: string;
   /** Wenn gesetzt: resume dieses Threads statt Neustart. */
   threadId?: string | null;
@@ -125,7 +127,7 @@ export function startSlice(opts: RunSliceOptions): RunningSlice {
 
   const lines: string[] = [];
   const managed = startManagedProcess({
-    command: config.codexBin,
+    command: opts.codexBin ?? config.codexBin,
     args,
     cwd: opts.repoPath,
     env: buildChildEnvironment(process.env, "codex"),
