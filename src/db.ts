@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import type {
@@ -8,6 +8,7 @@ import type {
   HypothesisStatus,
   TaskStatus,
 } from "./types.js";
+import { runMigrations } from "./db/migrations.js";
 import { redactDeep, redactText } from "./redact.js";
 
 export function nowIso(): string {
@@ -48,7 +49,11 @@ CREATE TABLE IF NOT EXISTS tasks (
      'completed','failed','cancelled')),
   slice_count INTEGER DEFAULT 0, started_at TEXT, ended_at TEXT,
   last_slice_type TEXT, last_summary TEXT, extra_config_json TEXT,
-  owner_pid INTEGER, codex_pid INTEGER, hypothesis_id TEXT
+  owner_pid INTEGER, codex_pid INTEGER,
+  target_id TEXT NOT NULL DEFAULT 'local',
+  target_kind TEXT NOT NULL DEFAULT 'local',
+  repository_commit TEXT, worker_version TEXT, routing_reason TEXT,
+  fallback_from TEXT, hypothesis_id TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
@@ -140,6 +145,9 @@ export interface TaskRow {
   status: TaskStatus; slice_count: number; started_at: string | null;
   ended_at: string | null; last_slice_type: string | null; last_summary: string | null;
   extra_config_json: string | null; owner_pid: number | null; codex_pid: number | null;
+  target_id: string; target_kind: "local" | "ssh";
+  repository_commit: string | null; worker_version: string | null;
+  routing_reason: string | null; fallback_from: string | null;
   hypothesis_id: string | null;
 }
 export interface EventRow {
@@ -150,13 +158,17 @@ export class Store {
   readonly db: DatabaseSync;
 
   constructor(dbPath: string) {
-    mkdirSync(dirname(dbPath), { recursive: true });
+    const directory = dirname(dbPath);
+    mkdirSync(directory, { recursive: true });
+    if (process.platform !== "win32") chmodSync(directory, 0o700);
     this.db = new DatabaseSync(dbPath);
+    if (process.platform !== "win32" && existsSync(dbPath)) chmodSync(dbPath, 0o600);
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
     // Schreibkonflikte gleichzeitiger Instanzen abfedern statt SQLITE_BUSY werfen.
     this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec(SCHEMA);
+    runMigrations(this.db);
     this.runMigrations();
   }
 
@@ -285,14 +297,22 @@ export class Store {
   }
 
   // ---- tasks ----
-  createTask(t: Omit<TaskRow, "slice_count" | "started_at" | "ended_at" | "last_slice_type" | "last_summary" | "codex_pid">): TaskRow {
+  createTask(t: Omit<TaskRow,
+    "slice_count" | "started_at" | "ended_at" | "last_slice_type" | "last_summary" | "codex_pid" |
+    "target_id" | "target_kind" | "repository_commit" | "worker_version" | "routing_reason" | "fallback_from"
+  > & Partial<Pick<TaskRow,
+    "target_id" | "target_kind" | "repository_commit" | "worker_version" | "routing_reason" | "fallback_from"
+  >>): TaskRow {
     this.db.prepare(
       `INSERT INTO tasks(id,cluster_id,codex_session_id,worktree,branch,repo_path,
-        sandbox,model,effort,instructions,acceptance_json,max_minutes,network,status,slice_count,extra_config_json,hypothesis_id)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`
+        sandbox,model,effort,instructions,acceptance_json,max_minutes,network,status,slice_count,extra_config_json,
+        hypothesis_id,target_id,target_kind,repository_commit,worker_version,routing_reason,fallback_from)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?)`
     ).run(t.id, t.cluster_id, t.codex_session_id, t.worktree, t.branch, t.repo_path,
       t.sandbox, t.model, t.effort, t.instructions, t.acceptance_json, t.max_minutes,
-      t.network, t.status, t.extra_config_json ?? null, t.hypothesis_id ?? null);
+      t.network, t.status, t.extra_config_json ?? null, t.hypothesis_id ?? null,
+      t.target_id ?? "local", t.target_kind ?? "local", t.repository_commit ?? null,
+      t.worker_version ?? null, t.routing_reason ?? "local-default", t.fallback_from ?? null);
     return this.getTask(t.id)!;
   }
   getTask(id: string): TaskRow | undefined {

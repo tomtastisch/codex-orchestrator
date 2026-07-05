@@ -7,7 +7,11 @@ var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -2981,7 +2985,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve5.call(this, root, ref);
+      let _sch = resolve6.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3008,7 +3012,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve5(root, ref) {
+    function resolve6(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3639,55 +3643,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve5(baseURI, relativeURI, options) {
+    function resolve6(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse4(baseURI, schemelessOptions), parse4(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative, options, skipNormalization) {
+    function resolveComponent(base, relative2, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options), options);
-        relative = parse4(serialize(relative, options), options);
+        relative2 = parse4(serialize(relative2, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative.scheme) {
-        target.scheme = relative.scheme;
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
+      if (!options.tolerant && relative2.scheme) {
+        target.scheme = relative2.scheme;
+        target.userinfo = relative2.userinfo;
+        target.host = relative2.host;
+        target.port = relative2.port;
+        target.path = removeDotSegments(relative2.path || "");
+        target.query = relative2.query;
       } else {
-        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-          target.userinfo = relative.userinfo;
-          target.host = relative.host;
-          target.port = relative.port;
-          target.path = removeDotSegments(relative.path || "");
-          target.query = relative.query;
+        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
+          target.userinfo = relative2.userinfo;
+          target.host = relative2.host;
+          target.port = relative2.port;
+          target.path = removeDotSegments(relative2.path || "");
+          target.query = relative2.query;
         } else {
-          if (!relative.path) {
+          if (!relative2.path) {
             target.path = base.path;
-            if (relative.query !== void 0) {
-              target.query = relative.query;
+            if (relative2.query !== void 0) {
+              target.query = relative2.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative.path[0] === "/") {
-              target.path = removeDotSegments(relative.path);
+            if (relative2.path[0] === "/") {
+              target.path = removeDotSegments(relative2.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative.path;
+                target.path = "/" + relative2.path;
               } else if (!base.path) {
-                target.path = relative.path;
+                target.path = relative2.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative.query;
+            target.query = relative2.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3695,7 +3699,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative.fragment;
+      target.fragment = relative2.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -3897,7 +3901,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve5,
+      resolve: resolve6,
       resolveComponent,
       equal,
       serialize,
@@ -10714,7 +10718,7 @@ ZodNaN.create = (params) => {
     ...processCreateParams(params)
   });
 };
-var BRAND = Symbol("zod_brand");
+var BRAND = /* @__PURE__ */ Symbol("zod_brand");
 var ZodBranded = class extends ZodType {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
@@ -10916,14 +10920,14 @@ var ostring = () => stringType().optional();
 var onumber = () => numberType().optional();
 var oboolean = () => booleanType().optional();
 var coerce = {
-  string: (arg) => ZodString.create({ ...arg, coerce: true }),
-  number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
-  boolean: (arg) => ZodBoolean.create({
+  string: ((arg) => ZodString.create({ ...arg, coerce: true })),
+  number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
+  boolean: ((arg) => ZodBoolean.create({
     ...arg,
     coerce: true
-  }),
-  bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
-  date: (arg) => ZodDate.create({ ...arg, coerce: true })
+  })),
+  bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
+  date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
 };
 var NEVER = INVALID;
 
@@ -10974,7 +10978,6 @@ function $constructor(name, initializer3, params) {
   Object.defineProperty(_, "name", { value: name });
   return _;
 }
-var $brand = Symbol("zod_brand");
 var $ZodAsyncError = class extends Error {
   constructor() {
     super(`Encountered Promise during synchronous parse. Use .parseAsync() instead.`);
@@ -13478,8 +13481,6 @@ function en_default2() {
 }
 
 // node_modules/zod/v4/core/registries.js
-var $output = Symbol("ZodOutput");
-var $input = Symbol("ZodInput");
 var $ZodRegistry = class {
   constructor() {
     this._map = /* @__PURE__ */ new Map();
@@ -14757,10 +14758,10 @@ var ZodMiniType = /* @__PURE__ */ $constructor("ZodMiniType", (inst, def) => {
   };
   inst.clone = (_def, params) => clone(inst, _def, params);
   inst.brand = () => inst;
-  inst.register = (reg, meta) => {
+  inst.register = ((reg, meta) => {
     reg.add(inst, meta);
     return inst;
-  };
+  });
 });
 var ZodMiniObject = /* @__PURE__ */ $constructor("ZodMiniObject", (inst, def) => {
   $ZodObject.init(inst, def);
@@ -15023,10 +15024,10 @@ var ZodType2 = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
   };
   inst.clone = (def2, params) => clone(inst, def2, params);
   inst.brand = () => inst;
-  inst.register = (reg, meta) => {
+  inst.register = ((reg, meta) => {
     reg.add(inst, meta);
     return inst;
-  };
+  });
   inst.parse = (data, params) => parse2(inst, data, params, { callee: inst.parse });
   inst.safeParse = (data, params) => safeParse3(inst, data, params);
   inst.parseAsync = async (data, params) => parseAsync2(inst, data, params, { callee: inst.parseAsync });
@@ -16996,11 +16997,13 @@ function assertCompleteRequestPrompt(request) {
   if (request.params.ref.type !== "ref/prompt") {
     throw new TypeError(`Expected CompleteRequestPrompt, but got ${request.params.ref.type}`);
   }
+  void request;
 }
 function assertCompleteRequestResourceTemplate(request) {
   if (request.params.ref.type !== "ref/resource") {
     throw new TypeError(`Expected CompleteRequestResourceTemplate, but got ${request.params.ref.type}`);
   }
+  void request;
 }
 var CompleteResultSchema = ResultSchema.extend({
   completion: looseObject({
@@ -17153,7 +17156,7 @@ function isTerminal(status) {
 }
 
 // node_modules/zod-to-json-schema/dist/esm/Options.js
-var ignoreOverride = Symbol("Let zodToJsonSchema decide on which parser to use");
+var ignoreOverride = /* @__PURE__ */ Symbol("Let zodToJsonSchema decide on which parser to use");
 var defaultOptions = {
   name: void 0,
   $refStrategy: "root",
@@ -18978,7 +18981,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
+        await new Promise((resolve6) => setTimeout(resolve6, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -18995,7 +18998,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -19073,7 +19076,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve5(parseResult.data);
+            resolve6(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -19334,12 +19337,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve5, interval);
+      const timeoutId = setTimeout(resolve6, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -20129,7 +20132,7 @@ var Server = class extends Protocol {
 };
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
-var COMPLETABLE_SYMBOL = Symbol.for("mcp.completable");
+var COMPLETABLE_SYMBOL = /* @__PURE__ */ Symbol.for("mcp.completable");
 function isCompletable(schema) {
   return !!schema && typeof schema === "object" && COMPLETABLE_SYMBOL in schema;
 }
@@ -20206,12 +20209,12 @@ var ExperimentalMcpServerTasks = class {
     this._mcpServer = _mcpServer;
   }
   registerToolTask(name, config3, handler) {
-    const execution = { taskSupport: "required", ...config3.execution };
-    if (execution.taskSupport === "forbidden") {
+    const execution2 = { taskSupport: "required", ...config3.execution };
+    if (execution2.taskSupport === "forbidden") {
       throw new Error(`Cannot register task-based tool '${name}' with taskSupport 'forbidden'. Use registerTool() instead.`);
     }
     const mcpServerInternal = this._mcpServer;
-    return mcpServerInternal._createRegisteredTool(name, config3.title, config3.description, config3.inputSchema, config3.outputSchema, config3.annotations, execution, config3._meta, handler);
+    return mcpServerInternal._createRegisteredTool(name, config3.title, config3.description, config3.inputSchema, config3.outputSchema, config3.annotations, execution2, config3._meta, handler);
   }
 };
 
@@ -20439,7 +20442,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
+      await new Promise((resolve6) => setTimeout(resolve6, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -20769,7 +20772,7 @@ var McpServer = class {
     }
     return registeredPrompt;
   }
-  _createRegisteredTool(name, title, description, inputSchema, outputSchema, annotations, execution, _meta, handler) {
+  _createRegisteredTool(name, title, description, inputSchema, outputSchema, annotations, execution2, _meta, handler) {
     validateAndWarnToolName(name);
     const registeredTool = {
       title,
@@ -20777,7 +20780,7 @@ var McpServer = class {
       inputSchema: getZodSchemaObject(inputSchema),
       outputSchema: getZodSchemaObject(outputSchema),
       annotations,
-      execution,
+      execution: execution2,
       _meta,
       handler,
       enabled: true,
@@ -21088,12 +21091,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve5) => {
+    return new Promise((resolve6) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve5();
+        resolve6();
       } else {
-        this._stdout.once("drain", resolve5);
+        this._stdout.once("drain", resolve6);
       }
     });
   }
@@ -21106,7 +21109,89 @@ import { join as _join } from "node:path";
 // src/config.ts
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+
+// src/config-schema.ts
+var AbsolutePathSchema = external_exports.string().startsWith("/", "path must be absolute").refine(
+  (value) => !value.split("/").includes("..") && !/[\0\r\n]/.test(value),
+  "path must not contain traversal or control characters"
+);
+var RemoteShellPathSchema = external_exports.string().regex(
+  /^(?:~\/|\/)[A-Za-z0-9._/-]+$/,
+  "remote path contains unsupported shell characters"
+).refine((value) => !value.split("/").includes(".."), "remote path must not contain traversal");
+var ExistingAuthSchema = external_exports.object({
+  strategy: external_exports.literal("existing")
+}).strict();
+var SyncFileAuthSchema = external_exports.object({
+  strategy: external_exports.literal("sync-file"),
+  source: external_exports.string().min(1).optional()
+}).strict();
+var AccessTokenAuthSchema = external_exports.object({
+  strategy: external_exports.literal("access-token"),
+  secretCommand: external_exports.array(external_exports.string().min(1)).min(1)
+}).strict();
+var RemoteTargetSchema = external_exports.object({
+  id: external_exports.string().regex(/^[A-Za-z0-9._-]{1,64}$/, "id must be a safe target identifier"),
+  transport: external_exports.literal("ssh"),
+  host: external_exports.string().regex(/^[A-Za-z0-9._-]{1,255}$/, "host must be an SSH alias without options"),
+  repository: external_exports.object({
+    localRoot: AbsolutePathSchema,
+    remoteRoot: AbsolutePathSchema
+  }).strict(),
+  codexBin: external_exports.string().regex(/^[A-Za-z0-9._/-]+$/).default("codex"),
+  workerRoot: RemoteShellPathSchema.default("~/.cache/codex-orchestrator"),
+  codexHome: RemoteShellPathSchema.default("~/.codex"),
+  auth: external_exports.discriminatedUnion("strategy", [ExistingAuthSchema, SyncFileAuthSchema, AccessTokenAuthSchema]).default({ strategy: "existing" })
+}).strict();
+var LocalExecutionSchema = external_exports.object({
+  mode: external_exports.literal("local-only"),
+  fallback: external_exports.literal("never").default("never")
+}).strict();
+var RemoteOnlyExecutionSchema = external_exports.object({
+  mode: external_exports.literal("remote-only"),
+  fallback: external_exports.literal("never").default("never"),
+  remote: RemoteTargetSchema
+}).strict();
+var RemotePreferredExecutionSchema = external_exports.object({
+  mode: external_exports.literal("remote-preferred"),
+  fallback: external_exports.literal("connectivity-only").default("connectivity-only"),
+  remote: RemoteTargetSchema
+}).strict();
+var OrchestratorFileConfigSchema = external_exports.object({
+  version: external_exports.literal(1).default(1),
+  execution: external_exports.discriminatedUnion("mode", [
+    LocalExecutionSchema,
+    RemoteOnlyExecutionSchema,
+    RemotePreferredExecutionSchema
+  ]).default({ mode: "local-only", fallback: "never" })
+}).strict();
+function parseExecutionConfig(input) {
+  return OrchestratorFileConfigSchema.parse(input);
+}
+function parsePositiveInteger(value, variableName) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${variableName} muss eine positive Ganzzahl sein`);
+  }
+  return parsed;
+}
+
+// src/config.ts
 var HOME = process.env.ORCH_HOME ? resolve(process.env.ORCH_HOME) : process.env.ORCH_GLOBAL === "true" ? resolve(homedir(), ".codex-orchestrator") : resolve(process.cwd(), ".orchestrator");
+function loadFileConfig() {
+  const path = resolve(process.env.ORCH_CONFIG_FILE || resolve(HOME, "config.json"));
+  if (!existsSync(path)) return parseExecutionConfig({});
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error2) {
+    const message = error2 instanceof Error ? error2.message : String(error2);
+    throw new Error(`Orchestrator-Konfiguration '${path}' ist kein g\xFCltiges JSON: ${message}`);
+  }
+  return parseExecutionConfig(parsed);
+}
+var FILE_CONFIG = loadFileConfig();
 var config2 = {
   home: HOME,
   dbPath: resolve(HOME, "state.sqlite"),
@@ -21125,7 +21210,7 @@ var config2 = {
     sliceKillGraceMs: 8e3
   },
   parallelism: {
-    maxConcurrent: Number(process.env.ORCH_MAX_CONCURRENT || 2)
+    maxConcurrent: parsePositiveInteger(process.env.ORCH_MAX_CONCURRENT || "2", "ORCH_MAX_CONCURRENT")
   },
   signMergeCommits: process.env.ORCH_SIGN_MERGE !== "false",
   // Modellnamen leben in der Config, nicht in der Logik (Plan §9). Effort ist
@@ -21221,7 +21306,8 @@ var config2 = {
       argv: ["npm", "run", "typecheck", "--silent"],
       description: "TypeScript typecheck"
     }
-  }
+  },
+  execution: FILE_CONFIG.execution
 };
 function modelForClass(cls) {
   const m = config2.models.find((e) => e.class === cls);
@@ -21231,9 +21317,36 @@ function modelForClass(cls) {
 
 // src/db.ts
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync as existsSync2, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+
+// src/db/migrations.ts
+var TASK_COLUMNS = [
+  ["target_id", "TEXT NOT NULL DEFAULT 'local'"],
+  ["target_kind", "TEXT NOT NULL DEFAULT 'local'"],
+  ["repository_commit", "TEXT"],
+  ["worker_version", "TEXT"],
+  ["routing_reason", "TEXT"],
+  ["fallback_from", "TEXT"]
+];
+var CURRENT_SCHEMA_VERSION = 2;
+function runMigrations(db) {
+  const existing = new Set(
+    db.prepare("PRAGMA table_info(tasks)").all().map((column) => column.name)
+  );
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const [name, definition] of TASK_COLUMNS) {
+      if (!existing.has(name)) db.exec(`ALTER TABLE tasks ADD COLUMN ${name} ${definition}`);
+    }
+    db.exec(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);
+    db.exec("COMMIT");
+  } catch (error2) {
+    db.exec("ROLLBACK");
+    throw error2;
+  }
+}
 
 // src/redact.ts
 var PLACEHOLDER = "\xABredacted\xBB";
@@ -21260,7 +21373,7 @@ var PATTERNS = [
   // (z. B. in eingebettetem JSON des .toln) und hält die Redaction idempotent.
   {
     re: /\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|AUTH|CREDENTIAL)[A-Za-z0-9_]*)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s"'\\]+)/gi,
-    replace: (_m, key, sep) => `${key}${sep}${PLACEHOLDER}`
+    replace: (_m, key, sep3) => `${key}${sep3}${PLACEHOLDER}`
   }
 ];
 function redactText(input) {
@@ -21316,7 +21429,11 @@ CREATE TABLE IF NOT EXISTS tasks (
      'completed','failed','cancelled')),
   slice_count INTEGER DEFAULT 0, started_at TEXT, ended_at TEXT,
   last_slice_type TEXT, last_summary TEXT, extra_config_json TEXT,
-  owner_pid INTEGER, codex_pid INTEGER, hypothesis_id TEXT
+  owner_pid INTEGER, codex_pid INTEGER,
+  target_id TEXT NOT NULL DEFAULT 'local',
+  target_kind TEXT NOT NULL DEFAULT 'local',
+  repository_commit TEXT, worker_version TEXT, routing_reason TEXT,
+  fallback_from TEXT, hypothesis_id TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
@@ -21392,12 +21509,16 @@ CREATE TABLE IF NOT EXISTS checks (
 var Store = class {
   db;
   constructor(dbPath) {
-    mkdirSync(dirname(dbPath), { recursive: true });
+    const directory = dirname(dbPath);
+    mkdirSync(directory, { recursive: true });
+    if (process.platform !== "win32") chmodSync(directory, 448);
     this.db = new DatabaseSync(dbPath);
+    if (process.platform !== "win32" && existsSync2(dbPath)) chmodSync(dbPath, 384);
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
     this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec(SCHEMA);
+    runMigrations(this.db);
     this.runMigrations();
   }
   columns(table) {
@@ -21535,8 +21656,9 @@ var Store = class {
   createTask(t) {
     this.db.prepare(
       `INSERT INTO tasks(id,cluster_id,codex_session_id,worktree,branch,repo_path,
-        sandbox,model,effort,instructions,acceptance_json,max_minutes,network,status,slice_count,extra_config_json,hypothesis_id)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)`
+        sandbox,model,effort,instructions,acceptance_json,max_minutes,network,status,slice_count,extra_config_json,
+        hypothesis_id,target_id,target_kind,repository_commit,worker_version,routing_reason,fallback_from)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?)`
     ).run(
       t.id,
       t.cluster_id,
@@ -21553,7 +21675,13 @@ var Store = class {
       t.network,
       t.status,
       t.extra_config_json ?? null,
-      t.hypothesis_id ?? null
+      t.hypothesis_id ?? null,
+      t.target_id ?? "local",
+      t.target_kind ?? "local",
+      t.repository_commit ?? null,
+      t.worker_version ?? null,
+      t.routing_reason ?? "local-default",
+      t.fallback_from ?? null
     );
     return this.getTask(t.id);
   }
@@ -21787,10 +21915,6 @@ var Store = class {
 // src/session.ts
 import { EventEmitter } from "node:events";
 
-// src/codex.ts
-import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
-
 // src/events.ts
 function normalizeCommand(command) {
   let normalized = command.toLowerCase().replace(/`/g, "").replace(/\s+/g, " ").trim();
@@ -21981,9 +22105,131 @@ function parseSliceResult(agentText) {
       default:
         break;
     }
+    void lower;
   }
   if (result.blockerText) result.blockerText = result.blockerText.trim();
   return result;
+}
+
+// src/runtime/environment.ts
+var COMMON_ENVIRONMENT = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TMPDIR",
+  "TEMP",
+  "TMP"
+];
+var CODEX_ENVIRONMENT = ["CODEX_HOME", "CODEX_CA_CERTIFICATE", "SSL_CERT_FILE"];
+var SSH_ENVIRONMENT = ["SSH_AUTH_SOCK"];
+function buildChildEnvironment(source, purpose) {
+  const allowed = purpose === "codex" ? [...COMMON_ENVIRONMENT, ...CODEX_ENVIRONMENT] : purpose === "ssh" ? [...COMMON_ENVIRONMENT, ...SSH_ENVIRONMENT] : COMMON_ENVIRONMENT;
+  const result = {};
+  for (const key of allowed) {
+    const value = source[key];
+    if (value !== void 0) result[key] = value;
+  }
+  return result;
+}
+
+// src/runtime/process.ts
+import { spawn } from "node:child_process";
+
+// src/runtime/redaction.ts
+var REDACTED = "[REDACTED]";
+var SECRET_ASSIGNMENT = new RegExp(
+  String.raw`\b(OPENAI_API_KEY|CODEX_API_KEY|CODEX_ACCESS_TOKEN|GITHUB_TOKEN|GH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN)\s*([:=])\s*([^\s]+)`,
+  "gi"
+);
+function redact(value) {
+  return value.replace(/(Authorization\s*:\s*Bearer\s+)[^\s]+/gi, `$1${REDACTED}`).replace(SECRET_ASSIGNMENT, (_match, name, separator) => `${name}${separator}${REDACTED}`).replace(/([?&](?:access_token|api_key|token)=)[^&\s]+/gi, `$1${REDACTED}`).replace(/-----BEGIN(?: [A-Z]+)* PRIVATE KEY-----[\s\S]*?-----END(?: [A-Z]+)* PRIVATE KEY-----/g, REDACTED);
+}
+
+// src/runtime/process.ts
+function appendBounded(current, chunk, maximum) {
+  const next = current + chunk.toString();
+  if (Buffer.byteLength(next) <= maximum) return { value: next, exceeded: false };
+  return { value: next.slice(-maximum), exceeded: true };
+}
+function startManagedProcess(options) {
+  const child = spawn(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  let stdout = "";
+  let stderr = "";
+  let lineBuffer = "";
+  let termination = "normal";
+  let forceKillTimer;
+  let settled = false;
+  const terminate = (reason) => {
+    if (termination === "normal") termination = reason;
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill("SIGTERM");
+    forceKillTimer ??= setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }, options.killGraceMs);
+  };
+  child.stdout.on("data", (chunk) => {
+    const appended = appendBounded(stdout, chunk, options.maxStdoutBytes);
+    stdout = appended.value;
+    lineBuffer += chunk.toString();
+    let newline = lineBuffer.indexOf("\n");
+    while (newline >= 0) {
+      options.onStdoutLine?.(lineBuffer.slice(0, newline));
+      lineBuffer = lineBuffer.slice(newline + 1);
+      newline = lineBuffer.indexOf("\n");
+    }
+    if (appended.exceeded) terminate("output_limit");
+  });
+  child.stderr.on("data", (chunk) => {
+    const appended = appendBounded(stderr, chunk, options.maxStderrBytes);
+    stderr = appended.value;
+    if (appended.exceeded) terminate("output_limit");
+  });
+  if (options.input !== void 0) child.stdin.end(options.input);
+  else child.stdin.end();
+  const timeout = setTimeout(() => terminate("timeout"), options.timeoutMs);
+  const onAbort = () => terminate("aborted");
+  if (options.signal?.aborted) onAbort();
+  else options.signal?.addEventListener("abort", onAbort, { once: true });
+  const done = new Promise((resolve6) => {
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      options.signal?.removeEventListener("abort", onAbort);
+      resolve6(result);
+    };
+    child.on("close", (code, signal) => {
+      if (lineBuffer) options.onStdoutLine?.(lineBuffer);
+      finish({
+        code,
+        signal,
+        termination,
+        stdout,
+        stderr: redact(stderr)
+      });
+    });
+    child.on("error", (error2) => {
+      termination = "spawn_error";
+      finish({
+        code: null,
+        signal: null,
+        termination,
+        stdout,
+        stderr: redact(stderr),
+        error: redact(error2.message)
+      });
+    });
+  });
+  return { child, done };
 }
 
 // src/codex.ts
@@ -22010,12 +22256,27 @@ var BLOCKED_CONFIG_PREFIXES = [
   "features"
   // Feature-Flags server-seitig kontrolliert
 ];
+var ALLOWED_EXTRA_CONFIG = /* @__PURE__ */ new Map([
+  ["model_verbosity", /^(low|medium|high|concise)$/],
+  ["model_reasoning_summary", /^(none|auto|concise|detailed)$/],
+  ["hide_agent_reasoning", /^(true|false)$/]
+]);
 function isBlockedConfigKey(key) {
   const k = key.trim().toLowerCase();
   if (!k || /[\s=]/.test(k)) return true;
   if (k.includes("danger")) return true;
   if (BLOCKED_CONFIG_KEYS.has(k)) return true;
   return BLOCKED_CONFIG_PREFIXES.some((p) => k === p || k.startsWith(p + ".") || k.startsWith(p + "_"));
+}
+function validateExtraConfig(key, value) {
+  const normalized = key.trim().toLowerCase();
+  const valueSchema = ALLOWED_EXTRA_CONFIG.get(normalized);
+  if (!valueSchema) {
+    throw new Error(`extra_config-Schl\xFCssel '${key}' ist nicht erlaubt`);
+  }
+  if (!valueSchema.test(value.trim())) {
+    throw new Error(`extra_config-Wert f\xFCr '${key}' ist nicht erlaubt`);
+  }
 }
 function buildCodexArgs(opts) {
   const dropped = [];
@@ -22036,6 +22297,7 @@ function buildCodexArgs(opts) {
       dropped.push(key);
       continue;
     }
+    validateExtraConfig(key, value);
     cfg.push("-c", `${key}=${value}`);
   }
   const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", ...cfg];
@@ -22047,92 +22309,143 @@ function startSlice(opts) {
     throw new Error(`Sandbox nicht erlaubt: ${opts.sandbox}`);
   }
   const { args } = buildCodexArgs(opts);
-  const child = spawn(config2.codexBin, args, {
-    cwd: opts.repoPath,
-    stdio: ["pipe", "pipe", "pipe"],
-    env: process.env
-  });
-  child.stdin.write(opts.prompt);
-  child.stdin.end();
   const lines = [];
-  const rl = createInterface({ input: child.stdout });
-  rl.on("line", (line) => {
-    lines.push(line);
-    opts.onLine?.(line);
+  const managed = startManagedProcess({
+    command: opts.codexBin ?? config2.codexBin,
+    args,
+    cwd: opts.repoPath,
+    env: buildChildEnvironment(process.env, "codex"),
+    input: opts.prompt,
+    timeoutMs: opts.timeoutMs,
+    killGraceMs: config2.limits.sliceKillGraceMs,
+    maxStdoutBytes: 10 * 1024 * 1024,
+    maxStderrBytes: 64 * 1024,
+    signal: opts.signal,
+    onStdoutLine: (line) => {
+      lines.push(line);
+      if (lines.length > 1e4) lines.shift();
+      opts.onLine?.(line);
+    }
   });
-  let stderrBuf = "";
-  child.stderr.on("data", (d) => {
-    stderrBuf += d.toString();
-    if (stderrBuf.length > 2e5) stderrBuf = stderrBuf.slice(-2e5);
+  const done = managed.done.then((processResult) => {
+    const parsed = parseStreamLines(lines);
+    const lastMsg = parsed.agentMessages[parsed.agentMessages.length - 1] ?? "";
+    const sliceResult = parseSliceResult(lastMsg);
+    let status = "normal";
+    let errorMessage = null;
+    if (processResult.termination === "aborted") {
+      status = "killed";
+      errorMessage = "abgebrochen (cancel)";
+    } else if (processResult.termination === "timeout") {
+      status = "killed";
+      errorMessage = "Slice-Budget \xFCberschritten (killed)";
+    } else if (processResult.termination === "output_limit") {
+      status = "failed";
+      errorMessage = "Codex-Ausgabe \xFCberschritt das Sicherheitslimit";
+    } else if (processResult.termination === "spawn_error") {
+      status = "failed";
+      errorMessage = `Prozessfehler: ${processResult.error ?? "unbekannter Fehler"}`;
+    } else if (parsed.turnFailed || parsed.errorMessage) {
+      status = "failed";
+      errorMessage = parsed.errorMessage || `Codex-Fehler (exit ${processResult.code}). stderr: ${processResult.stderr.slice(-500)}`;
+    } else if (processResult.code !== 0 && parsed.rawEventCount === 0) {
+      status = "failed";
+      errorMessage = `codex exit ${processResult.code}. stderr: ${processResult.stderr.slice(-500)}`;
+    }
+    return {
+      threadId: parsed.threadId ?? opts.threadId ?? null,
+      agentMessages: parsed.agentMessages,
+      commands: parsed.commands,
+      usage: parsed.usage,
+      sliceResult,
+      status,
+      errorMessage,
+      rawEventCount: parsed.rawEventCount
+    };
   });
-  let killedByBudget = false;
-  let killedByCancel = false;
-  const killTimer = setTimeout(() => {
-    killedByBudget = true;
-    child.kill("SIGTERM");
-    setTimeout(() => {
-      if (!child.killed) child.kill("SIGKILL");
-    }, config2.limits.sliceKillGraceMs);
-  }, opts.timeoutMs);
-  const onAbort = () => {
-    killedByCancel = true;
-    child.kill("SIGTERM");
-    setTimeout(() => {
-      if (!child.killed) child.kill("SIGKILL");
-    }, config2.limits.sliceKillGraceMs);
-  };
-  if (opts.signal) {
-    if (opts.signal.aborted) onAbort();
-    else opts.signal.addEventListener("abort", onAbort, { once: true });
+  return { child: managed.child, done };
+}
+
+// src/execution/local-target.ts
+var LocalExecutionTarget = class {
+  id = "local";
+  kind = "local";
+  codexBin;
+  constructor(options = {}) {
+    this.codexBin = options.codexBin ?? config2.codexBin;
   }
-  const done = new Promise((resolvePromise) => {
-    child.on("close", (code) => {
-      clearTimeout(killTimer);
-      opts.signal?.removeEventListener("abort", onAbort);
-      const parsed = parseStreamLines(lines);
-      const lastMsg = parsed.agentMessages[parsed.agentMessages.length - 1] ?? "";
-      const sliceResult = parseSliceResult(lastMsg);
-      let status = "normal";
-      let errorMessage = null;
-      if (killedByCancel) {
-        status = "killed";
-        errorMessage = "abgebrochen (cancel)";
-      } else if (killedByBudget) {
-        status = "killed";
-        errorMessage = "Slice-Budget \xFCberschritten (killed)";
-      } else if (parsed.turnFailed || parsed.errorMessage) {
-        status = "failed";
-        errorMessage = parsed.errorMessage || `Codex-Fehler (exit ${code}). stderr: ${stderrBuf.slice(-500)}`;
-      } else if (code !== 0 && parsed.rawEventCount === 0) {
-        status = "failed";
-        errorMessage = `codex exit ${code}. stderr: ${stderrBuf.slice(-500)}`;
-      }
-      resolvePromise({
-        threadId: parsed.threadId ?? opts.threadId ?? null,
-        agentMessages: parsed.agentMessages,
-        commands: parsed.commands,
-        usage: parsed.usage,
-        sliceResult,
-        status,
-        errorMessage,
-        rawEventCount: parsed.rawEventCount
-      });
+  async doctor() {
+    const version2 = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5e3, "codex");
+    if (version2.code !== 0) {
+      return {
+        targetId: this.id,
+        kind: this.kind,
+        state: "unhealthy",
+        codexVersion: null,
+        auth: { state: "unavailable", message: "Codex CLI nicht verf\xFCgbar" },
+        errorCode: "TARGET_VERSION",
+        message: version2.stderr || "Codex CLI nicht verf\xFCgbar"
+      };
+    }
+    const match = version2.stdout.match(/(\d+\.\d+\.\d+[^\s]*)/);
+    const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5e3, "codex");
+    const auth = parseAuthStatus(login.code, `${login.stdout}
+${login.stderr}`);
+    return {
+      targetId: this.id,
+      kind: this.kind,
+      state: auth.state === "authenticated" ? "healthy" : "unhealthy",
+      codexVersion: match?.[1] ?? null,
+      auth,
+      errorCode: auth.state === "authenticated" ? void 0 : "TARGET_AUTH",
+      message: auth.message
+    };
+  }
+  startCodex(request) {
+    return startSlice({ ...request, codexBin: this.codexBin });
+  }
+  async repositoryIdentity(repoPath) {
+    const result = await this.runGit({
+      cwd: repoPath,
+      argv: ["rev-parse", "--show-toplevel", "HEAD"],
+      timeoutMs: 1e4
     });
-    child.on("error", (err2) => {
-      clearTimeout(killTimer);
-      resolvePromise({
-        threadId: opts.threadId ?? null,
-        agentMessages: [],
-        commands: [],
-        usage: null,
-        sliceResult: parseSliceResult(""),
-        status: "failed",
-        errorMessage: `Prozessfehler: ${err2.message}`,
-        rawEventCount: 0
-      });
+    if (result.code !== 0) throw new Error(result.stderr || "Git-Repository nicht verf\xFCgbar");
+    const [topLevel, headCommit] = result.stdout.trim().split(/\r?\n/);
+    const status = await this.runGit({ cwd: repoPath, argv: ["status", "--porcelain=v1"], timeoutMs: 1e4 });
+    return { topLevel, headCommit, clean: status.code === 0 && status.stdout.trim() === "" };
+  }
+  runCheck(request) {
+    const [command, ...args] = request.argv;
+    return this.runBinary(command, args, request.cwd, request.timeoutMs ?? 15 * 6e4, "repository-check");
+  }
+  runGit(request) {
+    return this.runBinary("git", request.argv, request.cwd, request.timeoutMs ?? 6e4, "repository-check");
+  }
+  async runBinary(command, args, cwd, timeoutMs, purpose) {
+    const running = startManagedProcess({
+      command,
+      args,
+      cwd,
+      env: buildChildEnvironment(process.env, purpose),
+      timeoutMs,
+      killGraceMs: config2.limits.sliceKillGraceMs,
+      maxStdoutBytes: 4e5,
+      maxStderrBytes: 64e3
     });
-  });
-  return { child, done };
+    const result = await running.done;
+    return { code: result.code, stdout: result.stdout, stderr: result.error ?? result.stderr };
+  }
+};
+function parseAuthStatus(code, output) {
+  if (code !== 0) return { state: "unauthenticated", message: "Codex CLI ist nicht angemeldet" };
+  if (/logged in using chatgpt/i.test(output)) {
+    return { state: "authenticated", method: "chatgpt", message: "Codex CLI ist \xFCber ChatGPT angemeldet" };
+  }
+  if (/logged in using.*api/i.test(output)) {
+    return { state: "authenticated", method: "api-key", message: "Codex CLI ist \xFCber API-Key angemeldet" };
+  }
+  return { state: "authenticated", method: "unknown", message: "Codex CLI ist angemeldet" };
 }
 
 // src/prompts.ts
@@ -22204,66 +22517,18 @@ function buildResumeSlicePrompt(task, injections, acceptance) {
   return parts.join("\n");
 }
 
-// src/agents.ts
-import { existsSync, readFileSync, writeFileSync, mkdirSync as mkdirSync2, copyFileSync } from "node:fs";
-import { dirname as dirname2, join, resolve as resolve2 } from "node:path";
-import { fileURLToPath } from "node:url";
-var __dirname = dirname2(fileURLToPath(import.meta.url));
-function templatePath() {
-  const candidates = [
-    resolve2(__dirname, "../templates/AGENTS.executor.md"),
-    resolve2(__dirname, "../../templates/AGENTS.executor.md")
-  ];
-  return candidates.find((p) => existsSync(p)) ?? candidates[0];
-}
-function centralAgentsMd() {
-  const dest = join(config2.home, "AGENTS.md");
-  try {
-    mkdirSync2(config2.home, { recursive: true });
-    const tpl = templatePath();
-    if (existsSync(tpl)) copyFileSync(tpl, dest);
-  } catch {
-  }
-  return dest;
-}
-function ensureAgentsMd(workingDir) {
-  const target = join(workingDir, "AGENTS.md");
-  const marker = "codex-orchestrator";
-  let executorText = "";
-  try {
-    executorText = readFileSync(templatePath(), "utf8");
-  } catch {
-    executorText = "# AGENTS.md \u2014 Codex Executor Role (codex-orchestrator)\n\nBeende jeden Slice mit einem SLICE_RESULT-Block. Improvisiere nie um fehlende Informationen herum.\n";
-  }
-  if (!existsSync(target)) {
-    try {
-      mkdirSync2(workingDir, { recursive: true });
-      writeFileSync(target, executorText, "utf8");
-      return { path: target, action: "created" };
-    } catch {
-      return { path: target, action: "present" };
-    }
-  }
-  const current = readFileSync(target, "utf8");
-  if (current.includes(marker)) return { path: target, action: "present" };
-  try {
-    writeFileSync(
-      target,
-      current.trimEnd() + "\n\n---\n\n" + executorText,
-      "utf8"
-    );
-    return { path: target, action: "appended" };
-  } catch {
-    return { path: target, action: "present" };
-  }
-}
-
 // src/session.ts
 var SessionManager = class {
-  constructor(store2) {
+  constructor(store2, targetFor = (() => {
+    const local = new LocalExecutionTarget();
+    return () => local;
+  })()) {
     this.store = store2;
+    this.targetFor = targetFor;
     this.emitter.setMaxListeners(0);
   }
+  store;
+  targetFor;
   controls = /* @__PURE__ */ new Map();
   emitter = new EventEmitter();
   active = 0;
@@ -22351,6 +22616,11 @@ var SessionManager = class {
       status: "queued",
       extra_config_json: args.extraConfig ? JSON.stringify(args.extraConfig) : null,
       owner_pid: null,
+      target_id: args.targetId ?? "local",
+      target_kind: args.targetKind ?? "local",
+      repository_commit: args.repositoryCommit ?? null,
+      routing_reason: args.routingReason ?? "local-default",
+      fallback_from: args.fallbackFrom ?? null,
       hypothesis_id: args.hypothesisId ?? null
     });
   }
@@ -22398,15 +22668,6 @@ var SessionManager = class {
       }
       const isFirst = !task.codex_session_id;
       const workDir = task.worktree || task.repo_path;
-      if (isFirst) {
-        try {
-          const a = ensureAgentsMd(workDir);
-          if (a.action !== "present") {
-            this.store.addEvent(taskId, "note", { agents_md: a.action, path: a.path });
-          }
-        } catch {
-        }
-      }
       const acceptance = this.acceptanceOf(task);
       const injections = isFirst ? [] : this.store.pendingInjections(taskId);
       const prompt = isFirst ? buildFirstSlicePrompt(task, acceptance, stopCondition) : buildResumeSlicePrompt(task, injections, acceptance);
@@ -22429,7 +22690,7 @@ var SessionManager = class {
         } catch {
           extraConfig = void 0;
         }
-        const running = startSlice({
+        const running = this.targetFor(task.target_id).startCodex({
           repoPath: workDir,
           threadId: task.codex_session_id,
           prompt,
@@ -22625,7 +22886,7 @@ var SessionManager = class {
     if (evs.length > 0 || !task) {
       return this.pack(taskId, evs, cursor, task?.status ?? "unknown", false);
     }
-    await new Promise((resolve5) => {
+    await new Promise((resolve6) => {
       let settled = false;
       const done = () => {
         if (settled) return;
@@ -22633,7 +22894,7 @@ var SessionManager = class {
         this.emitter.off(taskId, onEvent);
         clearTimeout(timer);
         clearInterval(poll);
-        resolve5();
+        resolve6();
       };
       const onEvent = () => done();
       const timer = setTimeout(done, Math.max(0, deadline - Date.now()));
@@ -22697,6 +22958,15 @@ function isProcessAlive(pid) {
 }
 
 // src/statemachine.ts
+function mergeEligibility(input) {
+  const reasons = [];
+  if (input.clusterStatus !== "confirmed") reasons.push("cluster_not_confirmed");
+  if (input.reviewStatus !== "confirmed") reasons.push("review_not_confirmed");
+  if (!input.checksGreen) reasons.push("checks_not_green");
+  if (input.taskClusterId !== input.clusterId) reasons.push("task_cluster_mismatch");
+  if (input.taskStatus !== "completed") reasons.push("task_not_completed");
+  return { ok: reasons.length === 0, reasons };
+}
 function parseStrategy(json) {
   try {
     return JSON.parse(json);
@@ -22718,6 +22988,7 @@ var ClusterStateMachine = class {
   constructor(store2) {
     this.store = store2;
   }
+  store;
   /** Prüft, ob Cluster N gestartet werden darf (Vorgänger confirmed + Retro). */
   predecessorsReady(cluster) {
     if (cluster.parallel_ok) return { ok: true, blocking: [] };
@@ -22806,7 +23077,15 @@ var ClusterStateMachine = class {
         this.store.setClusterStatus(clusterId, "submitted");
         return { ok: true, cluster_id: clusterId, status: "submitted" };
       case "review": {
-        const status = String(payload.status ?? "in_review");
+        const status = String(payload.status ?? "");
+        if (status !== "confirmed" && status !== "needs_changes") {
+          return {
+            ok: false,
+            cluster_id: clusterId,
+            status: cluster.status,
+            error: "Review-Status muss 'confirmed' oder 'needs_changes' sein"
+          };
+        }
         this.store.addReview(
           clusterId,
           status,
@@ -22876,8 +23155,8 @@ var ClusterStateMachine = class {
 
 // src/worktree.ts
 import { spawnSync } from "node:child_process";
-import { mkdirSync as mkdirSync3, existsSync as existsSync2 } from "node:fs";
-import { resolve as resolve3 } from "node:path";
+import { mkdirSync as mkdirSync2, existsSync as existsSync3 } from "node:fs";
+import { resolve as resolve2 } from "node:path";
 function git(cwd, args) {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });
   if (r.status !== 0) {
@@ -22892,15 +23171,16 @@ function isGitRepo(repoPath) {
 var WorktreeManager = class {
   constructor(root = config2.worktreeRoot) {
     this.root = root;
-    mkdirSync3(this.root, { recursive: true });
+    mkdirSync2(this.root, { recursive: true });
   }
+  root;
   create(repoPath, taskId, baseBranch) {
     if (!isGitRepo(repoPath)) {
       throw new Error(`Kein git-Repo: ${repoPath}. Worktree-Isolation nicht m\xF6glich.`);
     }
     const branch = `orch/${taskId}`;
-    const worktree = resolve3(this.root, taskId);
-    if (existsSync2(worktree)) {
+    const worktree = resolve2(this.root, taskId);
+    if (existsSync3(worktree)) {
       return { worktree, branch };
     }
     const args = ["worktree", "add", "-b", branch, worktree];
@@ -22933,29 +23213,7 @@ var WorktreeManager = class {
 };
 
 // src/checks.ts
-import { spawn as spawn2 } from "node:child_process";
-function runArgv(argv, cwd, timeoutMs = 15 * 6e4) {
-  return new Promise((resolve5) => {
-    const child = spawn2(argv[0], argv.slice(1), { cwd, env: process.env });
-    let out = "";
-    const cap = (d) => {
-      out += d.toString();
-      if (out.length > 4e5) out = out.slice(-4e5);
-    };
-    child.stdout.on("data", cap);
-    child.stderr.on("data", cap);
-    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve5({ code, out });
-    });
-    child.on("error", (err2) => {
-      clearTimeout(timer);
-      resolve5({ code: null, out: `spawn error: ${err2.message}` });
-    });
-  });
-}
-async function runChecks(store2, clusterId, repoPath, names) {
+async function runChecks(store2, clusterId, repoPath, names, target = new LocalExecutionTarget()) {
   const runs = [];
   const unknown2 = [];
   for (const name of names) {
@@ -22964,7 +23222,9 @@ async function runChecks(store2, clusterId, repoPath, names) {
       unknown2.push(name);
       continue;
     }
-    const { code, out } = await runArgv(spec.argv, repoPath);
+    const result = await target.runCheck({ cwd: repoPath, argv: spec.argv });
+    const code = result.code;
+    const out = `${result.stdout}${result.stderr}`;
     const summary = summarizeOutput(out);
     const ok2 = code === 0;
     store2.addCheck(clusterId, name, code, summary);
@@ -22976,25 +23236,25 @@ async function runChecks(store2, clusterId, repoPath, names) {
 function summarizeOutput(out) {
   const lines = out.split(/\r?\n/).filter((l) => l.trim().length > 0);
   const tail = lines.slice(-12).join("\n");
-  return tail.slice(0, 2e3);
+  return redact(tail.slice(0, 2e3));
 }
-async function diffSize(repoPath) {
+async function diffSize(repoPath, target = new LocalExecutionTarget()) {
   let files = 0;
   let lines = 0;
-  const tracked = await runArgv(["git", "--no-pager", "diff", "--numstat", "HEAD"], repoPath, 6e4);
-  for (const l of tracked.out.split(/\r?\n/)) {
+  const tracked = await target.runGit({ cwd: repoPath, argv: ["diff", "--numstat", "HEAD"], timeoutMs: 6e4 });
+  for (const l of `${tracked.stdout}${tracked.stderr}`.split(/\r?\n/)) {
     const m = l.match(/^(\d+|-)\t(\d+|-)\t/);
     if (!m) continue;
     files++;
     lines += (m[1] === "-" ? 0 : Number(m[1])) + (m[2] === "-" ? 0 : Number(m[2]));
   }
-  const untracked = await runArgv(["git", "ls-files", "--others", "--exclude-standard"], repoPath, 6e4);
-  for (const rel of untracked.out.split(/\r?\n/)) {
+  const untracked = await target.runGit({ cwd: repoPath, argv: ["ls-files", "--others", "--exclude-standard"], timeoutMs: 6e4 });
+  for (const rel of untracked.stdout.split(/\r?\n/)) {
     const name = rel.trim();
     if (!name) continue;
     files++;
-    const wc = await runArgv(["git", "--no-pager", "diff", "--numstat", "--no-index", "/dev/null", name], repoPath, 6e4);
-    const m = wc.out.match(/^(\d+|-)\t/);
+    const wc = await target.runGit({ cwd: repoPath, argv: ["diff", "--numstat", "--no-index", "/dev/null", name], timeoutMs: 6e4 });
+    const m = wc.stdout.match(/^(\d+|-)\t/);
     if (m && m[1] !== "-") lines += Number(m[1]);
   }
   return { files, lines };
@@ -23019,8 +23279,31 @@ function latestWorktreeForCluster(store2, clusterId) {
   return last?.worktree ?? null;
 }
 
+// src/agents.ts
+import { existsSync as existsSync4, readFileSync as readFileSync2, writeFileSync, mkdirSync as mkdirSync3, copyFileSync } from "node:fs";
+import { dirname as dirname2, join, resolve as resolve3 } from "node:path";
+import { fileURLToPath } from "node:url";
+var __dirname = dirname2(fileURLToPath(import.meta.url));
+function templatePath() {
+  const candidates = [
+    resolve3(__dirname, "../templates/AGENTS.executor.md"),
+    resolve3(__dirname, "../../templates/AGENTS.executor.md")
+  ];
+  return candidates.find((p) => existsSync4(p)) ?? candidates[0];
+}
+function centralAgentsMd() {
+  const dest = join(config2.home, "AGENTS.md");
+  try {
+    mkdirSync3(config2.home, { recursive: true });
+    const tpl = templatePath();
+    if (existsSync4(tpl)) copyFileSync(tpl, dest);
+  } catch {
+  }
+  return dest;
+}
+
 // src/updater.ts
-import { spawn as spawn3, spawnSync as spawnSync2 } from "node:child_process";
+import { spawn as spawn2, spawnSync as spawnSync2 } from "node:child_process";
 function installedVersion(codexBin = "codex") {
   const r = spawnSync2(codexBin, ["--version"], { encoding: "utf8" });
   if (r.status !== 0) return null;
@@ -23052,184 +23335,17 @@ function checkForUpdate(channel, codexBin = "codex") {
   return { installed, latest, channel, updateAvailable };
 }
 function runUpdate(channel) {
-  return new Promise((resolve5) => {
-    const child = spawn3("npm", ["install", "-g", `@openai/codex@${channel}`], { encoding: "utf8" });
+  return new Promise((resolve6) => {
+    const child = spawn2("npm", ["install", "-g", `@openai/codex@${channel}`], { encoding: "utf8" });
     let out = "";
     child.stdout?.on("data", (d) => out += d.toString());
     child.stderr?.on("data", (d) => out += d.toString());
-    child.on("close", (code) => resolve5({ ok: code === 0, output: out.slice(-4e3) }));
-    child.on("error", (err2) => resolve5({ ok: false, output: String(err2) }));
+    child.on("close", (code) => resolve6({ ok: code === 0, output: out.slice(-4e3) }));
+    child.on("error", (err2) => resolve6({ ok: false, output: String(err2) }));
   });
-}
-async function maybeAutoUpdate(log) {
-  if (process.env.ORCH_AUTO_UPDATE === "false") return;
-  const channel = process.env.ORCH_CODEX_CHANNEL || "latest";
-  const check2 = checkForUpdate(channel);
-  if (!check2.updateAvailable) {
-    log(`[updater] Codex ${check2.installed ?? "?"} aktuell (Kanal ${channel}, latest ${check2.latest ?? "?"}).`);
-    return;
-  }
-  log(`[updater] Update ${check2.installed} -> ${check2.latest} (${channel}) wird installiert\u2026`);
-  const res = await runUpdate(channel);
-  log(res.ok ? `[updater] Codex aktualisiert auf ${check2.latest}.` : `[updater] Update fehlgeschlagen: ${res.output.slice(-300)}`);
-}
-
-// src/plugin.ts
-import { readFileSync as readFileSync2, existsSync as existsSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync4 } from "node:fs";
-import { dirname as dirname3, resolve as resolve4, join as join2 } from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { spawnSync as spawnSync3 } from "node:child_process";
-var __dirname2 = dirname3(fileURLToPath2(import.meta.url));
-var PLUGIN_REPO = process.env.ORCH_PLUGIN_REPO || "tomtastisch/codex-orchestrator";
-var CHECK_TTL_MS = Number(process.env.ORCH_PLUGIN_CHECK_TTL_MS || 6 * 60 * 60 * 1e3);
-function pluginRoot() {
-  return resolve4(__dirname2, "..");
-}
-function installedVersion2() {
-  for (const rel of ["package.json", ".claude-plugin/plugin.json"]) {
-    const p = resolve4(pluginRoot(), rel);
-    if (existsSync3(p)) {
-      try {
-        const v = JSON.parse(readFileSync2(p, "utf8")).version;
-        if (typeof v === "string" && v) return v;
-      } catch {
-      }
-    }
-  }
-  return "0.0.0";
-}
-function installKind() {
-  return existsSync3(resolve4(pluginRoot(), ".git")) ? "git" : "managed";
-}
-function gitClean() {
-  const r = spawnSync3("git", ["status", "--porcelain"], { cwd: pluginRoot(), encoding: "utf8" });
-  return r.status === 0 && (r.stdout || "").trim() === "";
-}
-function cachePath() {
-  return join2(config2.home, "plugin-update-check.json");
-}
-function readCache() {
-  try {
-    return JSON.parse(readFileSync2(cachePath(), "utf8"));
-  } catch {
-    return null;
-  }
-}
-function writeCache(entry) {
-  try {
-    mkdirSync4(config2.home, { recursive: true });
-    writeFileSync2(cachePath(), JSON.stringify(entry), "utf8");
-  } catch {
-  }
-}
-async function latestVersion2(now, force = false) {
-  const cached2 = readCache();
-  if (!force && cached2 && now - cached2.checkedAt < CHECK_TTL_MS) {
-    return cached2.latest;
-  }
-  let latest = null;
-  try {
-    const res = await fetch(`https://api.github.com/repos/${PLUGIN_REPO}/releases/latest`, {
-      headers: { Accept: "application/vnd.github+json", "User-Agent": "codex-orchestrator" }
-    });
-    if (res.ok) {
-      const j = await res.json();
-      if (typeof j.tag_name === "string") latest = j.tag_name.replace(/^v/, "");
-    }
-  } catch {
-  }
-  writeCache({ checkedAt: now, latest });
-  return latest;
-}
-async function checkPluginUpdate(now, force = false) {
-  const installed = installedVersion2();
-  const latest = await latestVersion2(now, force);
-  const updateAvailable = !!latest && latest !== installed && isOlder(installed, latest);
-  const kind = installKind();
-  const how = kind === "git" ? "plugin_update(action:apply) \u2014 git pull + rebuild; danach Server/Session neu starten." : "In Claude Code: `/plugin marketplace update codex-orchestrator`, dann Plugin neu installieren/aktivieren. (Ein Marketplace-Plugin kann sich nicht selbst \xFCberschreiben.)";
-  return { installed, latest, updateAvailable, install_kind: kind, how_to_update: how };
-}
-async function applyPluginUpdate(now) {
-  const chk = await checkPluginUpdate(now, true);
-  if (!chk.updateAvailable) {
-    return { ok: true, applied: false, from: chk.installed, to: chk.latest, restart_required: false, note: "bereits aktuell" };
-  }
-  if (chk.install_kind !== "git") {
-    return {
-      ok: true,
-      applied: false,
-      from: chk.installed,
-      to: chk.latest,
-      restart_required: false,
-      note: chk.how_to_update
-    };
-  }
-  if (!gitClean()) {
-    return {
-      ok: false,
-      applied: false,
-      from: chk.installed,
-      to: chk.latest,
-      restart_required: false,
-      note: "Arbeitsbaum nicht sauber \u2014 Auto-Update \xFCbersprungen (uncommittete \xC4nderungen)."
-    };
-  }
-  const root = pluginRoot();
-  const steps = [
-    ["git", ["pull", "--ff-only"]],
-    ["npm", ["ci"]],
-    ["npm", ["run", "build"]],
-    ["npm", ["run", "bundle"]]
-  ];
-  let output = "";
-  for (const [cmd, args] of steps) {
-    const r = spawnSync3(cmd, args, { cwd: root, encoding: "utf8" });
-    output += `
-$ ${cmd} ${args.join(" ")}
-${(r.stdout || "") + (r.stderr || "")}`.slice(0, 4e3);
-    if (r.status !== 0) {
-      return {
-        ok: false,
-        applied: false,
-        from: chk.installed,
-        to: chk.latest,
-        restart_required: false,
-        note: `Schritt '${cmd} ${args.join(" ")}' fehlgeschlagen`,
-        output: output.slice(-2e3)
-      };
-    }
-  }
-  return {
-    ok: true,
-    applied: true,
-    from: chk.installed,
-    to: chk.latest,
-    restart_required: true,
-    note: "Aktualisiert. Neue Version wird beim n\xE4chsten Serverstart aktiv.",
-    output: output.slice(-1500)
-  };
-}
-async function maybePluginUpdate(now, log) {
-  let chk;
-  try {
-    chk = await checkPluginUpdate(now);
-  } catch {
-    return;
-  }
-  if (!chk.updateAvailable) {
-    log(`[plugin] v${chk.installed} aktuell (latest ${chk.latest ?? "?"}, ${chk.install_kind}).`);
-    return;
-  }
-  log(`[plugin] Update verf\xFCgbar: v${chk.installed} -> v${chk.latest}. ${chk.how_to_update}`);
-  if (process.env.ORCH_PLUGIN_AUTO_UPDATE === "true" && chk.install_kind === "git") {
-    log(`[plugin] Auto-Update aktiv, wende an\u2026`);
-    const res = await applyPluginUpdate(now);
-    log(res.applied ? `[plugin] ${res.note}` : `[plugin] Auto-Update: ${res.note}`);
-  }
 }
 
 // src/doctor.ts
-import { spawn as spawn4 } from "node:child_process";
 function isAuthenticated(loginStatusOutput) {
   if (/not\s+logged\s+in/i.test(loginStatusOutput)) return false;
   return /logged\s+in/i.test(loginStatusOutput);
@@ -23245,7 +23361,7 @@ function buildDoctorReport(probe) {
     );
   } else if (!authenticated) {
     guidance.push(
-      "Codex ist installiert, aber nicht angemeldet. 'codex login' ausf\xFChren (oder OPENAI_API_KEY in der Umgebung bereitstellen)."
+      "Codex ist installiert, aber nicht angemeldet. 'codex login' ausf\xFChren oder eine sichere Remote-Auth-Strategie in .orchestrator/config.json konfigurieren."
     );
   }
   if (marketplaceSkipped) {
@@ -23266,52 +23382,6 @@ function buildDoctorReport(probe) {
     allowedSandboxes: config2.allowedSandboxes,
     guidance
   };
-}
-function spawnCapture(bin, args, timeoutMs = 1e4) {
-  return new Promise((resolve5) => {
-    let out = "";
-    let settled = false;
-    const done = (r) => {
-      if (!settled) {
-        settled = true;
-        resolve5(r);
-      }
-    };
-    let child;
-    try {
-      child = spawn4(bin, args, { env: process.env });
-    } catch (e) {
-      done({ code: null, out: e.message });
-      return;
-    }
-    const cap = (d) => {
-      out += d.toString();
-      if (out.length > 2e4) out = out.slice(-2e4);
-    };
-    child.stdout.on("data", cap);
-    child.stderr.on("data", cap);
-    const timer = setTimeout(() => {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-      }
-      done({ code: null, out });
-    }, timeoutMs);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      done({ code, out });
-    });
-    child.on("error", () => {
-      clearTimeout(timer);
-      done({ code: null, out });
-    });
-  });
-}
-async function runDoctor() {
-  const version2 = await spawnCapture(config2.codexBin, ["--version"]);
-  const codexVersion = version2.code === 0 ? version2.out.trim().split(/\r?\n/)[0] || null : null;
-  const login = codexVersion != null ? await spawnCapture(config2.codexBin, ["login", "status"]) : { code: null, out: "" };
-  return buildDoctorReport({ codexVersion, loginStatus: login.out });
 }
 
 // node_modules/@toon-format/toon/dist/index.mjs
@@ -23404,7 +23474,6 @@ function isSafeUnquoted(value, delimiter = DEFAULT_DELIMITER) {
 function isNumericLike(value) {
   return NUMERIC_LIKE_PATTERN.test(value) || LEADING_ZERO_PATTERN.test(value);
 }
-var QUOTED_KEY_MARKER = Symbol("quotedKey");
 function tryFoldKeyChain(key, value, siblings, options, rootLiteralKeys, pathPrefix, flattenDepth) {
   if (options.keyFolding !== "safe") return;
   if (!isJsonObject(value)) return;
@@ -23709,8 +23778,8 @@ function resolveOptions(options) {
 }
 
 // src/snapshot.ts
-import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join3 } from "node:path";
+import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join2 } from "node:path";
 function parse3(json) {
   if (!json) return null;
   try {
@@ -23757,18 +23826,18 @@ function writePlanSnapshot(store2, planId, format = "toon") {
   const snap = buildPlanSnapshot(store2, planId);
   if (!snap) return null;
   const content = format === "toon" ? encode(snap) : JSON.stringify(snap, null, 2);
-  const dir = join3(config2.home, "snapshots");
-  mkdirSync5(dir, { recursive: true });
-  const path = join3(dir, `${planId}.${format}`);
-  writeFileSync3(path, content, "utf8");
+  const dir = join2(config2.home, "snapshots");
+  mkdirSync4(dir, { recursive: true });
+  const path = join2(dir, `${planId}.${format}`);
+  writeFileSync2(path, content, "utf8");
   return { format, content, path };
 }
 
 // src/artifact.ts
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync4 } from "node:fs";
-import { basename, join as join4 } from "node:path";
+import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { basename, join as join3 } from "node:path";
 
 // src/hypotheses.ts
 function needsFollowUp(result) {
@@ -23810,6 +23879,7 @@ var HypothesisRepo = class _HypothesisRepo {
   constructor(store2) {
     this.store = store2;
   }
+  store;
   get db() {
     return this.store.db;
   }
@@ -24281,14 +24351,14 @@ function renderSummaryMd(a) {
 function writeResultArtifact(store2, planId, opts = {}) {
   const artifact = buildResultArtifact(store2, planId, opts);
   if (!artifact) return null;
-  const dir = join4(config2.home, "artifacts");
-  mkdirSync6(dir, { recursive: true });
+  const dir = join3(config2.home, "artifacts");
+  mkdirSync5(dir, { recursive: true });
   const stamp = artifact.timestamp.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
   const base = `codex-orchestration-result.v${artifact.schemaVersion}.${stamp}`;
-  const tolnPath = join4(dir, `${base}.toln`);
-  const summaryPath = join4(dir, `${base}.summary.md`);
-  writeFileSync4(tolnPath, renderToln(artifact), "utf8");
-  writeFileSync4(summaryPath, renderSummaryMd(artifact), "utf8");
+  const tolnPath = join3(dir, `${base}.toln`);
+  const summaryPath = join3(dir, `${base}.summary.md`);
+  writeFileSync3(tolnPath, renderToln(artifact), "utf8");
+  writeFileSync3(summaryPath, renderSummaryMd(artifact), "utf8");
   store2.addArtifact({
     planId,
     kind: "toln",
@@ -24349,10 +24419,712 @@ function checkSandboxPolicy(requested) {
 // src/types.ts
 var EFFORT_LADDER = ["low", "medium", "high", "xhigh"];
 
+// src/auth/bootstrap.ts
+import { lstatSync, readFileSync as readFileSync3 } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { join as join4 } from "node:path";
+
+// src/execution/errors.ts
+var TargetError = class extends Error {
+  constructor(code, message, targetId, retryable = false) {
+    super(message);
+    this.code = code;
+    this.targetId = targetId;
+    this.retryable = retryable;
+    this.name = "TargetError";
+  }
+  code;
+  targetId;
+  retryable;
+};
+
+// src/auth/bootstrap.ts
+var MAX_CREDENTIAL_BYTES = 64 * 1024;
+function loadCredentialFile(path) {
+  const metadata = lstatSync(path);
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    throw new Error("Credential-Quelle muss eine regul\xE4re Datei und darf kein Symlink sein");
+  }
+  if (typeof process.getuid === "function" && metadata.uid !== process.getuid()) {
+    throw new Error("Credential-Quelle muss dem aktuellen Benutzer geh\xF6ren");
+  }
+  if (process.platform !== "win32" && (metadata.mode & 63) !== 0) {
+    throw new Error("Credential-Quelle ben\xF6tigt private Rechte (0600)");
+  }
+  if (metadata.size < 1 || metadata.size > MAX_CREDENTIAL_BYTES) {
+    throw new Error("Credential-Quelle muss zwischen 1 Byte und 64 KiB gro\xDF sein");
+  }
+  return readFileSync3(path);
+}
+function defaultCredentialSource() {
+  return join4(process.env.CODEX_HOME ?? join4(homedir2(), ".codex"), "auth.json");
+}
+function requireHealthy(health, targetId) {
+  if (health.state === "healthy" && health.auth.state === "authenticated") return health;
+  throw new TargetError(
+    "TARGET_AUTH",
+    `Codex-Authentifizierung auf Target ${targetId} ist nicht verf\xFCgbar: ${health.auth.message}`,
+    targetId
+  );
+}
+var RemoteAuthBootstrapper = class {
+  async ensure(target, strategy) {
+    const current = await target.doctor();
+    if (current.state === "healthy" && current.auth.state === "authenticated") return current;
+    if (strategy.strategy === "existing") return requireHealthy(current, target.id);
+    if (strategy.strategy === "sync-file") {
+      if (!target.bootstrapAuth) {
+        throw new TargetError("TARGET_AUTH", "Remote-Target unterst\xFCtzt keinen Auth-Bootstrap", target.id);
+      }
+      const credentials = loadCredentialFile(strategy.source ?? defaultCredentialSource());
+      try {
+        await target.bootstrapAuth(strategy.codexHome ?? "~/.codex", credentials);
+      } finally {
+        credentials.fill(0);
+      }
+    } else {
+      if (!target.loginAccessToken) {
+        throw new TargetError("TARGET_AUTH", "Remote-Target unterst\xFCtzt keinen Token-Login", target.id);
+      }
+      const [command, ...args] = strategy.secretCommand;
+      if (!command) throw new TargetError("TARGET_AUTH", "Secret-Command fehlt", target.id);
+      const result = await startManagedProcess({
+        command,
+        args,
+        env: buildChildEnvironment(process.env, "ssh"),
+        timeoutMs: 3e4,
+        killGraceMs: 2e3,
+        maxStdoutBytes: MAX_CREDENTIAL_BYTES,
+        maxStderrBytes: 16 * 1024
+      }).done;
+      if (result.code !== 0 || result.termination !== "normal") {
+        throw new TargetError(
+          "TARGET_AUTH",
+          `Secret-Command fehlgeschlagen: ${result.stderr || result.error || result.termination}`,
+          target.id
+        );
+      }
+      const token = Buffer.from(result.stdout.replace(/[\r\n]+$/, ""));
+      if (token.length === 0 || token.length > MAX_CREDENTIAL_BYTES) {
+        throw new TargetError("TARGET_AUTH", "Secret-Command lieferte keinen g\xFCltigen Token", target.id);
+      }
+      try {
+        await target.loginAccessToken(strategy.codexHome ?? "~/.codex", token);
+      } finally {
+        token.fill(0);
+      }
+    }
+    return requireHealthy(await target.doctor(), target.id);
+  }
+};
+
+// src/execution/router.ts
+function healthError(health) {
+  const code = health.errorCode ?? (health.auth.state === "authenticated" ? "TARGET_VERSION" : "TARGET_AUTH");
+  return new TargetError(code, health.message, health.targetId, false);
+}
+var ExecutionTargetRouter = class {
+  constructor(options) {
+    this.options = options;
+  }
+  options;
+  async select(repoPath) {
+    if (this.options.mode === "local-only") {
+      const repository = await this.requireHealthy(this.options.local, repoPath);
+      return { target: this.options.local, repository, reason: "local-only", fallbackFrom: null };
+    }
+    const remote = this.options.remote;
+    if (!remote) throw new TargetError("TARGET_POLICY", "Remote-Ausf\xFChrung ist nicht konfiguriert", "remote");
+    try {
+      const remoteRepository = await this.requireHealthy(remote, repoPath);
+      const localRepository = await this.requireHealthy(this.options.local, repoPath);
+      this.requireMatchingRepositories(localRepository, remoteRepository, remote.id);
+      return { target: remote, repository: remoteRepository, reason: "remote-healthy", fallbackFrom: null };
+    } catch (error2) {
+      const targetError = error2 instanceof TargetError ? error2 : new TargetError("TARGET_PROTOCOL", error2 instanceof Error ? error2.message : String(error2), remote.id);
+      const canFallback = this.options.mode === "remote-preferred" && this.options.fallback === "connectivity-only" && targetError.code === "TARGET_CONNECTIVITY" && targetError.retryable;
+      if (!canFallback) throw targetError;
+      const repository = await this.requireHealthy(this.options.local, repoPath);
+      if (!repository.clean) {
+        throw new TargetError("TARGET_REPOSITORY", "Lokales Fallback-Repository enth\xE4lt uncommittierte \xC4nderungen", "local");
+      }
+      return {
+        target: this.options.local,
+        repository,
+        reason: "remote-connectivity-fallback",
+        fallbackFrom: remote.id
+      };
+    }
+  }
+  async requireHealthy(target, repoPath) {
+    const health = await target.doctor();
+    if (health.state !== "healthy") throw healthError(health);
+    return target.repositoryIdentity(repoPath);
+  }
+  requireMatchingRepositories(local, remote, remoteTargetId) {
+    if (local.headCommit !== remote.headCommit) {
+      throw new TargetError("TARGET_REPOSITORY", "Lokaler und entfernter Git-Commit stimmen nicht \xFCberein", remoteTargetId);
+    }
+    if (!local.clean || !remote.clean) {
+      throw new TargetError("TARGET_REPOSITORY", "Remote-Routing erfordert saubere Repository-Zust\xE4nde", remoteTargetId);
+    }
+  }
+};
+
+// src/execution/ssh/target.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { existsSync as existsSync6 } from "node:fs";
+import { dirname as dirname3, isAbsolute, relative, resolve as resolve5, sep as sep2 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+
+// src/execution/ssh/client.ts
+function sshOptions(options) {
+  return [
+    "-T",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    `ConnectTimeout=${options.connectTimeoutSeconds ?? 10}`
+  ];
+}
+function startWorkerProcess(options, workerEntry, request, timeoutMs, onLine) {
+  return startManagedProcess({
+    command: options.sshBin ?? "ssh",
+    args: [...sshOptions(options), options.host, "node", workerEntry],
+    env: buildChildEnvironment(process.env, "ssh"),
+    input: JSON.stringify(request),
+    timeoutMs,
+    killGraceMs: config2.limits.sliceKillGraceMs,
+    maxStdoutBytes: 12 * 1024 * 1024,
+    maxStderrBytes: 64 * 1024,
+    onStdoutLine: onLine
+  });
+}
+
+// src/execution/ssh/deploy.ts
+import { createHash as createHash2 } from "node:crypto";
+import { existsSync as existsSync5, readFileSync as readFileSync4 } from "node:fs";
+
+// src/version.ts
+var ORCHESTRATOR_VERSION = "1.3.0";
+
+// src/execution/ssh/deploy.ts
+function safeRemotePath(path) {
+  if (!/^(?:~\/|\/)[A-Za-z0-9._/-]+$/.test(path) || path.includes("..")) {
+    throw new TargetError("TARGET_POLICY", "Unsicherer Remote-Worker-Pfad", "remote");
+  }
+}
+async function run(command, args, timeoutMs) {
+  const processResult = await startManagedProcess({
+    command,
+    args,
+    env: buildChildEnvironment(process.env, "ssh"),
+    timeoutMs,
+    killGraceMs: 2e3,
+    maxStdoutBytes: 64e3,
+    maxStderrBytes: 64e3
+  }).done;
+  return { code: processResult.code, output: `${processResult.stdout}${processResult.stderr}` };
+}
+var WorkerDeployer = class {
+  constructor(options) {
+    this.options = options;
+  }
+  options;
+  async ensure() {
+    if (!existsSync5(this.options.workerBundlePath)) {
+      throw new TargetError("TARGET_VERSION", "Remote-Worker-Bundle fehlt", this.options.host);
+    }
+    safeRemotePath(this.options.workerRoot);
+    const bytes = readFileSync4(this.options.workerBundlePath);
+    const hash = createHash2("sha256").update(bytes).digest("hex");
+    const directory = `${this.options.workerRoot}/${ORCHESTRATOR_VERSION}/${hash}`;
+    const destination = `${directory}/worker.mjs`;
+    const temporary = `${destination}.tmp`;
+    const common = sshOptions(this.options);
+    const present = await run(this.options.sshBin ?? "ssh", [
+      ...common,
+      this.options.host,
+      "test",
+      "-f",
+      destination
+    ], 15e3);
+    if (present.code === 0) return destination;
+    const created = await run(this.options.sshBin ?? "ssh", [
+      ...common,
+      this.options.host,
+      "mkdir",
+      "-p",
+      directory
+    ], 15e3);
+    if (created.code !== 0) {
+      throw new TargetError("TARGET_CONNECTIVITY", `Worker-Verzeichnis nicht erstellbar: ${created.output}`, this.options.host, true);
+    }
+    const copied = await run(this.options.scpBin ?? "scp", [
+      "-q",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "StrictHostKeyChecking=yes",
+      this.options.workerBundlePath,
+      `${this.options.host}:${temporary}`
+    ], 6e4);
+    if (copied.code !== 0) {
+      throw new TargetError("TARGET_CONNECTIVITY", `Worker-Upload fehlgeschlagen: ${copied.output}`, this.options.host, true);
+    }
+    const activated = await run(this.options.sshBin ?? "ssh", [
+      ...common,
+      this.options.host,
+      "chmod",
+      "700",
+      temporary,
+      "&&",
+      "mv",
+      temporary,
+      destination
+    ], 15e3);
+    if (activated.code !== 0) {
+      throw new TargetError("TARGET_CONNECTIVITY", `Worker-Aktivierung fehlgeschlagen: ${activated.output}`, this.options.host, true);
+    }
+    return destination;
+  }
+};
+
+// src/execution/ssh/protocol.ts
+import { resolve as resolve4, sep } from "node:path";
+var WORKER_PROTOCOL_VERSION = 1;
+var RequestBase = {
+  requestId: external_exports.string().uuid(),
+  protocol: external_exports.literal(WORKER_PROTOCOL_VERSION)
+};
+var RepositoryScope = external_exports.object({
+  allowedRoot: external_exports.string().min(1),
+  cwd: external_exports.string().min(1)
+}).strict().superRefine(({ allowedRoot, cwd }, context) => {
+  const root = resolve4(allowedRoot);
+  const candidate = resolve4(cwd);
+  if (candidate !== root && !candidate.startsWith(`${root}${sep}`)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["cwd"],
+      message: "cwd must resolve within allowedRoot"
+    });
+  }
+});
+var ScopedShape = {
+  allowedRoot: external_exports.string().min(1),
+  cwd: external_exports.string().min(1)
+};
+var safeScope = (shape) => external_exports.object({
+  ...RequestBase,
+  ...ScopedShape,
+  ...shape
+}).strict().superRefine((value, context) => {
+  const result = RepositoryScope.safeParse({ allowedRoot: value.allowedRoot, cwd: value.cwd });
+  if (!result.success) {
+    for (const issue2 of result.error.issues) context.addIssue(issue2);
+  }
+});
+var GitArgumentsSchema = external_exports.array(external_exports.string().min(1).max(4096)).min(1).max(32).superRefine((args, context) => {
+  const allowed = /* @__PURE__ */ new Set(["rev-parse", "status", "diff", "ls-files", "worktree", "merge", "branch"]);
+  if (!allowed.has(args[0])) {
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "Git subcommand is not allowed" });
+  }
+  if (args.some((argument) => argument.includes("\0") || argument.includes("\n") || argument.includes("\r"))) {
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "Git args contain invalid control characters" });
+  }
+});
+var CheckNameSchema = external_exports.enum([
+  "git_diff_summary",
+  "git_status",
+  "mvn_test",
+  "npm_test",
+  "npm_build",
+  "lint",
+  "typecheck"
+]);
+var WorkerRequestSchema = external_exports.union([
+  external_exports.object({ ...RequestBase, operation: external_exports.literal("handshake") }).strict(),
+  external_exports.object({ ...RequestBase, operation: external_exports.literal("doctor"), codexBin: external_exports.string().min(1).optional() }).strict(),
+  safeScope({ operation: external_exports.literal("repository.identity") }),
+  safeScope({ operation: external_exports.literal("check.run"), checkName: CheckNameSchema }),
+  safeScope({ operation: external_exports.literal("git.run"), args: GitArgumentsSchema }),
+  safeScope({
+    operation: external_exports.literal("codex.run"),
+    codexBin: external_exports.string().min(1),
+    options: external_exports.object({
+      threadId: external_exports.string().nullable().optional(),
+      prompt: external_exports.string().max(2e6),
+      sandbox: external_exports.enum(["read-only", "workspace-write"]),
+      model: external_exports.string().min(1),
+      effort: external_exports.enum(["low", "medium", "high", "xhigh"]),
+      network: external_exports.boolean(),
+      timeoutMs: external_exports.number().int().positive().max(4 * 60 * 6e4),
+      extraConfig: external_exports.record(external_exports.string()).optional()
+    }).strict()
+  }),
+  external_exports.object({ ...RequestBase, operation: external_exports.literal("auth.status"), codexBin: external_exports.string().min(1) }).strict(),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("auth.bootstrap"),
+    codexHome: external_exports.string().min(1),
+    credentialBase64: external_exports.string().max(128 * 1024)
+  }).strict(),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("auth.login-token"),
+    codexBin: external_exports.string().min(1),
+    codexHome: external_exports.string().min(1),
+    tokenBase64: external_exports.string().max(128 * 1024)
+  }).strict()
+]);
+
+// src/execution/ssh/target.ts
+function defaultWorkerBundle() {
+  const directory = dirname3(fileURLToPath2(import.meta.url));
+  const candidates = [resolve5(directory, "worker.mjs"), resolve5(directory, "../../../bundle/worker.mjs")];
+  return candidates.find((candidate) => existsSync6(candidate)) ?? candidates[0];
+}
+function failedOutcome(message) {
+  return {
+    threadId: null,
+    agentMessages: [],
+    commands: [],
+    usage: null,
+    sliceResult: parseSliceResult(""),
+    status: "failed",
+    errorMessage: message,
+    rawEventCount: 0
+  };
+}
+var SshExecutionTarget = class {
+  constructor(options) {
+    this.options = options;
+    this.id = options.id;
+    this.workerEntry = options.workerEntry ?? "";
+    this.ready = options.skipDeploy === true;
+    if (!options.skipDeploy) {
+      this.deployer = new WorkerDeployer({
+        host: options.host,
+        sshBin: options.sshBin,
+        scpBin: options.scpBin,
+        workerBundlePath: options.workerBundlePath ?? defaultWorkerBundle(),
+        workerRoot: options.workerRoot ?? "~/.cache/codex-orchestrator"
+      });
+    }
+  }
+  options;
+  kind = "ssh";
+  id;
+  deployer;
+  workerEntry;
+  ready;
+  mapRepository(localPath) {
+    const localRoot = resolve5(this.options.localRoot);
+    const candidate = resolve5(localPath);
+    const suffix = relative(localRoot, candidate);
+    if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute(suffix)) {
+      throw new TargetError("TARGET_REPOSITORY", "Repository-Pfad liegt au\xDFerhalb des lokalen Mappings", this.id);
+    }
+    return resolve5(this.options.remoteRoot, suffix);
+  }
+  async doctor() {
+    await this.prepare();
+    const data = await this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "doctor",
+      codexBin: this.options.codexBin
+    }, 2e4);
+    return { ...data, targetId: this.id, kind: this.kind };
+  }
+  startCodex(request) {
+    if (!this.ready) throw new TargetError("TARGET_CONNECTIVITY", "Remote-Target wurde nicht vorbereitet", this.id, true);
+    const requestId = randomUUID2();
+    let final;
+    const process3 = startWorkerProcess(
+      { host: this.options.host, sshBin: this.options.sshBin },
+      this.workerEntry,
+      {
+        requestId,
+        protocol: WORKER_PROTOCOL_VERSION,
+        operation: "codex.run",
+        allowedRoot: this.options.remoteRoot,
+        cwd: this.mapRepository(request.repoPath),
+        codexBin: this.options.codexBin,
+        options: {
+          threadId: request.threadId,
+          prompt: request.prompt,
+          sandbox: request.sandbox,
+          model: request.model,
+          effort: request.effort,
+          network: request.network,
+          timeoutMs: request.timeoutMs,
+          extraConfig: request.extraConfig
+        }
+      },
+      request.timeoutMs + config2.limits.sliceKillGraceMs + 15e3,
+      (line) => {
+        const frame = parseFrame(line);
+        if (!frame || frame.requestId !== requestId) return;
+        if (frame.frame === "event") request.onLine?.(frame.line);
+        else final = frame;
+      }
+    );
+    const done = process3.done.then(() => {
+      if (!final || final.frame !== "result") return failedOutcome("Remote-Worker lieferte kein Ergebnis");
+      if (!final.ok) return failedOutcome(final.error.message);
+      return final.data;
+    });
+    return { child: process3.child, done };
+  }
+  async repositoryIdentity(repoPath) {
+    await this.prepare();
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "repository.identity",
+      allowedRoot: this.options.remoteRoot,
+      cwd: this.mapRepository(repoPath)
+    }, 2e4);
+  }
+  async runCheck(request) {
+    await this.prepare();
+    const checkName = Object.entries(config2.checks).find(([, check2]) => check2.argv.length === request.argv.length && check2.argv.every((value, index) => value === request.argv[index]))?.[0];
+    if (!checkName) throw new TargetError("TARGET_POLICY", "Check ist nicht allowlisted", this.id);
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "check.run",
+      allowedRoot: this.options.remoteRoot,
+      cwd: this.mapRepository(request.cwd),
+      checkName
+    }, request.timeoutMs ?? 15 * 6e4);
+  }
+  async runGit(request) {
+    await this.prepare();
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "git.run",
+      allowedRoot: this.options.remoteRoot,
+      cwd: this.mapRepository(request.cwd),
+      args: request.argv
+    }, request.timeoutMs ?? 6e4);
+  }
+  async createWorktree(repoPath, taskId) {
+    const worktree = resolve5(this.options.localRoot, ".codex-orchestrator-worktrees", taskId);
+    const remoteWorktree = this.mapRepository(worktree);
+    const branch = `codex/${taskId}`;
+    const result = await this.runGit({
+      cwd: repoPath,
+      argv: ["worktree", "add", "-b", branch, remoteWorktree, "HEAD"],
+      timeoutMs: 6e4
+    });
+    if (result.code !== 0) {
+      throw new TargetError("TARGET_REPOSITORY", result.stderr || "Remote-Worktree konnte nicht erstellt werden", this.id);
+    }
+    return { worktree, branch };
+  }
+  async mergeWorktree(repoPath, branch, options) {
+    const args = ["merge"];
+    if (options.noFf) args.push("--no-ff");
+    if (options.noGpgSign) args.push("--no-gpg-sign");
+    args.push(branch);
+    const result = await this.runGit({ cwd: repoPath, argv: args, timeoutMs: 12e4 });
+    const output = `${result.stdout}${result.stderr}`;
+    if (result.code === 0) return { ok: true, conflict: false, output };
+    const conflict = /CONFLICT|automatic merge failed/i.test(output);
+    if (conflict) await this.runGit({ cwd: repoPath, argv: ["merge", "--abort"], timeoutMs: 3e4 });
+    return { ok: false, conflict, output };
+  }
+  async removeWorktree(repoPath, worktree, branch) {
+    const removed = await this.runGit({
+      cwd: repoPath,
+      argv: ["worktree", "remove", "--force", this.mapRepository(worktree)],
+      timeoutMs: 6e4
+    });
+    if (removed.code !== 0) throw new TargetError("TARGET_REPOSITORY", removed.stderr, this.id);
+    const deleted = await this.runGit({ cwd: repoPath, argv: ["branch", "-D", branch], timeoutMs: 3e4 });
+    if (deleted.code !== 0) throw new TargetError("TARGET_REPOSITORY", deleted.stderr, this.id);
+  }
+  async bootstrapAuth(codexHome, credentials) {
+    await this.prepare();
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "auth.bootstrap",
+      codexHome,
+      credentialBase64: credentials.toString("base64")
+    }, 2e4);
+  }
+  async loginAccessToken(codexHome, token) {
+    await this.prepare();
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "auth.login-token",
+      codexBin: this.options.codexBin,
+      codexHome,
+      tokenBase64: token.toString("base64")
+    }, 75e3);
+  }
+  async prepare() {
+    if (this.ready) return;
+    if (!this.deployer) throw new TargetError("TARGET_VERSION", "Remote-Worker-Deployer fehlt", this.id);
+    this.workerEntry = await this.deployer.ensure();
+    this.ready = true;
+    const handshake = await this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "handshake"
+    }, 2e4);
+    if (handshake.protocol !== WORKER_PROTOCOL_VERSION) {
+      this.ready = false;
+      throw new TargetError("TARGET_VERSION", "Remote-Worker-Protokoll ist inkompatibel", this.id);
+    }
+  }
+  async invoke(request, timeoutMs) {
+    let final;
+    const process3 = startWorkerProcess(
+      { host: this.options.host, sshBin: this.options.sshBin },
+      this.workerEntry,
+      request,
+      timeoutMs,
+      (line) => {
+        const frame = parseFrame(line);
+        if (frame?.frame === "result" && frame.requestId === request.requestId) final = frame;
+      }
+    );
+    const result = await process3.done;
+    if (!final || final.frame !== "result") {
+      throw classifySshFailure(this.id, result.code, result.stderr);
+    }
+    if (!final.ok) throw new TargetError(parseTargetErrorCode(final.error.code), final.error.message, this.id);
+    return final.data;
+  }
+};
+var TARGET_ERROR_CODES = /* @__PURE__ */ new Set([
+  "TARGET_CONNECTIVITY",
+  "TARGET_HOST_KEY",
+  "TARGET_AUTH",
+  "TARGET_POLICY",
+  "TARGET_VERSION",
+  "TARGET_PROTOCOL",
+  "TARGET_REPOSITORY",
+  "TARGET_CANCELLED",
+  "TARGET_TIMEOUT"
+]);
+function parseTargetErrorCode(value) {
+  return TARGET_ERROR_CODES.has(value) ? value : "TARGET_PROTOCOL";
+}
+function parseFrame(line) {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return void 0;
+  }
+}
+function classifySshFailure(targetId, code, stderr) {
+  if (/host key verification failed|remote host identification has changed/i.test(stderr)) {
+    return new TargetError("TARGET_HOST_KEY", "SSH-Host-Key-Pr\xFCfung fehlgeschlagen", targetId);
+  }
+  if (code === 255 || /timed out|connection refused|could not resolve hostname/i.test(stderr)) {
+    return new TargetError("TARGET_CONNECTIVITY", "SSH-Verbindung zum Remote-Target fehlgeschlagen", targetId, true);
+  }
+  return new TargetError("TARGET_PROTOCOL", "Remote-Worker lieferte keine g\xFCltige Antwort", targetId);
+}
+
+// src/execution/registry.ts
+var AuthenticatedExecutionTarget = class {
+  constructor(target, strategy, bootstrapper = new RemoteAuthBootstrapper()) {
+    this.target = target;
+    this.strategy = strategy;
+    this.bootstrapper = bootstrapper;
+    this.id = target.id;
+    this.kind = target.kind;
+  }
+  target;
+  strategy;
+  bootstrapper;
+  id;
+  kind;
+  doctor() {
+    return this.bootstrapper.ensure(this.target, this.strategy);
+  }
+  startCodex(request) {
+    return this.target.startCodex(request);
+  }
+  repositoryIdentity(repoPath) {
+    return this.target.repositoryIdentity(repoPath);
+  }
+  runCheck(request) {
+    return this.target.runCheck(request);
+  }
+  runGit(request) {
+    return this.target.runGit(request);
+  }
+  createWorktree(repoPath, taskId) {
+    return this.target.createWorktree(repoPath, taskId);
+  }
+  mergeWorktree(repoPath, branch, options) {
+    return this.target.mergeWorktree(repoPath, branch, options);
+  }
+  removeWorktree(repoPath, worktree, branch) {
+    return this.target.removeWorktree(repoPath, worktree, branch);
+  }
+};
+var ExecutionTargetRegistry = class {
+  targets = /* @__PURE__ */ new Map();
+  register(target) {
+    this.targets.set(target.id, target);
+  }
+  get(id) {
+    const target = this.targets.get(id);
+    if (!target) throw new Error(`Unbekanntes Execution-Target: ${id}`);
+    return target;
+  }
+  list() {
+    return [...this.targets.values()];
+  }
+};
+function createExecutionRuntime(configuration) {
+  const registry2 = new ExecutionTargetRegistry();
+  const local = new LocalExecutionTarget({ codexBin: configuration.codexBin });
+  registry2.register(local);
+  let remote;
+  if (configuration.execution.mode !== "local-only") {
+    const remoteConfig = configuration.execution.remote;
+    const raw = new SshExecutionTarget({
+      id: remoteConfig.id,
+      host: remoteConfig.host,
+      localRoot: remoteConfig.repository.localRoot,
+      remoteRoot: remoteConfig.repository.remoteRoot,
+      codexBin: remoteConfig.codexBin,
+      workerRoot: remoteConfig.workerRoot
+    });
+    const strategy = remoteConfig.auth.strategy === "existing" ? remoteConfig.auth : { ...remoteConfig.auth, codexHome: remoteConfig.codexHome };
+    remote = new AuthenticatedExecutionTarget(raw, strategy);
+    registry2.register(remote);
+  }
+  return {
+    registry: registry2,
+    router: new ExecutionTargetRouter({
+      mode: configuration.execution.mode,
+      fallback: configuration.execution.fallback,
+      local,
+      remote
+    })
+  };
+}
+
 // src/server.ts
 var store = new Store(config2.dbPath);
+var execution = createExecutionRuntime(config2);
+var sessions = new SessionManager(store, (id) => execution.registry.get(id));
 var hypRepo = new HypothesisRepo(store);
-var sessions = new SessionManager(store);
 var machine = new ClusterStateMachine(store);
 var worktrees = new WorktreeManager();
 (function instanceGuard() {
@@ -24374,13 +25146,56 @@ var worktrees = new WorktreeManager();
 console.error(`[orchestrator] Store: ${config2.home} (cwd: ${process.cwd()})`);
 var reaped = sessions.reapOnStartup();
 if (reaped > 0) console.error(`[orchestrator] Reaper: ${reaped} verwaiste Task(s) toter Prozesse auf 'failed' gesetzt.`);
-var server = new McpServer({ name: "codex-orchestrator", version: "0.3.0" });
+var server = new McpServer({ name: "codex-orchestrator", version: ORCHESTRATOR_VERSION });
 function ok(obj) {
   return { content: [{ type: "text", text: JSON.stringify(obj, null, 2) }] };
 }
 function err(obj) {
   return { content: [{ type: "text", text: JSON.stringify(obj, null, 2) }], isError: true };
 }
+function executionTargetForCluster(clusterId) {
+  const latest = store.listTasks({ clusterId }).at(-1);
+  return execution.registry.get(latest?.target_id ?? "local");
+}
+server.registerTool(
+  "orchestrator_doctor",
+  {
+    title: "Codex-Orchestrator Diagnose",
+    description: "Pr\xFCft alle konfigurierten Execution-Targets inklusive Codex-Version und Authentifizierung. Remote-Auth wird gem\xE4\xDF Serverkonfiguration sicher initialisiert und danach erneut gepr\xFCft.",
+    inputSchema: {}
+  },
+  async () => {
+    const targets = [];
+    for (const target of execution.registry.list()) {
+      try {
+        targets.push(await target.doctor());
+      } catch (e) {
+        targets.push({
+          targetId: target.id,
+          kind: target.kind,
+          state: "unhealthy",
+          codexVersion: null,
+          auth: { state: "error", message: e?.message ?? String(e) },
+          errorCode: e?.code ?? "TARGET_PROTOCOL",
+          message: e?.message ?? String(e)
+        });
+      }
+    }
+    const healthy = targets.every((target) => target.state === "healthy");
+    const local = targets.find((target) => target.targetId === "local");
+    const environment = buildDoctorReport({
+      codexVersion: local?.codexVersion ?? null,
+      loginStatus: local?.auth?.state === "authenticated" ? "Logged in" : "Not logged in"
+    });
+    return (healthy ? ok : err)({
+      ok: healthy,
+      version: ORCHESTRATOR_VERSION,
+      execution: config2.execution.mode,
+      environment,
+      targets
+    });
+  }
+);
 server.registerTool(
   "task_start",
   {
@@ -24438,11 +25253,19 @@ server.registerTool(
     if (!gate.ok) {
       return err({ ok: false, error: gate.error, hint: "hypotheses \u2192 create, dann hypothesis_id an task_start \xFCbergeben." });
     }
+    let selection;
+    try {
+      selection = await execution.router.select(repoPath);
+    } catch (e) {
+      return err({ ok: false, error: `Execution-Target nicht verf\xFCgbar: ${e?.message ?? e}`, code: e?.code });
+    }
     const wantAutoWorktree = a.worktree === "auto";
     let worktree = null;
     let branch = null;
     if (wantAutoWorktree) {
-      if (!isGitRepo(repoPath)) return err({ ok: false, error: `worktree:auto ben\xF6tigt ein git-Repo: ${repoPath}` });
+      if (selection.target.kind === "local" && !isGitRepo(repoPath)) {
+        return err({ ok: false, error: `worktree:auto ben\xF6tigt ein git-Repo: ${repoPath}` });
+      }
     } else if (a.worktree && a.worktree !== "none") {
       worktree = a.worktree;
     }
@@ -24478,6 +25301,11 @@ server.registerTool(
       network: a.network ?? config2.networkDefault,
       maxMinutes,
       extraConfig,
+      targetId: selection.target.id,
+      targetKind: selection.target.kind,
+      repositoryCommit: selection.repository.headCommit,
+      routingReason: selection.reason,
+      fallbackFrom: selection.fallbackFrom,
       hypothesisId: a.hypothesis_id ?? null
     });
     if (a.hypothesis_id) {
@@ -24510,7 +25338,7 @@ server.registerTool(
     }
     if (wantAutoWorktree) {
       try {
-        const wt = worktrees.create(repoPath, task.id);
+        const wt = selection.target.kind === "ssh" && selection.target.createWorktree ? await selection.target.createWorktree(repoPath, task.id) : worktrees.create(repoPath, task.id);
         worktree = wt.worktree;
         branch = wt.branch;
         store.updateTask(task.id, { worktree, branch });
@@ -24522,7 +25350,20 @@ server.registerTool(
     sessions.startLoop(task.id, stopCondition);
     const dropped = droppedConfig.length ? { dropped_config_keys: droppedConfig } : {};
     if (waitFor === "started") {
-      return ok({ ok: true, task_id: task.id, status: "queued", model, effort, worktree, branch, note: modelNote, ...dropped });
+      return ok({
+        ok: true,
+        task_id: task.id,
+        status: "queued",
+        model,
+        effort,
+        worktree,
+        branch,
+        target: selection.target.id,
+        routing_reason: selection.reason,
+        fallback_from: selection.fallbackFrom,
+        note: modelNote,
+        ...dropped
+      });
     }
     if (waitFor === "first_checkpoint") {
       await sessions.waitUntil(task.id, (_s, sawSlice) => sawSlice, config2.maxWaitSeconds);
@@ -24613,9 +25454,10 @@ server.registerTool(
     const sliceResults = store.eventsAfter(a.task_id, 0, ["slice_result"], 100).map((e) => JSON.parse(e.payload_json));
     const recent = sliceResults.slice(-a.max_slice_results);
     const repo = t.worktree || t.repo_path;
+    const target = execution.registry.get(t.target_id);
     let diff = { files: 0, lines: 0 };
     try {
-      if (isGitRepo(repo)) diff = await diffSize(repo);
+      diff = await diffSize(repo, target);
     } catch {
     }
     const tests = recent.flatMap((r) => r.tests ?? []);
@@ -24747,7 +25589,7 @@ server.registerTool(
         const declared = strategy.checks ?? [];
         if (declared.length) {
           const scope = latestWorktreeForCluster(store, a.cluster_id) || repo;
-          const res = await runChecks(store, a.cluster_id, scope, declared);
+          const res = await runChecks(store, a.cluster_id, scope, declared, executionTargetForCluster(a.cluster_id));
           payload.checks_run = res.runs;
         }
       }
@@ -24929,10 +25771,11 @@ server.registerTool(
     const repo = repoPathForCluster(store, a.cluster_id);
     if (!repo) return err({ ok: false, error: "Plan-Repo f\xFCr Cluster nicht gefunden" });
     const target = a.scope === "worktree" ? latestWorktreeForCluster(store, a.cluster_id) || repo : repo;
-    const res = await runChecks(store, a.cluster_id, target, a.checks);
+    const executionTarget = executionTargetForCluster(a.cluster_id);
+    const res = await runChecks(store, a.cluster_id, target, a.checks, executionTarget);
     let diff = { files: 0, lines: 0 };
     try {
-      if (isGitRepo(target)) diff = await diffSize(target);
+      diff = await diffSize(target, executionTarget);
     } catch {
     }
     return ok({
@@ -24953,7 +25796,7 @@ server.registerTool(
   "cluster_merge",
   {
     title: "Worktree-Branch mergen (M3, sequenziell nach Review)",
-    description: "Merged den Branch eines parallelen Tasks in den Basis-Branch. Konflikt -> Merge wird abgebrochen, Claude plant Reparatur-Slice. Nur wenn ein REVIEW_RESULT vorliegt.",
+    description: "Merged den Branch eines parallelen Tasks erst nach confirmed Cluster/Review und gr\xFCnen Checks. Konflikt -> Merge wird abgebrochen.",
     inputSchema: {
       cluster_id: external_exports.string(),
       task_id: external_exports.string(),
@@ -24965,23 +25808,42 @@ server.registerTool(
   async (a) => {
     const repo = repoPathForCluster(store, a.cluster_id);
     if (!repo) return err({ ok: false, error: "Plan-Repo nicht gefunden" });
+    const cluster = store.getCluster(a.cluster_id);
+    if (!cluster) return err({ ok: false, error: "Cluster nicht gefunden" });
     const task = store.getTask(a.task_id);
     if (!task || !task.branch) return err({ ok: false, error: "Task ohne Worktree-Branch" });
-    if (!store.latestReview(a.cluster_id)) {
-      return err({ ok: false, error: "Merge erst nach Review (kein REVIEW_RESULT vorhanden)" });
-    }
-    if (task.status === "running" || task.status === "awaiting_resume") {
-      return err({ ok: false, error: `Task ${task.id} l\xE4uft noch (${task.status}) \u2014 erst abschlie\xDFen/pausieren.` });
+    const review = store.latestReview(a.cluster_id);
+    const strategy = JSON.parse(cluster.review_strategy_json || "{}");
+    const checks = store.checksForCluster(a.cluster_id);
+    const checksGreen = (strategy.checks ?? []).every((name) => {
+      const latest = [...checks].reverse().find((check2) => check2.cmd === name);
+      return latest?.exit_code === 0;
+    });
+    const eligibility = mergeEligibility({
+      clusterId: cluster.id,
+      taskClusterId: task.cluster_id,
+      taskStatus: task.status,
+      clusterStatus: cluster.status,
+      reviewStatus: review?.status ?? null,
+      checksGreen
+    });
+    if (!eligibility.ok) {
+      return err({ ok: false, error: "Merge-Gates nicht erf\xFCllt", reasons: eligibility.reasons });
     }
     const sign = a.sign ?? config2.signMergeCommits;
-    const r = worktrees.merge(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign });
+    const target = execution.registry.get(task.target_id);
+    const r = target.kind === "ssh" && target.mergeWorktree ? await target.mergeWorktree(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign }) : worktrees.merge(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign });
     if (!r.ok) {
       return err({ ok: false, conflict: r.conflict, error: "Merge fehlgeschlagen", output: r.output.slice(-1500) });
     }
     let cleaned = false;
     if (a.cleanup && task.worktree) {
       try {
-        worktrees.remove(repo, task.worktree, task.branch);
+        if (target.kind === "ssh" && target.removeWorktree) {
+          await target.removeWorktree(repo, task.worktree, task.branch);
+        } else {
+          worktrees.remove(repo, task.worktree, task.branch);
+        }
         store.updateTask(task.id, { worktree: null });
         cleaned = true;
       } catch {
@@ -25072,33 +25934,6 @@ server.registerTool(
     return res.ok ? ok({ ok: true, applied: true, from: chk.installed, to: chk.latest, channel }) : err({ ok: false, applied: false, error: "npm install fehlgeschlagen", output: res.output });
   }
 );
-server.registerTool(
-  "plugin_update",
-  {
-    title: "Orchestrator-Plugin pr\xFCfen/aktualisieren",
-    description: "Pr\xFCft (check) ob eine neuere Plugin-Version als GitHub-Release vorliegt, oder wendet sie an (apply). git-Install: self-update via git pull + rebuild (Restart n\xF6tig). Marketplace-Install: liefert die /plugin-Update-Anleitung. Nutzt einen TTL-Cache.",
-    inputSchema: {
-      action: external_exports.enum(["check", "apply"]).default("check"),
-      force: external_exports.boolean().default(false).describe("Cache umgehen und frisch bei GitHub pr\xFCfen.")
-    }
-  },
-  async (a) => {
-    const now = Date.now();
-    if (a.action === "check") return ok({ ok: true, ...await checkPluginUpdate(now, a.force) });
-    const running = store.listTasks({ status: "running" }).length;
-    if (running > 0) return err({ ok: false, error: `Update abgelehnt: ${running} Task(s) aktiv.` });
-    return ok(await applyPluginUpdate(now));
-  }
-);
-server.registerTool(
-  "orchestrator_doctor",
-  {
-    title: "Umgebungs-Preflight (Codex, Auth, Store)",
-    description: "Diagnostiziert die Umgebung, bevor Slices scheitern: ist die Codex-CLI vorhanden und angemeldet, wo liegt der Store, welche Sandboxes sind erlaubt, und ist der Plugin-Marketplace deaktiviert (SKIP_PLUGIN_MARKETPLACE, z. B. Claude Code Web/Remote). Liefert klare Handlungsanweisungen statt stiller Nicht-Verf\xFCgbarkeit.",
-    inputSchema: {}
-  },
-  async () => ok(await runDoctor())
-);
 centralAgentsMd();
 var shuttingDown = false;
 function gracefulShutdown(sig) {
@@ -25121,6 +25956,4 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 var transport = new StdioServerTransport();
 await server.connect(transport);
-console.error(`[orchestrator] codex-orchestrator v${installedVersion2()} l\xE4uft (stdio). DB: ${config2.dbPath}`);
-void maybeAutoUpdate((s) => console.error(s));
-void maybePluginUpdate(Date.now(), (s) => console.error(s));
+console.error(`[orchestrator] codex-orchestrator v${ORCHESTRATOR_VERSION} l\xE4uft (stdio). DB: ${config2.dbPath}`);

@@ -7,6 +7,7 @@ const c = new Client({ name: "bundlecheck", version: "1" }, { capabilities: {} }
 await c.connect(t);
 const tools = (await c.listTools()).tools.map(x => x.name).sort();
 console.log("tools:", tools.length, tools.join(","));
+if (!tools.includes("orchestrator_doctor")) throw new Error("orchestrator_doctor fehlt im Bundle");
 const r = await c.callTool({ name: "models_list", arguments: {} });
 const d = JSON.parse(r.content[0].text);
 console.log("models_list ok:", d.available_models.map(m => m.model).join(","));

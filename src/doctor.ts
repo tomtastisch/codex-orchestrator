@@ -1,5 +1,5 @@
-import { spawn } from "node:child_process";
 import { config } from "./config.js";
+import { LocalExecutionTarget } from "./execution/local-target.js";
 
 /**
  * Preflight-Diagnose der Umgebung. Adressiert issue #4: statt stiller
@@ -7,7 +7,7 @@ import { config } from "./config.js";
  * liefert der Orchestrator eine klare, handlungsleitende Statusauskunft.
  *
  * Rein & testbar getrennt: {@link buildDoctorReport} enthält die Logik,
- * {@link runDoctor} sammelt die Prozessergebnisse (argv-Spawn, fail-closed).
+ * {@link runDoctor} nutzt das gehärtete lokale Execution-Target.
  */
 
 export interface DoctorProbe {
@@ -52,7 +52,7 @@ export function buildDoctorReport(probe: DoctorProbe): DoctorReport {
   } else if (!authenticated) {
     guidance.push(
       "Codex ist installiert, aber nicht angemeldet. 'codex login' ausführen " +
-        "(oder OPENAI_API_KEY in der Umgebung bereitstellen).",
+        "oder eine sichere Remote-Auth-Strategie in .orchestrator/config.json konfigurieren.",
     );
   }
   if (marketplaceSkipped) {
@@ -78,52 +78,11 @@ export function buildDoctorReport(probe: DoctorProbe): DoctorReport {
   };
 }
 
-function spawnCapture(bin: string, args: string[], timeoutMs = 10_000): Promise<{ code: number | null; out: string }> {
-  return new Promise((resolve) => {
-    let out = "";
-    let settled = false;
-    const done = (r: { code: number | null; out: string }) => {
-      if (!settled) {
-        settled = true;
-        resolve(r);
-      }
-    };
-    let child;
-    try {
-      child = spawn(bin, args, { env: process.env });
-    } catch (e) {
-      done({ code: null, out: (e as Error).message });
-      return;
-    }
-    const cap = (d: Buffer) => {
-      out += d.toString();
-      if (out.length > 20_000) out = out.slice(-20_000);
-    };
-    child.stdout.on("data", cap);
-    child.stderr.on("data", cap);
-    const timer = setTimeout(() => {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        /* ignore */
-      }
-      done({ code: null, out });
-    }, timeoutMs);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      done({ code, out });
-    });
-    child.on("error", () => {
-      clearTimeout(timer);
-      done({ code: null, out });
-    });
-  });
-}
-
 /** Führt den Preflight aus: prüft Codex-Binary und Login-Status. */
 export async function runDoctor(): Promise<DoctorReport> {
-  const version = await spawnCapture(config.codexBin, ["--version"]);
-  const codexVersion = version.code === 0 ? version.out.trim().split(/\r?\n/)[0] || null : null;
-  const login = codexVersion != null ? await spawnCapture(config.codexBin, ["login", "status"]) : { code: null, out: "" };
-  return buildDoctorReport({ codexVersion, loginStatus: login.out });
+  const health = await new LocalExecutionTarget({ codexBin: config.codexBin }).doctor();
+  return buildDoctorReport({
+    codexVersion: health.codexVersion,
+    loginStatus: health.auth.state === "authenticated" ? "Logged in" : "Not logged in",
+  });
 }

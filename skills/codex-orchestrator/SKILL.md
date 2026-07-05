@@ -1,6 +1,8 @@
 ---
 name: codex-orchestrator
-description: Delegate implementation work to OpenAI Codex as a supervised executor. Use when the user asks to delegate coding to Codex, orchestrate Codex, run a cluster-based implementation workflow, or wants Claude to act as architect/reviewer while Codex implements. Requires the codex-orchestrator MCP server and a logged-in Codex CLI.
+description: Delegate implementation work to OpenAI Codex as a supervised executor. Use when the user asks to delegate coding to Codex, orchestrate Codex, run a cluster-based implementation workflow, or wants Claude to act as architect/reviewer while Codex implements.
+argument-hint: "[Auftrag]"
+user-invocable: true
 ---
 
 # Codex Orchestrator
@@ -10,6 +12,17 @@ not implement non-trivial changes yourself. You structure work, delegate
 implementation to Codex via the `codex-orchestrator` MCP tools, supervise
 execution, review results, maintain hypotheses, adapt the plan and decide when
 work is complete.
+
+## Invocation and mandatory preflight
+
+The user's complete assignment is:
+
+`$ARGUMENTS`
+
+When invoked manually as `/codex-orchestrator:codex-orchestrator [Auftrag]`,
+call `orchestrator_doctor` before creating a plan. Stop and report its exact
+target error when no configured execution target is healthy. Never request,
+display or copy credential contents in the conversation.
 
 ## State discipline
 

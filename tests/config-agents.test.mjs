@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
-import { mkdtempSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildCodexArgs, isBlockedConfigKey } from "../dist/codex.js";
-import { ensureAgentsMd } from "../dist/agents.js";
 import { Store } from "../dist/db.js";
 import { buildPlanSnapshot } from "../dist/snapshot.js";
+import { buildFirstSlicePrompt } from "../dist/prompts.js";
 import { encode as toonEncode } from "@toon-format/toon";
 
 test("buildCodexArgs setzt Sandbox/Modell/Effort/Netzwerk deterministisch", () => {
@@ -60,22 +60,25 @@ test("isBlockedConfigKey deckt Sandbox/Netzwerk/Danger/RCE-Vektoren ab", () => {
   }
 });
 
-test("ensureAgentsMd: created -> present -> appended", () => {
+test("read-only executor instructions stay in the prompt and do not mutate AGENTS.md", () => {
   const dir = mkdtempSync(join(tmpdir(), "orch-agents-"));
-  const a1 = ensureAgentsMd(dir);
-  assert.equal(a1.action, "created");
-  assert.ok(existsSync(join(dir, "AGENTS.md")));
-  assert.match(readFileSync(join(dir, "AGENTS.md"), "utf8"), /codex-orchestrator/);
-  const a2 = ensureAgentsMd(dir);
-  assert.equal(a2.action, "present");
+  const agentsPath = join(dir, "AGENTS.md");
+  const original = "# Projektregeln\nBitte Tests grün halten.\n";
+  writeFileSync(agentsPath, original);
+  const store = new Store(join(dir, "state.sqlite"));
+  const task = store.createTask({
+    id: "T_prompt", cluster_id: null, codex_session_id: null, worktree: null, branch: null,
+    repo_path: dir, sandbox: "read-only", model: "gpt-5.5", effort: "low",
+    instructions: "analysiere", acceptance_json: "[]", max_minutes: 5, network: 0,
+    status: "queued", extra_config_json: null, owner_pid: null,
+  });
 
-  const dir2 = mkdtempSync(join(tmpdir(), "orch-agents2-"));
-  writeFileSync(join(dir2, "AGENTS.md"), "# Projektregeln\nBitte Tests grün halten.\n");
-  const a3 = ensureAgentsMd(dir2);
-  assert.equal(a3.action, "appended");
-  const txt = readFileSync(join(dir2, "AGENTS.md"), "utf8");
-  assert.match(txt, /Projektregeln/);        // Original bleibt
-  assert.match(txt, /codex-orchestrator/);   // Executor-Rolle ergänzt
+  const prompt = buildFirstSlicePrompt(task, [], null);
+
+  assert.match(prompt, /implementation executor/);
+  assert.match(prompt, /Do NOT modify files/);
+  assert.match(prompt, /SLICE_RESULT/);
+  assert.equal(readFileSync(agentsPath, "utf8"), original);
 });
 
 test("Hypothesen-Lebenszyklus + Provenienz", () => {

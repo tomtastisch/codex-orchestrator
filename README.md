@@ -97,23 +97,22 @@ polls with a long-poll `task_wait`.
 
 ### As a Claude Code plugin (recommended)
 
+```bash
+claude plugin marketplace add tomtastisch/codex-orchestrator
+claude plugin install codex-orchestrator@codex-orchestrator --scope user
 ```
-/plugin marketplace add tomtastisch/codex-orchestrator
-/plugin install codex-orchestrator
+
+This registers the MCP server (pre-bundled, no build step) and the
+`codex-orchestrator` skill, which teaches Claude the full orchestration
+workflow. Start Claude in a project and invoke it with:
+
+```text
+/codex-orchestrator:codex-orchestrator Implement the requested change
 ```
 
-This registers the MCP server (pre-bundled, no build step), the
-`codex-orchestrator` skill (which teaches Claude the full orchestration
-workflow) and two slash commands:
-
-- **`/codex-orchestrator [task]`** — entry point: adopts the orchestrator role,
-  verifies the MCP server, records a hypothesis and starts the cluster-based
-  workflow for the given task.
-- **`/orchestrator-status [plan_id]`** — prints the current plan, clusters,
-  hypotheses and review status from the persistent store.
-
-The skill still auto-activates when you describe an orchestration task in
-natural language; the slash commands are just an explicit way to invoke it.
+Claude plugin skills are namespaced by design. The command therefore contains
+the plugin name and the skill name. The companion status command is
+`/codex-orchestrator:orchestrator-status [plan_id]`.
 
 ### As a plain MCP server
 
@@ -143,25 +142,66 @@ projects fully separated:
 Without `ORCH_HOME` the store defaults to `<cwd>/.orchestrator`, so separate
 project directories are isolated automatically.
 
-### Environment support (local CLI vs. Claude Code web/remote)
+## Remote Codex execution and persistent authentication
 
-| Environment | Plugin marketplace | How to install | Live orchestration |
-|---|---|---|---|
-| **Local Claude Code CLI** | enabled | `/plugin marketplace add …` (recommended) | works once the Codex CLI is installed & logged in |
-| **Claude Code web / remote** | **disabled** (`SKIP_PLUGIN_MARKETPLACE=true`) | register the MCP server directly (`claude mcp add …` / `.mcp.json` `mcpServers`) — `/plugin marketplace add` is a no-op there | only if the Codex CLI **and** its auth are provisioned in that environment; managed web sandboxes ship neither by default |
+Create `.orchestrator/config.json` in the project from which Claude is started:
 
-Managed web/remote sandboxes deliberately disable the plugin marketplace and
-usually ship without the Codex CLI or OpenAI credentials. The MCP server itself
-still starts (it is a self-contained `node bundle/server.mjs`), so its tools
-load — but slices can only run where `codex` is present and authenticated.
-Call **`orchestrator_doctor`** to get an explicit readiness report instead of a
-silent failure at the first slice.
+```json
+{
+  "version": 1,
+  "execution": {
+    "mode": "remote-preferred",
+    "fallback": "connectivity-only",
+    "remote": {
+      "id": "devbox",
+      "transport": "ssh",
+      "host": "devbox",
+      "repository": {
+        "localRoot": "/Users/me/projects",
+        "remoteRoot": "/home/me/projects"
+      },
+      "codexBin": "codex",
+      "workerRoot": "~/.cache/codex-orchestrator",
+      "codexHome": "~/.codex",
+      "auth": {
+        "strategy": "sync-file",
+        "source": "/Users/me/.codex/auth.json"
+      }
+    }
+  }
+}
+```
+
+The source must be an owner-controlled regular file with no group or world
+permissions (`chmod 600 ~/.codex/auth.json`). The credential is transferred in
+the validated worker protocol, written atomically to the persistent remote
+`codexHome` with mode `0600`, and never included in task events or tool results.
+Every slash-command preflight and task performs a fresh `codex login status` check. If the
+remote file is missing or stale, `sync-file` installs or refreshes it and then
+repeats the check. This survives Claude and host restarts as long as the remote
+home directory persists.
+
+For managed environments, use a secret manager command instead of a file:
+
+```json
+"auth": {
+  "strategy": "access-token",
+  "secretCommand": ["security", "find-generic-password", "-s", "codex-access-token", "-w"]
+}
+```
+
+The command output is passed only through stdin to `codex login
+--with-access-token`; it is not stored by the orchestrator. `existing` is the
+strictest strategy and fails if the remote Codex installation is not already
+authenticated. Local fallback is permitted only for retryable connectivity
+errors, never for authentication, host-key, protocol or repository mismatches.
 
 ## Tools
 
 | Tool | Purpose |
 |---|---|
-| `task_start` | Start a Codex assignment (slice budget, sandbox, model, effort, worktree, wait mode). **Requires a linked `hypothesis_id`** — refuses to start without one |
+| `task_start` | Start a Codex assignment linked to a mandatory hypothesis (slice budget, sandbox, model, effort, worktree, wait mode) |
+| `orchestrator_doctor` | Verify configured targets, Codex versions and authentication; securely bootstrap remote auth |
 | `task_wait` | Long-poll for new events / slice boundaries — the core orchestration primitive |
 | `task_events` | Cursor-based event history, filterable by kind |
 | `task_control` | `pause` \| `resume` \| `cancel` \| `inject` (delivered at the next slice boundary) |
@@ -170,15 +210,13 @@ silent failure at the first slice.
 | `cluster_plan` | Create/update a persistent plan with gated clusters (idempotent) |
 | `cluster_transition` | `start`/`submit`/`review`/`confirm`/`retro`/… — server-enforced state machine |
 | `cluster_merge` | Merge a reviewed worktree branch back (conflicts abort cleanly) |
-| `hypotheses` | Versioned, self-critical hypotheses: `create` (initialAssumption, criticalQuestions, falsificationPlan) before a task; `update` (evidence, result, follow-ups) after — plus legacy `add/confirm/reject/supersede` |
-| `user_decision` | Record user decisions/preferences at the cluster gate; findings block confirm until `accept`/`fix` (with optional standing preference) |
+| `hypotheses` | Create and append-only update versioned, falsifiable assumptions with evidence |
+| `user_decision` | Persist user decisions and standing preferences for review findings |
 | `repo_check` | Run allow-listed checks (tests, lint, typecheck, diff stats) |
 | `plan_snapshot` | Durable TOON/JSON snapshot of the full plan state |
-| `result_artifact` | Generate the versioned final `.toln` (TOML) run artifact + `summary.md` with checksum |
-| `audit_log` | Read the security-relevant, secret-redacted audit trail |
+| `result_artifact` | Generate a checksummed final `.toln` run artifact and summary |
+| `audit_log` | Read the secret-redacted security audit trail |
 | `codex_update` | Check/apply Codex CLI updates (stable or pre-release channel) |
-| `plugin_update` | Check for / apply a newer plugin release (self-update for git installs) |
-| `orchestrator_doctor` | Environment preflight: is the Codex CLI present and logged in, where is the store, which sandboxes are allowed, and is the plugin marketplace disabled (`SKIP_PLUGIN_MARKETPLACE`)? Returns actionable guidance instead of silently failing later |
 
 ## Example: from a goal to a confirmed change
 
@@ -206,8 +244,17 @@ cluster_plan({
 
 ```jsonc
 cluster_transition({ cluster_id: "C1", action: "start" })   // → status: "active"
+hypotheses({
+  action: "create", plan_id: "P_…", cluster_id: "C1",
+  initial_assumption: "Input validation can be added without changing valid requests",
+  confidence_before: 0.8,
+  critical_questions: ["Which clients rely on current coercion?"],
+  falsification_plan: ["Run existing compatibility tests"]
+})
+// → { hypothesis: { id: "H_…" } }
 task_start({
-  cluster_id: "C1", sandbox: "workspace-write", model: "gpt-5.5", effort: "high",
+  cluster_id: "C1", hypothesis_id: "H_…",
+  sandbox: "workspace-write", model: "gpt-5.5", effort: "high",
   slice_budget: { max_minutes: 10 }, wait_for: "started", worktree: "auto",
   instructions: "Add validation to the signup handler; add unit tests. Report a SLICE_RESULT.",
   acceptance_criteria: ["invalid signups rejected with 400", "new tests pass"]
@@ -297,19 +344,16 @@ part of the skill and the `models_list` output.
 
 ## Staying up to date
 
-- **The plugin itself.** The server knows its own version and compares it against
-  the latest GitHub release (cached, checked at most every 6 h). On startup it
-  logs whether a newer version exists, and `plugin_update` (`check` / `apply`)
-  reports it on demand. For a **git install** it can self-update
-  (`git pull` + rebuild; effective on next start); a **marketplace install**
-  updates via `/plugin marketplace update codex-orchestrator`. Set
-  `ORCH_PLUGIN_AUTO_UPDATE=true` to auto-apply on git installs.
-- **The Codex CLI.** `codex_update` checks/applies Codex releases (stable `latest`
-  or pre-release `alpha`); it also runs on startup unless `ORCH_AUTO_UPDATE=false`.
+- **The plugin itself.** Claude's marketplace lifecycle is authoritative:
+  `claude plugin marketplace update codex-orchestrator`, followed by a Claude
+  restart or `/reload-plugins`. The MCP server never mutates its own installed
+  bundle.
+- **The Codex CLI.** `codex_update` explicitly checks/applies Codex releases
+  (stable `latest` or pre-release `alpha`); no update runs implicitly at startup.
 
-Relevant environment variables: `ORCH_HOME`, `ORCH_MAX_CONCURRENT`,
-`ORCH_SIGN_MERGE`, `ORCH_AUTO_UPDATE`, `ORCH_CODEX_CHANNEL`,
-`ORCH_PLUGIN_AUTO_UPDATE`, `ORCH_PLUGIN_CHECK_TTL_MS`, `ORCH_MODEL_FAST|BALANCED|STRONG`.
+Relevant environment variables: `ORCH_HOME`, `ORCH_CONFIG_FILE`,
+`ORCH_MAX_CONCURRENT`, `ORCH_SIGN_MERGE`, `ORCH_CODEX_BIN`,
+`ORCH_MODEL_FAST|BALANCED|STRONG`.
 
 ## Development
 

@@ -14,7 +14,10 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci
-      - run: npm run build
+      - run: npm run typecheck
       - run: npm test
       - run: npm run bundle
+      - run: npm run verify:bundle
       - run: node scripts/bundlecheck.mjs
+      - run: npx --yes @anthropic-ai/claude-code plugin validate . --strict
+      - run: npm audit --audit-level=moderate

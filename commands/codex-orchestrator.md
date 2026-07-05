@@ -11,12 +11,10 @@ the full workflow; this command is the entry point.
 
 Do the following, in order:
 
-1. **Verify tooling.** Confirm the `codex-orchestrator` MCP server is connected
-   (its tools are `task_start`, `task_wait`, `task_control`, `task_result`,
-   `cluster_plan`, `cluster_transition`, `hypotheses`, `repo_check`,
-   `plan_snapshot`, `models_list`, …). If the tools are missing, stop and tell
-   the user to enable the plugin's MCP server (and ensure the Codex CLI is
-   installed and logged in) — do not improvise a substitute.
+1. **Verify tooling and targets.** Confirm the `codex-orchestrator` MCP server
+   is connected, then call `orchestrator_doctor`. If the tools are missing or
+   the configured execution target is unhealthy, stop and report the exact
+   diagnostic. Never ask for or display credential contents.
 
 2. **Read stored state first** (`plan_snapshot` / `cluster_plan` /
    `hypotheses list`). Never rely on chat context as the source of truth.

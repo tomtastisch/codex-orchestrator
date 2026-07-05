@@ -6,8 +6,8 @@ argument-hint: [plan_id (optional)]
 Report the current orchestration state from the **persistent store**, not from
 chat context.
 
-1. Ensure the `codex-orchestrator` MCP server is connected. If its tools are
-   missing, tell the user to enable the plugin's MCP server and stop.
+1. Ensure the `codex-orchestrator` MCP server is connected and call
+   `orchestrator_doctor`. If its tools are missing, report that and stop.
 
 2. Call `plan_snapshot` (format `toon`) for the plan. If a plan id was provided
    in `$ARGUMENTS`, use it; otherwise use the most recent plan.
