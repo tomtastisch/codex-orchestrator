@@ -30,7 +30,10 @@
     "build": "tsc -p tsconfig.json",
     "bundle": "esbuild src/server.ts --bundle --platform=node --target=node22 --format=esm --outfile=bundle/server.mjs --external:node:* --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "start": "node dist/server.js",
+    "pretest": "npm run build",
     "test": "node --test tests/*.test.mjs",
+    "test:coverage": "node --experimental-test-coverage --test tests/*.test.mjs",
+    "verify:bundle": "node scripts/verify-bundle.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
