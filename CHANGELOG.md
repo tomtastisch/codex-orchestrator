@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.3.1 - 2026-07-05
+
+### Fixed
+
+- Removed the legacy command that duplicated the user-invocable
+  `codex-orchestrator` plugin skill in Claude's component inventory.
+
 ## 1.3.0 - 2026-07-05
 
 ### Added
