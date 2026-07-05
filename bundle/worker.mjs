@@ -3866,7 +3866,7 @@ ZodNaN.create = (params) => {
     ...processCreateParams(params)
   });
 };
-var BRAND = /* @__PURE__ */ Symbol("zod_brand");
+var BRAND = Symbol("zod_brand");
 var ZodBranded = class extends ZodType {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
@@ -4068,14 +4068,14 @@ var ostring = () => stringType().optional();
 var onumber = () => numberType().optional();
 var oboolean = () => booleanType().optional();
 var coerce = {
-  string: ((arg) => ZodString.create({ ...arg, coerce: true })),
-  number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
-  boolean: ((arg) => ZodBoolean.create({
+  string: (arg) => ZodString.create({ ...arg, coerce: true }),
+  number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
+  boolean: (arg) => ZodBoolean.create({
     ...arg,
     coerce: true
-  })),
-  bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
-  date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
+  }),
+  bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
+  date: (arg) => ZodDate.create({ ...arg, coerce: true })
 };
 var NEVER = INVALID;
 
@@ -4429,7 +4429,6 @@ function parseSliceResult(agentText) {
       default:
         break;
     }
-    void lower;
   }
   if (result.blockerText) result.blockerText = result.blockerText.trim();
   return result;
@@ -4853,7 +4852,7 @@ function parseWorkerRequest(input) {
 }
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.3.0";
+var ORCHESTRATOR_VERSION = "1.3.1";
 
 // src/worker/path-policy.ts
 import { realpathSync } from "node:fs";
@@ -4868,9 +4867,6 @@ var TargetError = class extends Error {
     this.retryable = retryable;
     this.name = "TargetError";
   }
-  code;
-  targetId;
-  retryable;
 };
 
 // src/worker/path-policy.ts

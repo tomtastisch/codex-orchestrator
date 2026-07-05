@@ -11,14 +11,17 @@ test("commands-Verzeichnis existiert (Slash-Command-Discovery)", () => {
   assert.ok(existsSync(commandsDir), "commands/ fehlt — Plugin ist nicht per Slash-Command nutzbar");
 });
 
-test("Haupt-Slash-Command /codex-orchestrator ist vorhanden und wohlgeformt", () => {
-  const file = join(commandsDir, "codex-orchestrator.md");
-  assert.ok(existsSync(file), "commands/codex-orchestrator.md fehlt");
+test("Haupt-Slash-Command wird eindeutig über den Plugin-Skill bereitgestellt", () => {
+  const file = join(root, "skills", "codex-orchestrator", "SKILL.md");
+  assert.ok(existsSync(file), "skills/codex-orchestrator/SKILL.md fehlt");
+  assert.equal(existsSync(join(commandsDir, "codex-orchestrator.md")), false,
+    "gleichnamiger Legacy-Command würde den Slash-Skill doppelt registrieren");
   const body = readFileSync(file, "utf8");
   // Frontmatter mit description (wird im /-Menü angezeigt).
   assert.match(body, /^---\s*[\s\S]*?description:\s*.+[\s\S]*?---/, "Frontmatter mit description fehlt");
-  // Verweist auf das Skill / die Orchestrator-Rolle.
-  assert.match(body, /codex-orchestrator/i);
+  assert.match(body, /name:\s*codex-orchestrator/);
+  assert.match(body, /user-invocable:\s*true/);
+  assert.match(body, /\$ARGUMENTS/);
 });
 
 test("jede Command-Datei hat Frontmatter mit description", () => {
