@@ -120,3 +120,18 @@ test("ungültiger Übergang wird abgelehnt", () => {
   assert.equal(r.ok, false);
   assert.match(r.error, /nicht erlaubt/);
 });
+
+test("review lehnt unbekannte Reviewstatus ab", () => {
+  const store = freshStore();
+  const plan = store.createPlan("goal", null, "/tmp/repo");
+  seedCluster(store, plan.id, "C1", 0);
+  const m = new ClusterStateMachine(store);
+  m.transition("C1", "start");
+  m.transition("C1", "submit");
+
+  const r = m.transition("C1", "review", { status: "looks-good-ish" });
+
+  assert.equal(r.ok, false);
+  assert.match(r.error, /Review-Status/);
+  assert.equal(store.latestReview("C1"), undefined);
+});

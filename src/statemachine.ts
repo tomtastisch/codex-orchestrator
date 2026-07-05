@@ -19,6 +19,32 @@ export interface TransitionResult {
   details?: Record<string, unknown>;
 }
 
+/** @typedef MergeEligibilityInput */
+export interface MergeEligibilityInput {
+  clusterId: string;
+  taskClusterId: string | null;
+  taskStatus: string;
+  clusterStatus: string;
+  reviewStatus: string | null;
+  checksGreen: boolean;
+}
+
+/** @typedef Eligibility */
+export interface Eligibility {
+  ok: boolean;
+  reasons: string[];
+}
+
+export function mergeEligibility(input: MergeEligibilityInput): Eligibility {
+  const reasons: string[] = [];
+  if (input.clusterStatus !== "confirmed") reasons.push("cluster_not_confirmed");
+  if (input.reviewStatus !== "confirmed") reasons.push("review_not_confirmed");
+  if (!input.checksGreen) reasons.push("checks_not_green");
+  if (input.taskClusterId !== input.clusterId) reasons.push("task_cluster_mismatch");
+  if (input.taskStatus !== "completed") reasons.push("task_not_completed");
+  return { ok: reasons.length === 0, reasons };
+}
+
 interface ReviewStrategy {
   checks?: string[];
   codex_review?: boolean;
@@ -114,7 +140,15 @@ export class ClusterStateMachine {
         return { ok: true, cluster_id: clusterId, status: "submitted" };
       case "review": {
         // REVIEW_RESULT persistieren (Format v1 §18, hier als strukturiertes Objekt).
-        const status = String(payload.status ?? "in_review");
+        const status = String(payload.status ?? "");
+        if (status !== "confirmed" && status !== "needs_changes") {
+          return {
+            ok: false,
+            cluster_id: clusterId,
+            status: cluster.status,
+            error: "Review-Status muss 'confirmed' oder 'needs_changes' sein",
+          };
+        }
         this.store.addReview(
           clusterId, status, payload.findings ?? null, payload.fixes ?? null, payload.impact ?? null,
         );

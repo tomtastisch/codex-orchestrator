@@ -92,3 +92,22 @@ test("managed process escalates an ignored SIGTERM to SIGKILL", async () => {
     assert.equal(result.termination, "timeout");
     assert.equal(result.signal, "SIGKILL");
 });
+
+test("merge eligibility requires confirmed cluster, review, checks and task ownership", async () => {
+    const stateMachine = await import("../dist/statemachine.js");
+    assert.equal(typeof stateMachine.mergeEligibility, "function");
+
+    const base = {
+        clusterId: "C1",
+        taskClusterId: "C1",
+        taskStatus: "completed",
+        clusterStatus: "confirmed",
+        reviewStatus: "confirmed",
+        checksGreen: true,
+    };
+    assert.deepEqual(stateMachine.mergeEligibility(base), { ok: true, reasons: [] });
+    assert.equal(stateMachine.mergeEligibility({ ...base, reviewStatus: "needs_changes" }).ok, false);
+    assert.equal(stateMachine.mergeEligibility({ ...base, checksGreen: false }).ok, false);
+    assert.equal(stateMachine.mergeEligibility({ ...base, taskClusterId: "C2" }).ok, false);
+    assert.equal(stateMachine.mergeEligibility({ ...base, clusterStatus: "in_review" }).ok, false);
+});

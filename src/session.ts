@@ -3,7 +3,6 @@ import { config } from "./config.js";
 import { Store, type TaskRow, newId } from "./db.js";
 import { startSlice } from "./codex.js";
 import { buildFirstSlicePrompt, buildResumeSlicePrompt } from "./prompts.js";
-import { ensureAgentsMd } from "./agents.js";
 import { detectReportDiscrepancies } from "./events.js";
 import type { Effort, Sandbox, SliceOutcome } from "./types.js";
 
@@ -182,15 +181,6 @@ export class SessionManager {
 
       const isFirst = !task.codex_session_id;
       const workDir = task.worktree || task.repo_path;
-      if (isFirst) {
-        // Codex hat IMMER seine Executor-AGENTS.md vorliegen.
-        try {
-          const a = ensureAgentsMd(workDir);
-          if (a.action !== "present") {
-            this.store.addEvent(taskId, "note", { agents_md: a.action, path: a.path });
-          }
-        } catch { /* best effort */ }
-      }
       const acceptance = this.acceptanceOf(task);
       const injections = isFirst ? [] : this.store.pendingInjections(taskId);
       const prompt = isFirst

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { config } from "./config.js";
 import { Store } from "./db.js";
 import { SessionManager, isProcessAlive } from "./session.js";
-import { ClusterStateMachine, type TransitionAction } from "./statemachine.js";
+import { ClusterStateMachine, mergeEligibility, type TransitionAction } from "./statemachine.js";
 import { WorktreeManager, isGitRepo } from "./worktree.js";
 import { runChecks, diffSize } from "./checks.js";
 import { resolveModel, repoPathForCluster, latestWorktreeForCluster } from "./resolve.js";
@@ -510,7 +510,7 @@ server.registerTool(
   {
     title: "Worktree-Branch mergen (M3, sequenziell nach Review)",
     description:
-      "Merged den Branch eines parallelen Tasks in den Basis-Branch. Konflikt -> Merge wird abgebrochen, Claude plant Reparatur-Slice. Nur wenn ein REVIEW_RESULT vorliegt.",
+      "Merged den Branch eines parallelen Tasks erst nach confirmed Cluster/Review und grünen Checks. Konflikt -> Merge wird abgebrochen.",
     inputSchema: {
       cluster_id: z.string(),
       task_id: z.string(),
@@ -522,13 +522,27 @@ server.registerTool(
   async (a) => {
     const repo = repoPathForCluster(store, a.cluster_id);
     if (!repo) return err({ ok: false, error: "Plan-Repo nicht gefunden" });
+    const cluster = store.getCluster(a.cluster_id);
+    if (!cluster) return err({ ok: false, error: "Cluster nicht gefunden" });
     const task = store.getTask(a.task_id);
     if (!task || !task.branch) return err({ ok: false, error: "Task ohne Worktree-Branch" });
-    if (!store.latestReview(a.cluster_id)) {
-      return err({ ok: false, error: "Merge erst nach Review (kein REVIEW_RESULT vorhanden)" });
-    }
-    if (task.status === "running" || task.status === "awaiting_resume") {
-      return err({ ok: false, error: `Task ${task.id} läuft noch (${task.status}) — erst abschließen/pausieren.` });
+    const review = store.latestReview(a.cluster_id);
+    const strategy = JSON.parse(cluster.review_strategy_json || "{}") as { checks?: string[] };
+    const checks = store.checksForCluster(a.cluster_id);
+    const checksGreen = (strategy.checks ?? []).every((name) => {
+      const latest = [...checks].reverse().find((check) => check.cmd === name);
+      return latest?.exit_code === 0;
+    });
+    const eligibility = mergeEligibility({
+      clusterId: cluster.id,
+      taskClusterId: task.cluster_id,
+      taskStatus: task.status,
+      clusterStatus: cluster.status,
+      reviewStatus: review?.status ?? null,
+      checksGreen,
+    });
+    if (!eligibility.ok) {
+      return err({ ok: false, error: "Merge-Gates nicht erfüllt", reasons: eligibility.reasons });
     }
     const sign = a.sign ?? config.signMergeCommits;
     const r = worktrees.merge(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign });
