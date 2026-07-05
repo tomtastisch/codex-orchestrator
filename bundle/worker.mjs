@@ -4167,6 +4167,7 @@ var config = {
   codexBin: process.env.ORCH_CODEX_BIN || "codex",
   allowedSandboxes: ["read-only", "workspace-write"],
   networkDefault: false,
+  requireHypothesis: process.env.ORCH_REQUIRE_HYPOTHESIS !== "false",
   maxWaitSeconds: 55,
   syncMaxMinutes: 8,
   limits: {
@@ -4852,7 +4853,7 @@ function parseWorkerRequest(input) {
 }
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.2.0";
+var ORCHESTRATOR_VERSION = "1.3.0";
 
 // src/worker/path-policy.ts
 import { realpathSync } from "node:fs";

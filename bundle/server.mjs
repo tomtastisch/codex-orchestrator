@@ -21199,6 +21199,7 @@ var config2 = {
   codexBin: process.env.ORCH_CODEX_BIN || "codex",
   allowedSandboxes: ["read-only", "workspace-write"],
   networkDefault: false,
+  requireHypothesis: process.env.ORCH_REQUIRE_HYPOTHESIS !== "false",
   maxWaitSeconds: 55,
   syncMaxMinutes: 8,
   limits: {
@@ -21347,6 +21348,52 @@ function runMigrations(db) {
   }
 }
 
+// src/redact.ts
+var PLACEHOLDER = "\xABredacted\xBB";
+var PATTERNS = [
+  // Private-Key-Blöcke (PEM).
+  { re: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----/g },
+  // OpenAI-Keys (sk-..., inkl. sk-proj-).
+  { re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b/g },
+  // GitHub-Tokens (ghp_, gho_, ghu_, ghs_, ghr_, github_pat_).
+  { re: /\bgh[posru]_[A-Za-z0-9]{20,}\b/g },
+  { re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
+  // AWS Access Key IDs.
+  { re: /\bAKIA[0-9A-Z]{16}\b/g },
+  // Slack-Tokens.
+  { re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
+  // Google API keys.
+  { re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  // JWTs (header.payload.signature).
+  { re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+  // Bearer-Header.
+  { re: /\bBearer\s+[A-Za-z0-9._-]{12,}/gi, replace: () => `Bearer ${PLACEHOLDER}` },
+  // key=value / key: value für sensible Schlüsselnamen (Env-Vars, Passwörter, Tokens).
+  // Werte-Klasse schließt Backslash aus: verhindert das Fressen von JSON-Escapes
+  // (z. B. in eingebettetem JSON des .toln) und hält die Redaction idempotent.
+  {
+    re: /\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|AUTH|CREDENTIAL)[A-Za-z0-9_]*)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s"'\\]+)/gi,
+    replace: (_m, key, sep3) => `${key}${sep3}${PLACEHOLDER}`
+  }
+];
+function redactText(input) {
+  let out = input;
+  for (const p of PATTERNS) {
+    out = p.replace ? out.replace(p.re, p.replace) : out.replace(p.re, PLACEHOLDER);
+  }
+  return out;
+}
+function redactDeep(value) {
+  if (typeof value === "string") return redactText(value);
+  if (Array.isArray(value)) return value.map((v) => redactDeep(v));
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = redactDeep(v);
+    return out;
+  }
+  return value;
+}
+
 // src/db.ts
 function nowIso() {
   return (/* @__PURE__ */ new Date()).toISOString();
@@ -21354,6 +21401,7 @@ function nowIso() {
 function newId(prefix) {
   return `${prefix}_${randomUUID().slice(0, 12)}`;
 }
+var SCHEMA_VERSION = 4;
 var SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
   id TEXT PRIMARY KEY, goal TEXT NOT NULL, constraints TEXT,
@@ -21385,7 +21433,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   target_id TEXT NOT NULL DEFAULT 'local',
   target_kind TEXT NOT NULL DEFAULT 'local',
   repository_commit TEXT, worker_version TEXT, routing_reason TEXT,
-  fallback_from TEXT
+  fallback_from TEXT, hypothesis_id TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL,
@@ -21402,6 +21450,49 @@ CREATE TABLE IF NOT EXISTS hypotheses (
     ('open','confirmed','rejected','superseded')),
   evidence TEXT, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS hypothesis_versions (
+  id TEXT PRIMARY KEY,
+  hypothesis_id TEXT NOT NULL REFERENCES hypotheses(id),
+  version INTEGER NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(hypothesis_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_hyp_versions ON hypothesis_versions(hypothesis_id, version);
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY, value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_decisions (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT,
+  cluster_id TEXT,
+  topic TEXT NOT NULL,
+  question TEXT,
+  decision TEXT NOT NULL,
+  remember INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_decisions ON user_decisions(topic, cluster_id, created_at);
+CREATE TABLE IF NOT EXISTS agent_jobs (
+  id TEXT PRIMARY KEY, task_id TEXT, cluster_id TEXT, hypothesis_id TEXT,
+  model TEXT, effort TEXT, sandbox TEXT, status TEXT NOT NULL,
+  started_at TEXT NOT NULL, ended_at TEXT, summary TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_task ON agent_jobs(task_id);
+CREATE TABLE IF NOT EXISTS hypothesis_reviews (
+  id TEXT PRIMARY KEY, hypothesis_id TEXT, cluster_id TEXT,
+  reviewer TEXT, status TEXT NOT NULL, findings_json TEXT, synthesis TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+  id TEXT PRIMARY KEY, plan_id TEXT, kind TEXT NOT NULL, path TEXT NOT NULL,
+  schema_version INTEGER, artifact_version INTEGER, checksum TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audit_events (
+  id TEXT PRIMARY KEY, ts TEXT NOT NULL, actor TEXT, action TEXT NOT NULL,
+  resource TEXT, detail_json TEXT, redacted INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts);
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY, cluster_id TEXT NOT NULL, ts TEXT NOT NULL,
   status TEXT NOT NULL, findings_json TEXT, fixes_json TEXT, impact_json TEXT
@@ -21428,24 +21519,63 @@ var Store = class {
     this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec(SCHEMA);
     runMigrations(this.db);
-    this.migrate();
+    this.runMigrations();
   }
-  /** Additive Migrationen für bestehende DBs (fehlende Spalten nachrüsten). */
-  migrate() {
-    const cols = (table) => {
-      const rows = this.db.prepare(`PRAGMA table_info(${table})`).all();
-      return new Set(rows.map((r) => r.name));
-    };
-    const taskCols = cols("tasks");
-    if (!taskCols.has("extra_config_json")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN extra_config_json TEXT");
+  columns(table) {
+    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all();
+    return new Set(rows.map((r) => r.name));
+  }
+  ensureColumn(table, col, ddl) {
+    if (!this.columns(table).has(col)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
+  /**
+   * Geordneter, transaktionaler Migrations-Runner (Cluster 5). Jede Migration
+   * hat eine Zielversion und läuft nur, wenn die aktuelle schema_version kleiner
+   * ist. Die `up`-Schritte sind idempotent (Spalten-/Tabellen-Existenzprüfung),
+   * damit Bestands-DBs beliebiger Version sicher aufsteigen. Tabellen werden vom
+   * Basis-SCHEMA (CREATE IF NOT EXISTS) angelegt; Migrationen ergänzen Spalten
+   * und schreiben die Versionsmarke fort — beides in einer Transaktion.
+   */
+  runMigrations() {
+    const migrations = [
+      { version: 2, up: () => {
+        this.ensureColumn("hypotheses", "task_id", "task_id TEXT");
+        this.ensureColumn("hypotheses", "cluster_id", "cluster_id TEXT");
+        this.ensureColumn("hypotheses", "result", "result TEXT");
+        this.ensureColumn("hypotheses", "latest_version", "latest_version INTEGER NOT NULL DEFAULT 0");
+        this.ensureColumn("hypotheses", "created_at", "created_at TEXT");
+      } },
+      { version: 3, up: () => {
+        this.ensureColumn("tasks", "extra_config_json", "extra_config_json TEXT");
+        this.ensureColumn("tasks", "owner_pid", "owner_pid INTEGER");
+        this.ensureColumn("tasks", "codex_pid", "codex_pid INTEGER");
+        this.ensureColumn("tasks", "hypothesis_id", "hypothesis_id TEXT");
+      } },
+      { version: 4, up: () => {
+      } }
+    ];
+    let current = this.getSchemaVersion();
+    for (const m of migrations) {
+      if (current < m.version) {
+        this.tx(() => {
+          m.up();
+          this.setSchemaVersion(m.version);
+        });
+        current = m.version;
+      }
     }
-    if (!taskCols.has("owner_pid")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN owner_pid INTEGER");
+  }
+  /** Aktuelle Schema-Version (0, wenn noch nie gesetzt). */
+  getSchemaVersion() {
+    try {
+      const r = this.db.prepare("SELECT value FROM meta WHERE key='schema_version'").get();
+      return r ? Number(r.value) : 0;
+    } catch {
+      return 0;
     }
-    if (!taskCols.has("codex_pid")) {
-      this.db.exec("ALTER TABLE tasks ADD COLUMN codex_pid INTEGER");
-    }
+  }
+  setSchemaVersion(v) {
+    this.db.prepare("INSERT INTO meta(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=?").run(String(v), String(v));
   }
   tx(fn) {
     this.db.exec("BEGIN");
@@ -21527,8 +21657,8 @@ var Store = class {
     this.db.prepare(
       `INSERT INTO tasks(id,cluster_id,codex_session_id,worktree,branch,repo_path,
         sandbox,model,effort,instructions,acceptance_json,max_minutes,network,status,slice_count,extra_config_json,
-        target_id,target_kind,repository_commit,worker_version,routing_reason,fallback_from)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?)`
+        hypothesis_id,target_id,target_kind,repository_commit,worker_version,routing_reason,fallback_from)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?)`
     ).run(
       t.id,
       t.cluster_id,
@@ -21545,6 +21675,7 @@ var Store = class {
       t.network,
       t.status,
       t.extra_config_json ?? null,
+      t.hypothesis_id ?? null,
       t.target_id ?? "local",
       t.target_kind ?? "local",
       t.repository_commit ?? null,
@@ -21664,6 +21795,120 @@ var Store = class {
   }
   checksForCluster(clusterId) {
     return this.db.prepare("SELECT * FROM checks WHERE cluster_id=? ORDER BY ts").all(clusterId);
+  }
+  // ---- user_decisions (Cluster 4: Nachkontrolle-Gate + Präferenzen) ----
+  recordDecision(d) {
+    const id = newId("UD");
+    this.db.prepare(
+      "INSERT INTO user_decisions(id,plan_id,cluster_id,topic,question,decision,remember,created_at) VALUES(?,?,?,?,?,?,?,?)"
+    ).run(id, d.planId, d.clusterId, d.topic, d.question, d.decision, d.remember ? 1 : 0, nowIso());
+    return id;
+  }
+  /** Neueste Entscheidung zu einem Thema für einen Cluster. */
+  latestDecision(clusterId, topic) {
+    return this.db.prepare(
+      "SELECT * FROM user_decisions WHERE cluster_id=? AND topic=? ORDER BY created_at DESC LIMIT 1"
+    ).get(clusterId, topic);
+  }
+  /** Stehende Präferenz (remember=1) für einen Plan/ein Thema — plan-weit gültig. */
+  standingPreference(planId, topic) {
+    return this.db.prepare(
+      "SELECT * FROM user_decisions WHERE topic=? AND remember=1 AND (plan_id IS ? OR plan_id=?) ORDER BY created_at DESC LIMIT 1"
+    ).get(topic, planId, planId);
+  }
+  listDecisions(filter) {
+    if (filter?.clusterId) {
+      return this.db.prepare("SELECT * FROM user_decisions WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
+    }
+    if (filter?.planId) {
+      return this.db.prepare("SELECT * FROM user_decisions WHERE plan_id=? ORDER BY created_at").all(filter.planId);
+    }
+    return this.db.prepare("SELECT * FROM user_decisions ORDER BY created_at").all();
+  }
+  // ---- agent_jobs (Cluster 5: auditierbare Codex-Job-Historie) ----
+  recordAgentJob(j) {
+    const id = newId("AJ");
+    this.db.prepare(
+      `INSERT INTO agent_jobs(id,task_id,cluster_id,hypothesis_id,model,effort,sandbox,status,started_at)
+       VALUES(?,?,?,?,?,?,?,?,?)`
+    ).run(id, j.taskId, j.clusterId, j.hypothesisId, j.model, j.effort, j.sandbox, j.status, nowIso());
+    return id;
+  }
+  /** Schließt den letzten offenen Job eines Tasks ab (Status + Zusammenfassung). */
+  finishAgentJobByTask(taskId, status, summary) {
+    const row = this.db.prepare(
+      "SELECT id FROM agent_jobs WHERE task_id=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1"
+    ).get(taskId);
+    if (!row) return;
+    this.db.prepare("UPDATE agent_jobs SET status=?, summary=COALESCE(?,summary), ended_at=? WHERE id=?").run(status, summary, nowIso(), row.id);
+  }
+  listAgentJobs(filter) {
+    if (filter?.taskId) return this.db.prepare("SELECT * FROM agent_jobs WHERE task_id=? ORDER BY started_at").all(filter.taskId);
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM agent_jobs WHERE cluster_id=? ORDER BY started_at").all(filter.clusterId);
+    return this.db.prepare("SELECT * FROM agent_jobs ORDER BY started_at").all();
+  }
+  // ---- hypothesis_reviews (Cluster 5: lokale Nachkontrolle je Hypothese) ----
+  addHypothesisReview(r) {
+    const id = newId("HR");
+    this.db.prepare(
+      `INSERT INTO hypothesis_reviews(id,hypothesis_id,cluster_id,reviewer,status,findings_json,synthesis,created_at)
+       VALUES(?,?,?,?,?,?,?,?)`
+    ).run(
+      id,
+      r.hypothesisId,
+      r.clusterId,
+      r.reviewer,
+      r.status,
+      JSON.stringify(r.findings ?? null),
+      r.synthesis,
+      nowIso()
+    );
+    return id;
+  }
+  listHypothesisReviews(filter) {
+    if (filter?.hypothesisId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE hypothesis_id=? ORDER BY created_at").all(filter.hypothesisId);
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
+    return this.db.prepare("SELECT * FROM hypothesis_reviews ORDER BY created_at").all();
+  }
+  // ---- artifacts (Cluster 5/6: versionierte Ergebnisartefakte) ----
+  addArtifact(a) {
+    const id = newId("AF");
+    this.db.prepare(
+      `INSERT INTO artifacts(id,plan_id,kind,path,schema_version,artifact_version,checksum,created_at)
+       VALUES(?,?,?,?,?,?,?,?)`
+    ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, nowIso());
+    return id;
+  }
+  listArtifacts(planId) {
+    if (planId) return this.db.prepare("SELECT * FROM artifacts WHERE plan_id=? ORDER BY created_at").all(planId);
+    return this.db.prepare("SELECT * FROM artifacts ORDER BY created_at").all();
+  }
+  latestArtifactVersion(planId, kind) {
+    const r = this.db.prepare(
+      "SELECT MAX(artifact_version) AS m FROM artifacts WHERE (plan_id IS ? OR plan_id=?) AND kind=?"
+    ).get(planId, planId, kind);
+    return r?.m ?? 0;
+  }
+  // ---- audit_events (Cluster 5/7: sicherheitsrelevanter Audit-Trail) ----
+  addAuditEvent(e) {
+    const id = newId("AU");
+    const safeDetail = redactDeep(e.detail ?? null);
+    this.db.prepare(
+      `INSERT INTO audit_events(id,ts,actor,action,resource,detail_json,redacted)
+       VALUES(?,?,?,?,?,?,?)`
+    ).run(
+      id,
+      nowIso(),
+      e.actor,
+      e.action,
+      redactText(e.resource ?? "") || null,
+      JSON.stringify(safeDetail),
+      1
+    );
+    return id;
+  }
+  listAuditEvents(limit = 500) {
+    return this.db.prepare("SELECT * FROM audit_events ORDER BY ts DESC LIMIT ?").all(limit);
   }
 };
 
@@ -22375,7 +22620,8 @@ var SessionManager = class {
       target_kind: args.targetKind ?? "local",
       repository_commit: args.repositoryCommit ?? null,
       routing_reason: args.routingReason ?? "local-default",
-      fallback_from: args.fallbackFrom ?? null
+      fallback_from: args.fallbackFrom ?? null,
+      hypothesis_id: args.hypothesisId ?? null
     });
   }
   /** Startet (oder setzt fort) den Hintergrund-Slice-Loop für einen Task. */
@@ -22551,6 +22797,10 @@ var SessionManager = class {
   finish(taskId, status, reason) {
     this.store.updateTask(taskId, { status, ended_at: (/* @__PURE__ */ new Date()).toISOString() });
     this.store.addEvent(taskId, "task_status", { status, reason });
+    try {
+      this.store.finishAgentJobByTask(taskId, status, reason);
+    } catch {
+    }
     this.emit(taskId);
   }
   limitBreach(taskId, reason) {
@@ -22755,7 +23005,26 @@ var ClusterStateMachine = class {
     }
     return { ok: blocking.length === 0, blocking };
   }
-  /** Harte confirm-Bedingung (Plan §6.2): REVIEW=confirmed UND alle Checks grün. */
+  /** Prüft, ob offene Review-Findings durch eine Nutzerentscheidung freigegeben sind. */
+  findingsCleared(cluster, review) {
+    let findings = null;
+    try {
+      findings = JSON.parse(review?.findings_json ?? "null");
+    } catch {
+    }
+    const hasFindings = Array.isArray(findings) && findings.length > 0;
+    if (!hasFindings) return { ok: true };
+    const accepts = (d) => d && (d.decision === "accept" || d.decision === "proceed");
+    const pref = this.store.standingPreference(cluster.plan_id, "cluster_findings");
+    if (accepts(pref)) return { ok: true };
+    const decision = this.store.latestDecision(cluster.id, "cluster_findings");
+    if (accepts(decision)) return { ok: true };
+    return {
+      ok: false,
+      reason: `Review meldet ${findings.length} Auff\xE4lligkeit(en) \u2014 Abschluss blockiert bis zur Nutzerentscheidung (user_decision topic='cluster_findings', decision 'accept'|'fix').`
+    };
+  }
+  /** Harte confirm-Bedingung (Plan §6.2): REVIEW=confirmed UND alle Checks grün UND Findings freigegeben. */
   confirmConditions(cluster) {
     const reasons = [];
     const review = this.store.latestReview(cluster.id);
@@ -22763,6 +23032,9 @@ var ClusterStateMachine = class {
       reasons.push("kein REVIEW_RESULT vorhanden");
     } else if (review.status !== "confirmed") {
       reasons.push(`REVIEW_RESULT-Status ist '${review.status}', nicht 'confirmed'`);
+    } else {
+      const cleared = this.findingsCleared(cluster, review);
+      if (!cleared.ok) reasons.push(cleared.reason);
     }
     const strategy = parseStrategy(cluster.review_strategy_json);
     const declared = strategy.checks ?? [];
@@ -23071,6 +23343,45 @@ function runUpdate(channel) {
     child.on("close", (code) => resolve6({ ok: code === 0, output: out.slice(-4e3) }));
     child.on("error", (err2) => resolve6({ ok: false, output: String(err2) }));
   });
+}
+
+// src/doctor.ts
+function isAuthenticated(loginStatusOutput) {
+  if (/not\s+logged\s+in/i.test(loginStatusOutput)) return false;
+  return /logged\s+in/i.test(loginStatusOutput);
+}
+function buildDoctorReport(probe) {
+  const present = probe.codexVersion != null;
+  const authenticated = present && isAuthenticated(probe.loginStatus);
+  const marketplaceSkipped = process.env.SKIP_PLUGIN_MARKETPLACE === "true";
+  const guidance = [];
+  if (!present) {
+    guidance.push(
+      `Codex-CLI nicht gefunden (codexBin='${config2.codexBin}'). Installieren via 'npm i -g @openai/codex' oder ORCH_CODEX_BIN auf den Bin\xE4rpfad setzen.`
+    );
+  } else if (!authenticated) {
+    guidance.push(
+      "Codex ist installiert, aber nicht angemeldet. 'codex login' ausf\xFChren (oder OPENAI_API_KEY in der Umgebung bereitstellen)."
+    );
+  }
+  if (marketplaceSkipped) {
+    guidance.push(
+      "SKIP_PLUGIN_MARKETPLACE=true: Der Plugin-Marketplace ist in dieser Umgebung deaktiviert (z. B. Claude Code Web/Remote). Den MCP-Server direkt registrieren ('claude mcp add \u2026' bzw. .mcp.json/mcpServers), statt \xFCber '/plugin marketplace add'."
+    );
+  }
+  if (present && authenticated && guidance.length === 0) {
+    guidance.push("Bereit: Codex-CLI vorhanden und angemeldet.");
+  }
+  return {
+    ok: present && authenticated,
+    node: process.version,
+    store: config2.home,
+    codexBin: config2.codexBin,
+    codex: { present, version: probe.codexVersion, authenticated },
+    pluginMarketplaceSkipped: marketplaceSkipped,
+    allowedSandboxes: config2.allowedSandboxes,
+    guidance
+  };
 }
 
 // node_modules/@toon-format/toon/dist/index.mjs
@@ -23522,13 +23833,596 @@ function writePlanSnapshot(store2, planId, format = "toon") {
   return { format, content, path };
 }
 
+// src/artifact.ts
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { basename, join as join3 } from "node:path";
+
+// src/hypotheses.ts
+function needsFollowUp(result) {
+  return result === "partially_confirmed" || result === "refuted";
+}
+function clampConfidence(v, field) {
+  if (typeof v !== "number" || Number.isNaN(v)) {
+    throw new Error(`${field} muss eine Zahl in [0,1] sein`);
+  }
+  if (v < 0 || v > 1) {
+    throw new Error(`${field}=${v} liegt au\xDFerhalb [0,1]`);
+  }
+  return v;
+}
+function normQuestions(qs) {
+  if (!qs) return [];
+  return qs.map(
+    (q) => typeof q === "string" ? { question: q, answer: null } : { question: q.question, answer: q.answer ?? null }
+  );
+}
+function normFalsification(fs) {
+  if (!fs) return [];
+  return fs.map(
+    (f) => typeof f === "string" ? { description: f, method: null, expectationIfFalse: null, observed: null } : {
+      description: f.description,
+      method: f.method ?? null,
+      expectationIfFalse: f.expectationIfFalse ?? null,
+      observed: f.observed ?? null
+    }
+  );
+}
+function normEvidence(es) {
+  if (!es) return [];
+  return es.map(
+    (e) => typeof e === "string" ? { source: "note", observation: e, ts: nowIso() } : { source: e.source, observation: e.observation, ts: e.ts ?? nowIso() }
+  );
+}
+var HypothesisRepo = class _HypothesisRepo {
+  constructor(store2) {
+    this.store = store2;
+  }
+  store;
+  get db() {
+    return this.store.db;
+  }
+  /** Serialisiert eine Hypothese in ein stabiles, maschinenlesbares Objekt. */
+  static serialize(h) {
+    return {
+      id: h.id,
+      planId: h.planId,
+      taskId: h.taskId,
+      clusterId: h.clusterId,
+      version: h.version,
+      status: h.status,
+      initialAssumption: h.initialAssumption,
+      confidenceBefore: h.confidenceBefore,
+      criticalQuestions: h.criticalQuestions,
+      falsificationPlan: h.falsificationPlan,
+      evidence: h.evidence,
+      result: h.result,
+      confidenceAfter: h.confidenceAfter,
+      updatedAssumption: h.updatedAssumption,
+      followUpQuestions: h.followUpQuestions,
+      risks: h.risks,
+      nextAction: h.nextAction,
+      createdAt: h.createdAt,
+      updatedAt: h.updatedAt
+    };
+  }
+  /** Rehydriert eine Hypothese aus einem serialisierten Snapshot. */
+  static deserialize(o) {
+    return {
+      id: String(o.id),
+      planId: o.planId ?? null,
+      taskId: o.taskId ?? null,
+      clusterId: o.clusterId ?? null,
+      version: Number(o.version),
+      status: o.status ?? "open",
+      initialAssumption: String(o.initialAssumption ?? ""),
+      confidenceBefore: Number(o.confidenceBefore ?? 0),
+      criticalQuestions: o.criticalQuestions ?? [],
+      falsificationPlan: o.falsificationPlan ?? [],
+      evidence: o.evidence ?? [],
+      result: o.result ?? "open",
+      confidenceAfter: o.confidenceAfter ?? null,
+      updatedAssumption: o.updatedAssumption ?? null,
+      followUpQuestions: o.followUpQuestions ?? [],
+      risks: o.risks ?? [],
+      nextAction: o.nextAction ?? null,
+      createdAt: String(o.createdAt ?? ""),
+      updatedAt: String(o.updatedAt ?? "")
+    };
+  }
+  /** Legt eine neue Hypothese (Version 1) an. */
+  create(input) {
+    if (!input.initialAssumption || !input.initialAssumption.trim()) {
+      throw new Error("initialAssumption ist erforderlich");
+    }
+    const confidenceBefore = clampConfidence(input.confidenceBefore, "confidenceBefore");
+    const id = newId("H");
+    const ts = nowIso();
+    const h = {
+      id,
+      planId: input.planId ?? null,
+      taskId: input.taskId ?? null,
+      clusterId: input.clusterId ?? null,
+      version: 1,
+      status: "open",
+      initialAssumption: input.initialAssumption,
+      confidenceBefore,
+      criticalQuestions: normQuestions(input.criticalQuestions),
+      falsificationPlan: normFalsification(input.falsificationPlan),
+      evidence: [],
+      result: "open",
+      confidenceAfter: null,
+      updatedAssumption: null,
+      followUpQuestions: [],
+      risks: [],
+      nextAction: null,
+      createdAt: ts,
+      updatedAt: ts
+    };
+    return this.store.tx(() => {
+      this.db.prepare(
+        `INSERT INTO hypotheses
+             (id, plan_id, task_id, cluster_id, text, status, evidence,
+              result, latest_version, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+      ).run(
+        h.id,
+        h.planId ?? "",
+        // Header-Spalte ist NOT NULL (Legacy); Snapshot behält echtes null.
+        h.taskId,
+        h.clusterId,
+        h.initialAssumption,
+        h.status,
+        null,
+        h.result,
+        h.version,
+        h.createdAt,
+        h.updatedAt
+      );
+      this.writeVersion(h);
+      return h;
+    });
+  }
+  writeVersion(h) {
+    this.db.prepare(
+      `INSERT INTO hypothesis_versions (id, hypothesis_id, version, snapshot_json, created_at)
+         VALUES (?,?,?,?,?)`
+    ).run(newId("HV"), h.id, h.version, JSON.stringify(_HypothesisRepo.serialize(h)), h.updatedAt);
+  }
+  /**
+   * Aktualisiert eine Hypothese: erzeugt append-only eine neue Version aus der
+   * neuesten und schreibt den Header fort. Die alten Versionen bleiben
+   * unverändert erhalten (Nachvollziehbarkeit).
+   */
+  update(id, patch) {
+    return this.store.tx(() => {
+      const current = this.get(id);
+      if (!current) throw new Error(`Hypothese ${id} nicht gefunden`);
+      const ts = nowIso();
+      const result = patch.result ?? current.result;
+      const followUpQuestions = patch.followUpQuestions !== void 0 ? patch.followUpQuestions : current.followUpQuestions;
+      if (needsFollowUp(result) && followUpQuestions.length === 0) {
+        throw new Error(
+          `Ergebnis '${result}' erfordert mindestens eine Folgefrage (followUpQuestions): Was bleibt offen? Welche neue Hypothese folgt? Welche Risiken/n\xE4chste Aktion?`
+        );
+      }
+      const next = {
+        ...current,
+        version: current.version + 1,
+        status: patch.status ?? current.status,
+        result,
+        followUpQuestions,
+        risks: patch.risks !== void 0 ? patch.risks : current.risks,
+        nextAction: patch.nextAction !== void 0 ? patch.nextAction : current.nextAction,
+        confidenceAfter: patch.confidenceAfter !== void 0 ? patch.confidenceAfter === null ? null : clampConfidence(patch.confidenceAfter, "confidenceAfter") : current.confidenceAfter,
+        updatedAssumption: patch.updatedAssumption !== void 0 ? patch.updatedAssumption : current.updatedAssumption,
+        criticalQuestions: patch.criticalQuestions ? normQuestions(patch.criticalQuestions) : current.criticalQuestions,
+        falsificationPlan: patch.falsificationPlan ? normFalsification(patch.falsificationPlan) : current.falsificationPlan,
+        evidence: patch.addEvidence ? [...current.evidence, ...normEvidence(patch.addEvidence)] : current.evidence,
+        taskId: patch.taskId !== void 0 ? patch.taskId : current.taskId,
+        clusterId: patch.clusterId !== void 0 ? patch.clusterId : current.clusterId,
+        updatedAt: ts
+      };
+      this.db.prepare(
+        `UPDATE hypotheses
+             SET status=?, result=?, latest_version=?, updated_at=?,
+                 task_id=?, cluster_id=?, evidence=?
+           WHERE id=?`
+      ).run(
+        next.status,
+        next.result,
+        next.version,
+        next.updatedAt,
+        next.taskId,
+        next.clusterId,
+        next.evidence.length ? JSON.stringify(next.evidence) : null,
+        id
+      );
+      this.writeVersion(next);
+      return next;
+    });
+  }
+  /** Lädt die neueste Version einer Hypothese. */
+  get(id) {
+    const row = this.db.prepare(
+      `SELECT snapshot_json FROM hypothesis_versions
+         WHERE hypothesis_id=? ORDER BY version DESC LIMIT 1`
+    ).get(id);
+    if (!row) return void 0;
+    return _HypothesisRepo.deserialize(JSON.parse(row.snapshot_json));
+  }
+  /** Lädt eine konkrete Version. */
+  getVersion(id, version2) {
+    const row = this.db.prepare(
+      `SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? AND version=?`
+    ).get(id, version2);
+    if (!row) return void 0;
+    return _HypothesisRepo.deserialize(JSON.parse(row.snapshot_json));
+  }
+  /** Alle Versionen einer Hypothese (aufsteigend) — vollständige Historie. */
+  listVersions(id) {
+    const rows = this.db.prepare(
+      `SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version`
+    ).all(id);
+    return rows.map((r) => _HypothesisRepo.deserialize(JSON.parse(r.snapshot_json)));
+  }
+  listByColumn(column, value) {
+    const ids = this.db.prepare(`SELECT id FROM hypotheses WHERE ${column}=? ORDER BY created_at`).all(value);
+    return ids.map((r) => this.get(r.id)).filter((h) => !!h);
+  }
+  listByTask(taskId) {
+    return this.listByColumn("task_id", taskId);
+  }
+  listByCluster(clusterId) {
+    return this.listByColumn("cluster_id", clusterId);
+  }
+  listByPlan(planId) {
+    return this.listByColumn("plan_id", planId);
+  }
+  /**
+   * Bindet eine bestehende Hypothese provenienzhalber an einen Task/Cluster.
+   * Aktualisiert NUR die Header-Spalten (für listByTask/listByCluster) und lässt
+   * die versionierten Snapshots unangetastet — Binden ist Provenienz, keine
+   * inhaltliche Revision, erzeugt daher keine neue Version.
+   */
+  bindToTask(id, taskId, clusterId) {
+    this.db.prepare("UPDATE hypotheses SET task_id=?, cluster_id=COALESCE(?, cluster_id) WHERE id=?").run(taskId, clusterId, id);
+  }
+  /** Neueste (rich) Hypothese, die an einen Task gebunden ist — für das Gate. */
+  latestForTask(taskId) {
+    const rows = this.listByTask(taskId);
+    return rows.length ? rows[rows.length - 1] : void 0;
+  }
+};
+
+// src/artifact.ts
+var ARTIFACT_SCHEMA_VERSION = SCHEMA_VERSION;
+function git2(repo, args) {
+  try {
+    return execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+}
+function parseJson(s) {
+  if (!s) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return s;
+  }
+}
+function buildResultArtifact(store2, planId, opts = {}) {
+  const plan = store2.getPlan(planId);
+  if (!plan) return null;
+  const repo = plan.repo_path;
+  const hyp = new HypothesisRepo(store2);
+  const clusters = store2.listClusters(planId).map((c) => ({
+    id: c.id,
+    ordinal: c.ordinal,
+    name: c.name,
+    status: c.status,
+    goal: c.goal,
+    acceptance: parseJson(c.acceptance_json),
+    review_strategy: parseJson(c.review_strategy_json),
+    latest_review: (() => {
+      const r = store2.latestReview(c.id);
+      return r ? { status: r.status, ts: r.ts } : null;
+    })(),
+    checks: store2.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code }))
+  }));
+  const clusterIds = new Set(clusters.map((c) => c.id));
+  const planTasks = store2.listTasks().filter((t) => t.cluster_id !== null && clusterIds.has(t.cluster_id));
+  const taskIds = new Set(planTasks.map((t) => t.id));
+  const tasks = planTasks.map((t) => ({
+    id: t.id,
+    cluster_id: t.cluster_id,
+    status: t.status,
+    sandbox: t.sandbox,
+    model: t.model,
+    effort: t.effort,
+    hypothesis_id: t.hypothesis_id,
+    slice_count: t.slice_count,
+    last_slice_type: t.last_slice_type
+  }));
+  const agentJobs = store2.listAgentJobs().filter((j) => j.cluster_id && clusterIds.has(j.cluster_id) || j.task_id && taskIds.has(j.task_id)).map((j) => ({
+    id: j.id,
+    task_id: j.task_id,
+    cluster_id: j.cluster_id,
+    hypothesis_id: j.hypothesis_id,
+    model: j.model,
+    effort: j.effort,
+    sandbox: j.sandbox,
+    status: j.status,
+    started_at: j.started_at,
+    ended_at: j.ended_at
+  }));
+  const richIds = /* @__PURE__ */ new Set();
+  const allHeaders = store2.db.prepare(
+    "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
+  ).all();
+  const headers = allHeaders.filter(
+    (h) => h.plan_id === planId || h.cluster_id && clusterIds.has(h.cluster_id) || h.task_id && taskIds.has(h.task_id)
+  );
+  const hypotheses = [];
+  const hypothesisUpdates = [];
+  for (const { id } of headers) {
+    const versions = hyp.listVersions(id);
+    if (!versions.length) continue;
+    richIds.add(id);
+    hypotheses.push(HypothesisRepo.serialize(versions[versions.length - 1]));
+    for (const v of versions) hypothesisUpdates.push(HypothesisRepo.serialize(v));
+  }
+  const reviews = [
+    ...clusters.flatMap((c) => {
+      const r = store2.latestReview(c.id);
+      return r ? [{ kind: "cluster", cluster_id: c.id, status: r.status, findings: parseJson(r.findings_json), ts: r.ts }] : [];
+    }),
+    ...store2.listHypothesisReviews().filter((r) => r.cluster_id && clusterIds.has(r.cluster_id) || r.hypothesis_id && richIds.has(r.hypothesis_id)).map((r) => ({
+      kind: "hypothesis",
+      hypothesis_id: r.hypothesis_id,
+      cluster_id: r.cluster_id,
+      reviewer: r.reviewer,
+      status: r.status,
+      findings: parseJson(r.findings_json),
+      synthesis: r.synthesis
+    }))
+  ];
+  const userDecisions = store2.listDecisions().filter((d) => d.plan_id === planId || d.cluster_id && clusterIds.has(d.cluster_id)).map((d) => ({
+    id: d.id,
+    cluster_id: d.cluster_id,
+    topic: d.topic,
+    decision: d.decision,
+    remember: !!d.remember,
+    question: d.question,
+    created_at: d.created_at
+  }));
+  let filesChanged = [];
+  const before = opts.gitCommitBefore ?? null;
+  const nameOnly = before ? git2(repo, ["--no-pager", "diff", "--name-only", `${before}..HEAD`]) : git2(repo, ["--no-pager", "diff", "--name-only", "HEAD~1..HEAD"]);
+  if (nameOnly) filesChanged = nameOnly.split("\n").filter(Boolean);
+  const testsRun = clusters.flatMap(
+    (c) => store2.checksForCluster(c.id).map((k) => ({ cluster_id: c.id, cmd: k.cmd, exit_code: k.exit_code }))
+  );
+  const findings = reviews.flatMap(
+    (r) => Array.isArray(r.findings) ? r.findings.map((f) => ({ source: r.kind, cluster_id: r.cluster_id ?? null, finding: typeof f === "string" ? f : JSON.stringify(f) })) : []
+  );
+  const unresolvedIssues = [];
+  for (const c of clusters) if (c.status !== "confirmed") unresolvedIssues.push(`Cluster ${c.id} ist ${c.status}, nicht confirmed`);
+  for (const h of hypotheses) {
+    if (h.result === "refuted" || h.result === "partially_confirmed") {
+      for (const q of h.followUpQuestions ?? []) unresolvedIssues.push(`Folgefrage (${h.id}): ${q}`);
+    } else if (h.result === "open") {
+      unresolvedIssues.push(`Hypothese ${h.id} noch offen`);
+    }
+  }
+  const recommendedNextSteps = opts.recommendedNextSteps ?? (() => {
+    const steps = hypotheses.flatMap((h) => h.nextAction ? [h.nextAction] : []);
+    return steps.length ? steps : ["Alle Cluster confirmed \u2014 keine offenen Folgeschritte."];
+  })();
+  const artifact = redactDeep({
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    artifactVersion: store2.latestArtifactVersion(planId, "toln") + 1,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    projectName: basename(repo),
+    gitBranch: git2(repo, ["rev-parse", "--abbrev-ref", "HEAD"]),
+    gitCommitBefore: before,
+    gitCommitAfter: git2(repo, ["rev-parse", "HEAD"]),
+    originalUserRequest: opts.originalUserRequest ?? plan.goal,
+    interpretedGoal: opts.interpretedGoal ?? plan.goal,
+    clusters,
+    tasks,
+    agentJobs,
+    hypotheses,
+    hypothesisUpdates,
+    reviews,
+    userDecisions,
+    filesChanged,
+    testsRun,
+    findings,
+    unresolvedIssues,
+    finalAssessment: opts.finalAssessment ?? (unresolvedIssues.length === 0 ? "Alle Cluster confirmed, keine offenen Punkte." : `${unresolvedIssues.length} offene(r) Punkt(e) verbleiben.`),
+    recommendedNextSteps
+  });
+  const checksum = computeChecksum(artifact);
+  return { ...artifact, checksum };
+}
+function computeChecksum(artifact) {
+  return "sha256:" + createHash("sha256").update(stableStringify(artifact)).digest("hex");
+}
+function stableStringify(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map(stableStringify).join(",") + "]";
+  const keys = Object.keys(v).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + stableStringify(v[k])).join(",") + "}";
+}
+function tomlStr(s) {
+  return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t") + '"';
+}
+function tomlValue(v) {
+  if (v === null || v === void 0) return '""';
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : '""';
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (Array.isArray(v)) {
+    if (v.every((x) => typeof x === "string")) return "[" + v.map((x) => tomlStr(x)).join(", ") + "]";
+    return tomlStr(JSON.stringify(v));
+  }
+  if (typeof v === "object") return tomlStr(JSON.stringify(v));
+  return tomlStr(String(v));
+}
+function emitTable(item) {
+  return Object.entries(item).map(([k, val]) => `${k} = ${tomlValue(val)}`).join("\n") + "\n";
+}
+function renderToln(a) {
+  const scalars = [
+    "schemaVersion",
+    "artifactVersion",
+    "timestamp",
+    "projectName",
+    "gitBranch",
+    "gitCommitBefore",
+    "gitCommitAfter",
+    "originalUserRequest",
+    "interpretedGoal",
+    "finalAssessment",
+    "checksum"
+  ];
+  const stringArrays = ["filesChanged", "unresolvedIssues", "recommendedNextSteps"];
+  const tableArrays = [
+    "clusters",
+    "tasks",
+    "agentJobs",
+    "hypotheses",
+    "hypothesisUpdates",
+    "reviews",
+    "userDecisions",
+    "testsRun",
+    "findings"
+  ];
+  let out = "# codex-orchestration-result \u2014 versioned run artifact (.toln / TOML)\n\n";
+  for (const k of scalars) out += `${k} = ${tomlValue(a[k])}
+`;
+  out += "\n";
+  for (const k of stringArrays) out += `${k} = ${tomlValue(a[k])}
+`;
+  out += "\n";
+  for (const k of tableArrays) {
+    const items = a[k];
+    for (const item of items) out += `[[${k}]]
+${emitTable(item)}
+`;
+  }
+  return out;
+}
+function renderSummaryMd(a) {
+  const confirmed = a.clusters.filter((c) => c.status === "confirmed").length;
+  const lines = [
+    `# Orchestration Summary \u2014 ${a.projectName}`,
+    "",
+    `- **Timestamp:** ${a.timestamp}`,
+    `- **Artifact:** v${a.artifactVersion} (schema v${a.schemaVersion})`,
+    `- **Branch:** ${a.gitBranch ?? "?"} @ ${a.gitCommitAfter?.slice(0, 12) ?? "?"}`,
+    `- **Goal:** ${a.interpretedGoal}`,
+    "",
+    `## Clusters (${confirmed}/${a.clusters.length} confirmed)`,
+    ...a.clusters.map((c) => `- \`${c.id}\` ${c.name} \u2014 **${c.status}**`),
+    "",
+    `## Hypotheses (${a.hypotheses.length})`,
+    ...a.hypotheses.map((h) => `- \`${h.id}\` result: **${h.result}**, v${h.version} \u2014 ${h.initialAssumption}`),
+    "",
+    `## Files changed (${a.filesChanged.length})`,
+    ...a.filesChanged.length ? a.filesChanged.map((f) => `- \`${f}\``) : ["- (none detected)"],
+    "",
+    `## Unresolved (${a.unresolvedIssues.length})`,
+    ...a.unresolvedIssues.length ? a.unresolvedIssues.map((u) => `- ${u}`) : ["- none"],
+    "",
+    `## Final assessment`,
+    a.finalAssessment,
+    "",
+    `## Recommended next steps`,
+    ...a.recommendedNextSteps.map((s) => `- ${s}`),
+    "",
+    `_checksum: ${a.checksum}_`,
+    ""
+  ];
+  return lines.join("\n");
+}
+function writeResultArtifact(store2, planId, opts = {}) {
+  const artifact = buildResultArtifact(store2, planId, opts);
+  if (!artifact) return null;
+  const dir = join3(config2.home, "artifacts");
+  mkdirSync5(dir, { recursive: true });
+  const stamp = artifact.timestamp.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  const base = `codex-orchestration-result.v${artifact.schemaVersion}.${stamp}`;
+  const tolnPath = join3(dir, `${base}.toln`);
+  const summaryPath = join3(dir, `${base}.summary.md`);
+  writeFileSync3(tolnPath, renderToln(artifact), "utf8");
+  writeFileSync3(summaryPath, renderSummaryMd(artifact), "utf8");
+  store2.addArtifact({
+    planId,
+    kind: "toln",
+    path: tolnPath,
+    schemaVersion: artifact.schemaVersion,
+    artifactVersion: artifact.artifactVersion,
+    checksum: artifact.checksum
+  });
+  return { tolnPath, summaryPath, artifact };
+}
+
+// src/gate.ts
+var MISSING_MSG = "Start blockiert: F\xFCr jeden Codex-Agentenjob ist zwingend eine Hypothese erforderlich. Bilde zuerst eine Hypothese (hypotheses \u2192 create: initialAssumption, criticalQuestions, falsificationPlan, confidenceBefore) und \xFCbergib deren id als 'hypothesis_id' an task_start.";
+function checkHypothesisGate(repo, input, require2) {
+  if (!require2) return { ok: true };
+  const id = input.hypothesisId?.trim();
+  if (!id) {
+    return { ok: false, error: MISSING_MSG };
+  }
+  const h = repo.get(id);
+  if (!h) {
+    return {
+      ok: false,
+      error: `Start blockiert: hypothesis_id '${id}' existiert nicht. Lege die Hypothese zuerst an (hypotheses \u2192 create) oder korrigiere die id.`
+    };
+  }
+  return { ok: true, hypothesis: h };
+}
+
+// src/sandbox.ts
+var ALLOWED_SANDBOXES = ["read-only", "workspace-write"];
+function classifySandbox(s) {
+  const v = s.trim().toLowerCase();
+  if (v === "read-only") return "read-only";
+  if (v === "workspace-write") return "workspace-write";
+  if (v.includes("danger") || v.includes("full-access")) return "danger";
+  return "unknown";
+}
+function checkSandboxPolicy(requested) {
+  const cls = classifySandbox(requested);
+  if (cls === "danger") {
+    return {
+      ok: false,
+      dangerous: true,
+      error: "Sandbox 'danger-full-access' ist serverseitig deaktiviert und ben\xF6tigt eine explizite Nutzerfreigabe. W\xE4hle 'read-only' (Research/Review) oder 'workspace-write' (Implementierung)."
+    };
+  }
+  if (cls === "unknown") {
+    return {
+      ok: false,
+      dangerous: false,
+      error: `Unbekannter Sandbox-Modus '${requested}'. Erlaubt: ${ALLOWED_SANDBOXES.join(", ")}.`
+    };
+  }
+  return { ok: true, sandbox: cls, dangerous: false };
+}
+
 // src/types.ts
 var EFFORT_LADDER = ["low", "medium", "high", "xhigh"];
 
 // src/auth/bootstrap.ts
 import { lstatSync, readFileSync as readFileSync3 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { join as join3 } from "node:path";
+import { join as join4 } from "node:path";
 
 // src/execution/errors.ts
 var TargetError = class extends Error {
@@ -23563,7 +24457,7 @@ function loadCredentialFile(path) {
   return readFileSync3(path);
 }
 function defaultCredentialSource() {
-  return join3(process.env.CODEX_HOME ?? join3(homedir2(), ".codex"), "auth.json");
+  return join4(process.env.CODEX_HOME ?? join4(homedir2(), ".codex"), "auth.json");
 }
 function requireHealthy(health, targetId) {
   if (health.state === "healthy" && health.auth.state === "authenticated") return health;
@@ -23710,11 +24604,11 @@ function startWorkerProcess(options, workerEntry, request, timeoutMs, onLine) {
 }
 
 // src/execution/ssh/deploy.ts
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync5, readFileSync as readFileSync4 } from "node:fs";
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.2.0";
+var ORCHESTRATOR_VERSION = "1.3.0";
 
 // src/execution/ssh/deploy.ts
 function safeRemotePath(path) {
@@ -23745,7 +24639,7 @@ var WorkerDeployer = class {
     }
     safeRemotePath(this.options.workerRoot);
     const bytes = readFileSync4(this.options.workerBundlePath);
-    const hash = createHash("sha256").update(bytes).digest("hex");
+    const hash = createHash2("sha256").update(bytes).digest("hex");
     const directory = `${this.options.workerRoot}/${ORCHESTRATOR_VERSION}/${hash}`;
     const destination = `${directory}/worker.mjs`;
     const temporary = `${destination}.tmp`;
@@ -24230,6 +25124,7 @@ function createExecutionRuntime(configuration) {
 var store = new Store(config2.dbPath);
 var execution = createExecutionRuntime(config2);
 var sessions = new SessionManager(store, (id) => execution.registry.get(id));
+var hypRepo = new HypothesisRepo(store);
 var machine = new ClusterStateMachine(store);
 var worktrees = new WorktreeManager();
 (function instanceGuard() {
@@ -24279,13 +25174,26 @@ server.registerTool(
           targetId: target.id,
           kind: target.kind,
           state: "unhealthy",
+          codexVersion: null,
+          auth: { state: "error", message: e?.message ?? String(e) },
           errorCode: e?.code ?? "TARGET_PROTOCOL",
           message: e?.message ?? String(e)
         });
       }
     }
     const healthy = targets.every((target) => target.state === "healthy");
-    return (healthy ? ok : err)({ ok: healthy, version: ORCHESTRATOR_VERSION, execution: config2.execution.mode, targets });
+    const local = targets.find((target) => target.targetId === "local");
+    const environment = buildDoctorReport({
+      codexVersion: local?.codexVersion ?? null,
+      loginStatus: local?.auth?.state === "authenticated" ? "Logged in" : "Not logged in"
+    });
+    return (healthy ? ok : err)({
+      ok: healthy,
+      version: ORCHESTRATOR_VERSION,
+      execution: config2.execution.mode,
+      environment,
+      targets
+    });
   }
 );
 server.registerTool(
@@ -24296,6 +25204,7 @@ server.registerTool(
     inputSchema: {
       cluster_id: external_exports.string().optional().describe("Cluster, zu dem der Task geh\xF6rt (bestimmt Repo-Pfad)."),
       repo_path: external_exports.string().optional().describe("Repo-Pfad, falls kein cluster_id angegeben ist."),
+      hypothesis_id: external_exports.string().optional().describe("PFLICHT: id der zuvor gebildeten Hypothese (hypotheses \u2192 create). Ohne verkn\xFCpfte Hypothese wird der Start blockiert."),
       instructions: external_exports.string().describe("Konkrete Arbeitsanweisung f\xFCr Codex."),
       acceptance_criteria: external_exports.array(external_exports.string()).optional(),
       sandbox: external_exports.enum(["read-only", "workspace-write"]),
@@ -24310,7 +25219,18 @@ server.registerTool(
   },
   async (a) => {
     const effort = a.effort;
-    const sandbox = a.sandbox;
+    const sandboxCheck = checkSandboxPolicy(a.sandbox);
+    if (!sandboxCheck.ok) {
+      store.addAuditEvent({
+        actor: "claude",
+        action: sandboxCheck.dangerous ? "danger_mode_denied" : "sandbox_rejected",
+        resource: a.cluster_id ?? a.repo_path ?? null,
+        detail: { requested: a.sandbox },
+        redacted: false
+      });
+      return err({ ok: false, error: sandboxCheck.error });
+    }
+    const sandbox = sandboxCheck.sandbox;
     const maxMinutes = a.slice_budget?.max_minutes ?? 8;
     const stopCondition = a.slice_budget?.stop_condition ?? null;
     const waitFor = a.wait_for;
@@ -24328,6 +25248,10 @@ server.registerTool(
         ok: false,
         error: `wait_for='completed' nur bei slice_budget.max_minutes <= ${config2.syncMaxMinutes} zul\xE4ssig`
       });
+    }
+    const gate = checkHypothesisGate(hypRepo, { hypothesisId: a.hypothesis_id }, config2.requireHypothesis);
+    if (!gate.ok) {
+      return err({ ok: false, error: gate.error, hint: "hypotheses \u2192 create, dann hypothesis_id an task_start \xFCbergeben." });
     }
     let selection;
     try {
@@ -24381,8 +25305,37 @@ server.registerTool(
       targetKind: selection.target.kind,
       repositoryCommit: selection.repository.headCommit,
       routingReason: selection.reason,
-      fallbackFrom: selection.fallbackFrom
+      fallbackFrom: selection.fallbackFrom,
+      hypothesisId: a.hypothesis_id ?? null
     });
+    if (a.hypothesis_id) {
+      try {
+        hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null);
+      } catch {
+      }
+    }
+    try {
+      store.recordAgentJob({
+        taskId: task.id,
+        clusterId: a.cluster_id ?? null,
+        hypothesisId: a.hypothesis_id ?? null,
+        model,
+        effort,
+        sandbox,
+        status: "queued"
+      });
+    } catch {
+    }
+    try {
+      store.addAuditEvent({
+        actor: "claude",
+        action: "task_started",
+        resource: task.id,
+        detail: { sandbox, model, effort, network: a.network ?? config2.networkDefault, dropped_config_keys: droppedConfig },
+        redacted: false
+      });
+    } catch {
+    }
     if (wantAutoWorktree) {
       try {
         const wt = selection.target.kind === "ssh" && selection.target.createWorktree ? await selection.target.createWorktree(repoPath, task.id) : worktrees.create(repoPath, task.id);
@@ -24648,35 +25601,160 @@ server.registerTool(
 server.registerTool(
   "hypotheses",
   {
-    title: "Hypothesen f\xFChren",
-    description: "list|add|confirm|reject|supersede. Provenienz \xFCber evidence.",
+    title: "Hypothesen f\xFChren (versioniert)",
+    description: "Legacy: list|add|confirm|reject|supersede (plan-weite Freitext-Hypothesen). Reiches, versioniertes Modell: create|update|get|versions. 'create' bildet die Pflicht-Hypothese VOR einer Aufgabe (initialAssumption + criticalQuestions + falsificationPlan). 'update' aktualisiert append-only NACH der Aufgabe (result + evidence + updatedAssumption).",
     inputSchema: {
-      plan_id: external_exports.string(),
-      action: external_exports.enum(["list", "add", "confirm", "reject", "supersede"]),
+      plan_id: external_exports.string().optional().describe("F\xFCr list/add/create (plan-weite Gruppierung)."),
+      action: external_exports.enum([
+        "list",
+        "add",
+        "confirm",
+        "reject",
+        "supersede",
+        "create",
+        "update",
+        "get",
+        "versions"
+      ]),
       id: external_exports.string().optional(),
-      text: external_exports.string().optional(),
-      evidence: external_exports.string().optional()
+      text: external_exports.string().optional().describe("Legacy add: Freitext."),
+      evidence: external_exports.string().optional().describe("Legacy: Provenienz."),
+      // --- reiches Modell ---
+      task_id: external_exports.string().optional(),
+      cluster_id: external_exports.string().optional(),
+      initial_assumption: external_exports.string().optional().describe("create: die Ausgangsannahme."),
+      confidence_before: external_exports.number().min(0).max(1).optional().describe("create: Konfidenz [0,1] vor der Aufgabe."),
+      critical_questions: external_exports.array(external_exports.string()).optional().describe("create: aktives Hinterfragen."),
+      falsification_plan: external_exports.array(external_exports.string()).optional().describe("create: wie k\xF6nnte die Annahme scheitern?"),
+      result: external_exports.enum(["open", "confirmed", "partially_confirmed", "refuted"]).optional().describe("update: Pr\xFCfergebnis."),
+      confidence_after: external_exports.number().min(0).max(1).optional().describe("update: Konfidenz [0,1] nach der Aufgabe."),
+      updated_assumption: external_exports.string().optional().describe("update: revidierte Annahme / Folgehypothese."),
+      add_evidence: external_exports.array(external_exports.string()).optional().describe("update: gefundene Evidenz."),
+      follow_up_questions: external_exports.array(external_exports.string()).optional().describe("update: PFLICHT bei partially_confirmed/refuted \u2014 was bleibt offen?"),
+      risks: external_exports.array(external_exports.string()).optional().describe("update: erkannte Risiken/Folgeprobleme."),
+      next_action: external_exports.string().optional().describe("update: n\xE4chste sinnvolle Aktion."),
+      status: external_exports.enum(["open", "confirmed", "rejected", "superseded"]).optional(),
+      version: external_exports.number().int().positive().optional().describe("get: konkrete Version (sonst neueste).")
+    }
+  },
+  async (a) => {
+    try {
+      switch (a.action) {
+        case "list":
+          if (!a.plan_id) return err({ ok: false, error: "list erfordert 'plan_id'" });
+          return ok({
+            plan_id: a.plan_id,
+            hypotheses: store.listHypotheses(a.plan_id),
+            rich: hypRepo.listByPlan(a.plan_id).map((h) => HypothesisRepo.serialize(h))
+          });
+        case "add": {
+          if (!a.plan_id) return err({ ok: false, error: "add erfordert 'plan_id'" });
+          if (!a.text) return err({ ok: false, error: "add erfordert 'text'" });
+          const id = store.addHypothesis(a.plan_id, a.text, a.evidence ?? null);
+          return ok({ ok: true, id });
+        }
+        case "confirm":
+        case "reject":
+        case "supersede": {
+          if (!a.id) return err({ ok: false, error: `${a.action} erfordert 'id'` });
+          const status = a.action === "confirm" ? "confirmed" : a.action === "reject" ? "rejected" : "superseded";
+          store.setHypothesis(a.id, status, a.evidence ?? null);
+          return ok({ ok: true, id: a.id, status });
+        }
+        case "create": {
+          if (!a.initial_assumption) return err({ ok: false, error: "create erfordert 'initial_assumption'" });
+          if (a.confidence_before === void 0) return err({ ok: false, error: "create erfordert 'confidence_before' [0,1]" });
+          const h = hypRepo.create({
+            planId: a.plan_id ?? null,
+            taskId: a.task_id ?? null,
+            clusterId: a.cluster_id ?? null,
+            initialAssumption: a.initial_assumption,
+            confidenceBefore: a.confidence_before,
+            criticalQuestions: a.critical_questions,
+            falsificationPlan: a.falsification_plan
+          });
+          return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
+        }
+        case "update": {
+          if (!a.id) return err({ ok: false, error: "update erfordert 'id'" });
+          const h = hypRepo.update(a.id, {
+            status: a.status,
+            result: a.result,
+            confidenceAfter: a.confidence_after,
+            updatedAssumption: a.updated_assumption,
+            addEvidence: a.add_evidence,
+            followUpQuestions: a.follow_up_questions,
+            risks: a.risks,
+            nextAction: a.next_action,
+            criticalQuestions: a.critical_questions,
+            falsificationPlan: a.falsification_plan,
+            taskId: a.task_id,
+            clusterId: a.cluster_id
+          });
+          return ok({ ok: true, needs_follow_up: needsFollowUp(h.result), hypothesis: HypothesisRepo.serialize(h) });
+        }
+        case "get": {
+          if (!a.id) return err({ ok: false, error: "get erfordert 'id'" });
+          const h = a.version ? hypRepo.getVersion(a.id, a.version) : hypRepo.get(a.id);
+          if (!h) return err({ ok: false, error: `Hypothese ${a.id} (v${a.version ?? "latest"}) nicht gefunden` });
+          return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
+        }
+        case "versions": {
+          if (!a.id) return err({ ok: false, error: "versions erfordert 'id'" });
+          return ok({ ok: true, id: a.id, versions: hypRepo.listVersions(a.id).map((h) => HypothesisRepo.serialize(h)) });
+        }
+      }
+    } catch (e) {
+      return err({ ok: false, error: e?.message ?? String(e) });
+    }
+  }
+);
+server.registerTool(
+  "user_decision",
+  {
+    title: "Nutzerentscheidungen & Pr\xE4ferenzen (Cluster-Gate)",
+    description: "record|list|preference. Bei Review-Auff\xE4lligkeiten fragt Claude den Nutzer, ob nachgebessert werden soll; die Antwort wird hier persistiert. 'accept'/'proceed' gibt den Cluster-Abschluss trotz Findings frei, 'fix' fordert Nachbesserung. Mit remember=true wird die Antwort zur stehenden Pr\xE4ferenz (plan-weit).",
+    inputSchema: {
+      action: external_exports.enum(["record", "list", "preference"]),
+      plan_id: external_exports.string().optional(),
+      cluster_id: external_exports.string().optional(),
+      topic: external_exports.string().default("cluster_findings").describe("Entscheidungsthema. Default: Review-Auff\xE4lligkeiten."),
+      question: external_exports.string().optional().describe("Die dem Nutzer gestellte Frage (f\xFCr Audit)."),
+      decision: external_exports.enum(["accept", "proceed", "fix", "always_ask"]).optional(),
+      remember: external_exports.boolean().default(false).describe("Als stehende Pr\xE4ferenz merken (k\xFCnftig automatisch anwenden).")
     }
   },
   async (a) => {
     switch (a.action) {
-      case "list":
-        return ok({ plan_id: a.plan_id, hypotheses: store.listHypotheses(a.plan_id) });
-      case "add": {
-        if (!a.text) return err({ ok: false, error: "add erfordert 'text'" });
-        const id = store.addHypothesis(a.plan_id, a.text, a.evidence ?? null);
-        return ok({ ok: true, id });
+      case "record": {
+        if (!a.decision) return err({ ok: false, error: "record erfordert 'decision'" });
+        const id = store.recordDecision({
+          planId: a.plan_id ?? null,
+          clusterId: a.cluster_id ?? null,
+          topic: a.topic,
+          question: a.question ?? null,
+          decision: a.decision,
+          remember: a.remember
+        });
+        return ok({ ok: true, id, decision: a.decision, remember: a.remember });
       }
-      case "confirm":
-      case "reject":
-      case "supersede": {
-        if (!a.id) return err({ ok: false, error: `${a.action} erfordert 'id'` });
-        const status = a.action === "confirm" ? "confirmed" : a.action === "reject" ? "rejected" : "superseded";
-        store.setHypothesis(a.id, status, a.evidence ?? null);
-        return ok({ ok: true, id: a.id, status });
+      case "list":
+        return ok({ ok: true, decisions: store.listDecisions({ clusterId: a.cluster_id, planId: a.plan_id }) });
+      case "preference": {
+        const pref = store.standingPreference(a.plan_id ?? null, a.topic);
+        return ok({ ok: true, topic: a.topic, preference: pref ?? null });
       }
     }
   }
+);
+server.registerTool(
+  "audit_log",
+  {
+    title: "Sicherheitsrelevanter Audit-Trail",
+    description: "Liest die Audit-Events (Sandbox-Wahl, abgelehnte Gefahrmodi, verworfene Config-Keys, Artefakt-Erzeugung). Alle Details sind bereits Secret-redacted. F\xFCr Firmeneinsatz/Nachvollziehbarkeit.",
+    inputSchema: { limit: external_exports.number().int().positive().max(1e3).default(200) }
+  },
+  async (a) => ok({ ok: true, events: store.listAuditEvents(a.limit) })
 );
 server.registerTool(
   "repo_check",
@@ -24788,6 +25866,49 @@ server.registerTool(
     const res = writePlanSnapshot(store, a.plan_id, a.format);
     if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
     return ok({ ok: true, format: res.format, path: res.path, content: res.content });
+  }
+);
+server.registerTool(
+  "result_artifact",
+  {
+    title: "Finales Gesamtartefakt erzeugen (.toln)",
+    description: "Erzeugt am Ende eines Orchestrator-Laufs ein versioniertes, maschinenlesbares Ergebnisartefakt: TOML mit Endung .toln (+ summary.md). Enth\xE4lt Plan, Cluster, Tasks, Agentenjobs, alle Hypothesen und ihre Aktualisierungen, Reviews, Nutzerentscheidungen, ge\xE4nderte Dateien, Tests, Findings, offene Punkte, Gesamtbewertung und Pr\xFCfsumme. Registriert das Artefakt in der DB.",
+    inputSchema: {
+      plan_id: external_exports.string(),
+      original_request: external_exports.string().optional(),
+      interpreted_goal: external_exports.string().optional(),
+      final_assessment: external_exports.string().optional(),
+      recommended_next_steps: external_exports.array(external_exports.string()).optional(),
+      git_commit_before: external_exports.string().optional().describe("Basis-Commit f\xFCr die Datei-Diff-Ermittlung (sonst HEAD~1).")
+    }
+  },
+  async (a) => {
+    const res = writeResultArtifact(store, a.plan_id, {
+      originalUserRequest: a.original_request,
+      interpretedGoal: a.interpreted_goal,
+      finalAssessment: a.final_assessment,
+      recommendedNextSteps: a.recommended_next_steps,
+      gitCommitBefore: a.git_commit_before ?? null
+    });
+    if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
+    store.addAuditEvent({
+      actor: "claude",
+      action: "result_artifact_generated",
+      resource: a.plan_id,
+      detail: { path: res.tolnPath, artifactVersion: res.artifact.artifactVersion, checksum: res.artifact.checksum },
+      redacted: false
+    });
+    return ok({
+      ok: true,
+      toln_path: res.tolnPath,
+      summary_path: res.summaryPath,
+      schema_version: res.artifact.schemaVersion,
+      artifact_version: res.artifact.artifactVersion,
+      checksum: res.artifact.checksum,
+      clusters: res.artifact.clusters.length,
+      hypotheses: res.artifact.hypotheses.length,
+      unresolved: res.artifact.unresolvedIssues.length
+    });
   }
 );
 server.registerTool(

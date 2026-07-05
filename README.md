@@ -111,7 +111,8 @@ workflow. Start Claude in a project and invoke it with:
 ```
 
 Claude plugin skills are namespaced by design. The command therefore contains
-the plugin name and the skill name.
+the plugin name and the skill name. The companion status command is
+`/codex-orchestrator:orchestrator-status [plan_id]`.
 
 ### As a plain MCP server
 
@@ -199,7 +200,7 @@ errors, never for authentication, host-key, protocol or repository mismatches.
 
 | Tool | Purpose |
 |---|---|
-| `task_start` | Start a Codex assignment (slice budget, sandbox, model, effort, worktree, wait mode) |
+| `task_start` | Start a Codex assignment linked to a mandatory hypothesis (slice budget, sandbox, model, effort, worktree, wait mode) |
 | `orchestrator_doctor` | Verify configured targets, Codex versions and authentication; securely bootstrap remote auth |
 | `task_wait` | Long-poll for new events / slice boundaries — the core orchestration primitive |
 | `task_events` | Cursor-based event history, filterable by kind |
@@ -209,9 +210,12 @@ errors, never for authentication, host-key, protocol or repository mismatches.
 | `cluster_plan` | Create/update a persistent plan with gated clusters (idempotent) |
 | `cluster_transition` | `start`/`submit`/`review`/`confirm`/`retro`/… — server-enforced state machine |
 | `cluster_merge` | Merge a reviewed worktree branch back (conflicts abort cleanly) |
-| `hypotheses` | Record, confirm, reject, supersede assumptions with evidence |
+| `hypotheses` | Create and append-only update versioned, falsifiable assumptions with evidence |
+| `user_decision` | Persist user decisions and standing preferences for review findings |
 | `repo_check` | Run allow-listed checks (tests, lint, typecheck, diff stats) |
 | `plan_snapshot` | Durable TOON/JSON snapshot of the full plan state |
+| `result_artifact` | Generate a checksummed final `.toln` run artifact and summary |
+| `audit_log` | Read the secret-redacted security audit trail |
 | `codex_update` | Check/apply Codex CLI updates (stable or pre-release channel) |
 
 ## Example: from a goal to a confirmed change
@@ -240,8 +244,17 @@ cluster_plan({
 
 ```jsonc
 cluster_transition({ cluster_id: "C1", action: "start" })   // → status: "active"
+hypotheses({
+  action: "create", plan_id: "P_…", cluster_id: "C1",
+  initial_assumption: "Input validation can be added without changing valid requests",
+  confidence_before: 0.8,
+  critical_questions: ["Which clients rely on current coercion?"],
+  falsification_plan: ["Run existing compatibility tests"]
+})
+// → { hypothesis: { id: "H_…" } }
 task_start({
-  cluster_id: "C1", sandbox: "workspace-write", model: "gpt-5.5", effort: "high",
+  cluster_id: "C1", hypothesis_id: "H_…",
+  sandbox: "workspace-write", model: "gpt-5.5", effort: "high",
   slice_budget: { max_minutes: 10 }, wait_for: "started", worktree: "auto",
   instructions: "Add validation to the signup handler; add unit tests. Report a SLICE_RESULT.",
   acceptance_criteria: ["invalid signups rejected with 400", "new tests pass"]
@@ -331,19 +344,16 @@ part of the skill and the `models_list` output.
 
 ## Staying up to date
 
-- **The plugin itself.** The server knows its own version and compares it against
-  the latest GitHub release (cached, checked at most every 6 h). On startup it
-  logs whether a newer version exists, and `plugin_update` (`check` / `apply`)
-  reports it on demand. For a **git install** it can self-update
-  (`git pull` + rebuild; effective on next start); a **marketplace install**
-  updates via `/plugin marketplace update codex-orchestrator`. Set
-  `ORCH_PLUGIN_AUTO_UPDATE=true` to auto-apply on git installs.
-- **The Codex CLI.** `codex_update` checks/applies Codex releases (stable `latest`
-  or pre-release `alpha`); it also runs on startup unless `ORCH_AUTO_UPDATE=false`.
+- **The plugin itself.** Claude's marketplace lifecycle is authoritative:
+  `claude plugin marketplace update codex-orchestrator`, followed by a Claude
+  restart or `/reload-plugins`. The MCP server never mutates its own installed
+  bundle.
+- **The Codex CLI.** `codex_update` explicitly checks/applies Codex releases
+  (stable `latest` or pre-release `alpha`); no update runs implicitly at startup.
 
-Relevant environment variables: `ORCH_HOME`, `ORCH_MAX_CONCURRENT`,
-`ORCH_SIGN_MERGE`, `ORCH_AUTO_UPDATE`, `ORCH_CODEX_CHANNEL`,
-`ORCH_PLUGIN_AUTO_UPDATE`, `ORCH_PLUGIN_CHECK_TTL_MS`, `ORCH_MODEL_FAST|BALANCED|STRONG`.
+Relevant environment variables: `ORCH_HOME`, `ORCH_CONFIG_FILE`,
+`ORCH_MAX_CONCURRENT`, `ORCH_SIGN_MERGE`, `ORCH_CODEX_BIN`,
+`ORCH_MODEL_FAST|BALANCED|STRONG`.
 
 ## Development
 

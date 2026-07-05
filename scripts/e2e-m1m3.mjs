@@ -53,9 +53,20 @@ const plan = await call("cluster_plan", {
 hard(plan.data.ok, "cluster_plan");
 await call("cluster_transition", { cluster_id: "C1", action: "start" });
 
+// Pflicht-Hypothese VOR dem Task (Cluster-2-Gate).
+const hyp = await call("hypotheses", {
+  action: "create", plan_id: plan.data.plan_id, cluster_id: "C1",
+  initial_assumption: "Codex legt a.txt=A und b.txt=B in zwei separaten Slices an.",
+  confidence_before: 0.7,
+  critical_questions: ["Trennt Codex die beiden Schritte sauber auf zwei Slices?"],
+  falsification_plan: ["a.txt/b.txt-Inhalte nach den Slices prüfen"],
+});
+hard(hyp.data.ok, "Pflicht-Hypothese angelegt");
+
 // Task im ISOLIERTEN Worktree (M3), asynchron (wait_for started).
 const start = await call("task_start", {
   cluster_id: "C1",
+  hypothesis_id: hyp.data.hypothesis.id,
   instructions:
     "This task has exactly two steps done in separate slices.\n" +
     "SLICE 1 (now): create a file a.txt containing exactly 'A'. Then STOP. Report Type: checkpoint. " +

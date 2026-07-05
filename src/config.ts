@@ -49,6 +49,8 @@ export interface OrchestratorConfig {
   allowedSandboxes: ReadonlyArray<"read-only" | "workspace-write">;
   /** Netzwerk für Codex-Slices standardmäßig aus. */
   networkDefault: boolean;
+  /** Pflicht-Hypothese vor jedem Task (Cluster 2). Notausstieg via Env. */
+  requireHypothesis: boolean;
   /** Long-Poll-Timeout-Obergrenze in Sekunden (unter Client-Tool-Timeout). */
   maxWaitSeconds: number;
   /** Grenze, ab der wait_for:"completed" abgelehnt wird (Sekunden Slice-Budget). */
@@ -110,6 +112,7 @@ export const config: OrchestratorConfig = {
   codexBin: process.env.ORCH_CODEX_BIN || "codex",
   allowedSandboxes: ["read-only", "workspace-write"],
   networkDefault: false,
+  requireHypothesis: process.env.ORCH_REQUIRE_HYPOTHESIS !== "false",
   maxWaitSeconds: 55,
   syncMaxMinutes: 8,
   limits: {
