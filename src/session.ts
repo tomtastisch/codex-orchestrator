@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import { config } from "./config.js";
 import { Store, type TaskRow, newId } from "./db.js";
-import { startSlice } from "./codex.js";
+import { LocalExecutionTarget } from "./execution/local-target.js";
+import type { ExecutionTarget } from "./execution/types.js";
 import { buildFirstSlicePrompt, buildResumeSlicePrompt } from "./prompts.js";
 import { detectReportDiscrepancies } from "./events.js";
 import type { Effort, Sandbox, SliceOutcome } from "./types.js";
@@ -26,6 +27,11 @@ interface StartArgs {
   network: boolean;
   maxMinutes: number;
   extraConfig?: Record<string, string>;
+  targetId?: string;
+  targetKind?: "local" | "ssh";
+  repositoryCommit?: string;
+  routingReason?: string;
+  fallbackFrom?: string | null;
 }
 
 /**
@@ -39,7 +45,13 @@ export class SessionManager {
   private active = 0;
   private waiters: (() => void)[] = [];
 
-  constructor(private store: Store) {
+  constructor(
+    private store: Store,
+    private readonly targetFor: (id: string) => ExecutionTarget = (() => {
+      const local = new LocalExecutionTarget();
+      return () => local;
+    })(),
+  ) {
     this.emitter.setMaxListeners(0);
   }
 
@@ -127,6 +139,11 @@ export class SessionManager {
       status: "queued",
       extra_config_json: args.extraConfig ? JSON.stringify(args.extraConfig) : null,
       owner_pid: null,
+      target_id: args.targetId ?? "local",
+      target_kind: args.targetKind ?? "local",
+      repository_commit: args.repositoryCommit ?? null,
+      routing_reason: args.routingReason ?? "local-default",
+      fallback_from: args.fallbackFrom ?? null,
     });
   }
 
@@ -207,7 +224,7 @@ export class SessionManager {
         try {
           extraConfig = task.extra_config_json ? JSON.parse(task.extra_config_json) : undefined;
         } catch { extraConfig = undefined; }
-        const running = startSlice({
+        const running = this.targetFor(task.target_id).startCodex({
           repoPath: workDir,
           threadId: task.codex_session_id,
           prompt,

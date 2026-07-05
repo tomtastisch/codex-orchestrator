@@ -60,4 +60,11 @@ export interface ExecutionTarget {
     repositoryIdentity(repoPath: string): Promise<RepositoryIdentity>;
     runCheck(request: TargetCommandRequest): Promise<TargetCommandResult>;
     runGit(request: TargetCommandRequest): Promise<TargetCommandResult>;
+    createWorktree?(repoPath: string, taskId: string): Promise<{ worktree: string; branch: string }>;
+    mergeWorktree?(
+        repoPath: string,
+        branch: string,
+        options: { noFf: boolean; noGpgSign: boolean },
+    ): Promise<{ ok: boolean; conflict: boolean; output: string }>;
+    removeWorktree?(repoPath: string, worktree: string, branch: string): Promise<void>;
 }

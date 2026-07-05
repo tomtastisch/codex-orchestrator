@@ -82,7 +82,9 @@ test("managed process escalates an ignored SIGTERM to SIGKILL", async () => {
         args: ["tests/fixtures/ignore-term.mjs"],
         cwd: process.cwd(),
         env: {},
-        timeoutMs: 100,
+        // Leave enough time for the child to install its SIGTERM handler even
+        // when the complete test suite starts many Node processes in parallel.
+        timeoutMs: 500,
         killGraceMs: 100,
         maxStdoutBytes: 8_192,
         maxStderrBytes: 8_192,

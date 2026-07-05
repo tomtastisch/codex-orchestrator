@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+const AbsolutePathSchema = z.string().startsWith("/", "path must be absolute").refine(
+    (value) => !value.split("/").includes("..") && !/[\0\r\n]/.test(value),
+    "path must not contain traversal or control characters",
+);
+const RemoteShellPathSchema = z.string().regex(
+    /^(?:~\/|\/)[A-Za-z0-9._/-]+$/,
+    "remote path contains unsupported shell characters",
+).refine((value) => !value.split("/").includes(".."), "remote path must not contain traversal");
+
 const ExistingAuthSchema = z.object({
     strategy: z.literal("existing"),
 }).strict();
@@ -19,11 +28,12 @@ export const RemoteTargetSchema = z.object({
     transport: z.literal("ssh"),
     host: z.string().regex(/^[A-Za-z0-9._-]{1,255}$/, "host must be an SSH alias without options"),
     repository: z.object({
-        localRoot: z.string().min(1),
-        remoteRoot: z.string().min(1),
+        localRoot: AbsolutePathSchema,
+        remoteRoot: AbsolutePathSchema,
     }).strict(),
     codexBin: z.string().regex(/^[A-Za-z0-9._/-]+$/).default("codex"),
-    workerRoot: z.string().min(1).default("~/.cache/codex-orchestrator"),
+    workerRoot: RemoteShellPathSchema.default("~/.cache/codex-orchestrator"),
+    codexHome: RemoteShellPathSchema.default("~/.codex"),
     auth: z.discriminatedUnion("strategy", [ExistingAuthSchema, SyncFileAuthSchema, AccessTokenAuthSchema])
         .default({ strategy: "existing" }),
 }).strict();

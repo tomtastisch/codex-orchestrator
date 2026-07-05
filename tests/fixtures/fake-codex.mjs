@@ -12,7 +12,12 @@ if (args[0] === "login" && args[1] === "status") {
     process.exit(0);
 }
 
-if (args[0] === "exec") {
+if (args[0] === "login" && args[1] === "--with-access-token") {
+    let input = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => { input += chunk; });
+    process.stdin.on("end", () => process.exit(input.length > 0 ? 0 : 2));
+} else if (args[0] === "exec") {
     process.stdin.resume();
     process.stdin.on("end", () => {
         process.stdout.write(`${JSON.stringify({ type: "thread.started", thread_id: "fake-thread" })}\n`);

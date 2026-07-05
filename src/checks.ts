@@ -1,8 +1,8 @@
 import { config } from "./config.js";
-import { buildChildEnvironment } from "./runtime/environment.js";
-import { startManagedProcess } from "./runtime/process.js";
 import { redact } from "./runtime/redaction.js";
 import type { Store } from "./db.js";
+import { LocalExecutionTarget } from "./execution/local-target.js";
+import type { ExecutionTarget } from "./execution/types.js";
 
 export interface CheckRun {
   name: string;
@@ -10,23 +10,6 @@ export interface CheckRun {
   exit_code: number | null;
   ok: boolean;
   summary: string;
-}
-
-function runArgv(argv: string[], cwd: string, timeoutMs = 15 * 60_000): Promise<{ code: number | null; out: string }> {
-  const running = startManagedProcess({
-      command: argv[0],
-      args: argv.slice(1),
-      cwd,
-      env: buildChildEnvironment(process.env, "repository-check"),
-      timeoutMs,
-      killGraceMs: config.limits.sliceKillGraceMs,
-      maxStdoutBytes: 400_000,
-      maxStderrBytes: 64_000,
-  });
-  return running.done.then((result) => ({
-    code: result.code,
-    out: result.error ? `spawn error: ${result.error}` : `${result.stdout}${result.stderr}`,
-  }));
 }
 
 /**
@@ -39,6 +22,7 @@ export async function runChecks(
   clusterId: string,
   repoPath: string,
   names: string[],
+  target: ExecutionTarget = new LocalExecutionTarget(),
 ): Promise<{ runs: CheckRun[]; allGreen: boolean; unknown: string[] }> {
   const runs: CheckRun[] = [];
   const unknown: string[] = [];
@@ -48,7 +32,9 @@ export async function runChecks(
       unknown.push(name);
       continue;
     }
-    const { code, out } = await runArgv(spec.argv, repoPath);
+    const result = await target.runCheck({ cwd: repoPath, argv: spec.argv });
+    const code = result.code;
+    const out = `${result.stdout}${result.stderr}`;
     const summary = summarizeOutput(out);
     const ok = code === 0;
     store.addCheck(clusterId, name, code, summary);
@@ -68,25 +54,28 @@ function summarizeOutput(out: string): string {
  * Diff-Größe gegen Limits prüfen (Plan §11). Zählt getrackte Änderungen (vs HEAD)
  * UND untracked-neue Dateien, sonst würde eine reine Neu-Datei als 0 gewertet.
  */
-export async function diffSize(repoPath: string): Promise<{ files: number; lines: number }> {
+export async function diffSize(
+  repoPath: string,
+  target: ExecutionTarget = new LocalExecutionTarget(),
+): Promise<{ files: number; lines: number }> {
   let files = 0;
   let lines = 0;
   // Getrackte Änderungen inkl. Staging (vs HEAD).
-  const tracked = await runArgv(["git", "--no-pager", "diff", "--numstat", "HEAD"], repoPath, 60_000);
-  for (const l of tracked.out.split(/\r?\n/)) {
+  const tracked = await target.runGit({ cwd: repoPath, argv: ["diff", "--numstat", "HEAD"], timeoutMs: 60_000 });
+  for (const l of `${tracked.stdout}${tracked.stderr}`.split(/\r?\n/)) {
     const m = l.match(/^(\d+|-)\t(\d+|-)\t/);
     if (!m) continue;
     files++;
     lines += (m[1] === "-" ? 0 : Number(m[1])) + (m[2] === "-" ? 0 : Number(m[2]));
   }
   // Untracked-neue Dateien.
-  const untracked = await runArgv(["git", "ls-files", "--others", "--exclude-standard"], repoPath, 60_000);
-  for (const rel of untracked.out.split(/\r?\n/)) {
+  const untracked = await target.runGit({ cwd: repoPath, argv: ["ls-files", "--others", "--exclude-standard"], timeoutMs: 60_000 });
+  for (const rel of untracked.stdout.split(/\r?\n/)) {
     const name = rel.trim();
     if (!name) continue;
     files++;
-    const wc = await runArgv(["git", "--no-pager", "diff", "--numstat", "--no-index", "/dev/null", name], repoPath, 60_000);
-    const m = wc.out.match(/^(\d+|-)\t/);
+    const wc = await target.runGit({ cwd: repoPath, argv: ["diff", "--numstat", "--no-index", "/dev/null", name], timeoutMs: 60_000 });
+    const m = wc.stdout.match(/^(\d+|-)\t/);
     if (m && m[1] !== "-") lines += Number(m[1]);
   }
   return { files, lines };

@@ -13,14 +13,16 @@ import { runChecks, diffSize } from "./checks.js";
 import { resolveModel, repoPathForCluster, latestWorktreeForCluster } from "./resolve.js";
 import { isBlockedConfigKey } from "./codex.js";
 import { centralAgentsMd } from "./agents.js";
-import { maybeAutoUpdate, checkForUpdate, runUpdate, type Channel } from "./updater.js";
-import { checkPluginUpdate, applyPluginUpdate, maybePluginUpdate, installedVersion } from "./plugin.js";
+import { checkForUpdate, runUpdate, type Channel } from "./updater.js";
 import { writePlanSnapshot } from "./snapshot.js";
 import { EFFORT_LADDER } from "./types.js";
 import type { Effort, Sandbox } from "./types.js";
+import { createExecutionRuntime } from "./execution/registry.js";
+import { ORCHESTRATOR_VERSION } from "./version.js";
 
 const store = new Store(config.dbPath);
-const sessions = new SessionManager(store);
+const execution = createExecutionRuntime(config);
+const sessions = new SessionManager(store, (id) => execution.registry.get(id));
 const machine = new ClusterStateMachine(store);
 const worktrees = new WorktreeManager();
 
@@ -46,7 +48,7 @@ console.error(`[orchestrator] Store: ${config.home} (cwd: ${process.cwd()})`);
 const reaped = sessions.reapOnStartup();
 if (reaped > 0) console.error(`[orchestrator] Reaper: ${reaped} verwaiste Task(s) toter Prozesse auf 'failed' gesetzt.`);
 
-const server = new McpServer({ name: "codex-orchestrator", version: "0.3.0" });
+const server = new McpServer({ name: "codex-orchestrator", version: ORCHESTRATOR_VERSION });
 
 function ok(obj: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }] };
@@ -54,6 +56,38 @@ function ok(obj: unknown) {
 function err(obj: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }], isError: true };
 }
+
+function executionTargetForCluster(clusterId: string) {
+  const latest = store.listTasks({ clusterId }).at(-1);
+  return execution.registry.get(latest?.target_id ?? "local");
+}
+
+server.registerTool(
+  "orchestrator_doctor",
+  {
+    title: "Codex-Orchestrator Diagnose",
+    description: "Prüft alle konfigurierten Execution-Targets inklusive Codex-Version und Authentifizierung. Remote-Auth wird gemäß Serverkonfiguration sicher initialisiert und danach erneut geprüft.",
+    inputSchema: {},
+  },
+  async () => {
+    const targets = [];
+    for (const target of execution.registry.list()) {
+      try {
+        targets.push(await target.doctor());
+      } catch (e: any) {
+        targets.push({
+          targetId: target.id,
+          kind: target.kind,
+          state: "unhealthy",
+          errorCode: e?.code ?? "TARGET_PROTOCOL",
+          message: e?.message ?? String(e),
+        });
+      }
+    }
+    const healthy = targets.every((target) => target.state === "healthy");
+    return (healthy ? ok : err)({ ok: healthy, version: ORCHESTRATOR_VERSION, execution: config.execution.mode, targets });
+  },
+);
 
 // ---------------------------------------------------------------- 7.1 task_start
 server.registerTool(
@@ -103,13 +137,22 @@ server.registerTool(
       });
     }
 
+    let selection;
+    try {
+      selection = await execution.router.select(repoPath);
+    } catch (e: any) {
+      return err({ ok: false, error: `Execution-Target nicht verfügbar: ${e?.message ?? e}`, code: e?.code });
+    }
+
     // Worktree-Isolation. 'auto' wird NACH der Task-Erstellung mit der echten
     // task.id angelegt (konsistente Benennung); hier nur früh validieren.
     const wantAutoWorktree = a.worktree === "auto";
     let worktree: string | null = null;
     let branch: string | null = null;
     if (wantAutoWorktree) {
-      if (!isGitRepo(repoPath)) return err({ ok: false, error: `worktree:auto benötigt ein git-Repo: ${repoPath}` });
+      if (selection.target.kind === "local" && !isGitRepo(repoPath)) {
+        return err({ ok: false, error: `worktree:auto benötigt ein git-Repo: ${repoPath}` });
+      }
     } else if (a.worktree && a.worktree !== "none") {
       worktree = a.worktree;
     }
@@ -150,12 +193,19 @@ server.registerTool(
       network: a.network ?? config.networkDefault,
       maxMinutes,
       extraConfig,
+      targetId: selection.target.id,
+      targetKind: selection.target.kind,
+      repositoryCommit: selection.repository.headCommit,
+      routingReason: selection.reason,
+      fallbackFrom: selection.fallbackFrom,
     });
 
     // Auto-Worktree jetzt mit echter task.id anlegen -> Verzeichnis/Branch = task.id.
     if (wantAutoWorktree) {
       try {
-        const wt = worktrees.create(repoPath, task.id);
+        const wt = selection.target.kind === "ssh" && selection.target.createWorktree
+          ? await selection.target.createWorktree(repoPath, task.id)
+          : worktrees.create(repoPath, task.id);
         worktree = wt.worktree;
         branch = wt.branch;
         store.updateTask(task.id, { worktree, branch });
@@ -169,7 +219,9 @@ server.registerTool(
     const dropped = droppedConfig.length ? { dropped_config_keys: droppedConfig } : {};
 
     if (waitFor === "started") {
-      return ok({ ok: true, task_id: task.id, status: "queued", model, effort, worktree, branch, note: modelNote, ...dropped });
+      return ok({ ok: true, task_id: task.id, status: "queued", model, effort, worktree, branch,
+        target: selection.target.id, routing_reason: selection.reason, fallback_from: selection.fallbackFrom,
+        note: modelNote, ...dropped });
     }
     if (waitFor === "first_checkpoint") {
       await sessions.waitUntil(task.id, (_s, sawSlice) => sawSlice, config.maxWaitSeconds);
@@ -277,9 +329,10 @@ server.registerTool(
       .map((e) => JSON.parse(e.payload_json));
     const recent = sliceResults.slice(-a.max_slice_results);
     const repo = t.worktree || t.repo_path;
+    const target = execution.registry.get(t.target_id);
     let diff = { files: 0, lines: 0 };
     try {
-      if (isGitRepo(repo)) diff = await diffSize(repo);
+      diff = await diffSize(repo, target);
     } catch { /* ignore */ }
     const tests = recent.flatMap((r) => r.tests ?? []);
     const openItems = recent.flatMap((r) => r.open_items ?? []);
@@ -422,7 +475,7 @@ server.registerTool(
         const declared: string[] = strategy.checks ?? [];
         if (declared.length) {
           const scope = latestWorktreeForCluster(store, a.cluster_id) || repo;
-          const res = await runChecks(store, a.cluster_id, scope, declared);
+          const res = await runChecks(store, a.cluster_id, scope, declared, executionTargetForCluster(a.cluster_id));
           payload.checks_run = res.runs;
         }
       }
@@ -484,10 +537,11 @@ server.registerTool(
     const repo = repoPathForCluster(store, a.cluster_id);
     if (!repo) return err({ ok: false, error: "Plan-Repo für Cluster nicht gefunden" });
     const target = a.scope === "worktree" ? latestWorktreeForCluster(store, a.cluster_id) || repo : repo;
-    const res = await runChecks(store, a.cluster_id, target, a.checks);
+    const executionTarget = executionTargetForCluster(a.cluster_id);
+    const res = await runChecks(store, a.cluster_id, target, a.checks, executionTarget);
     let diff = { files: 0, lines: 0 };
     try {
-      if (isGitRepo(target)) diff = await diffSize(target);
+      diff = await diffSize(target, executionTarget);
     } catch { /* ignore */ }
     return ok({
       ok: true,
@@ -545,14 +599,21 @@ server.registerTool(
       return err({ ok: false, error: "Merge-Gates nicht erfüllt", reasons: eligibility.reasons });
     }
     const sign = a.sign ?? config.signMergeCommits;
-    const r = worktrees.merge(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign });
+    const target = execution.registry.get(task.target_id);
+    const r = target.kind === "ssh" && target.mergeWorktree
+      ? await target.mergeWorktree(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign })
+      : worktrees.merge(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign });
     if (!r.ok) {
       return err({ ok: false, conflict: r.conflict, error: "Merge fehlgeschlagen", output: r.output.slice(-1500) });
     }
     let cleaned = false;
     if (a.cleanup && task.worktree) {
       try {
-        worktrees.remove(repo, task.worktree, task.branch);
+        if (target.kind === "ssh" && target.removeWorktree) {
+          await target.removeWorktree(repo, task.worktree, task.branch);
+        } else {
+          worktrees.remove(repo, task.worktree, task.branch);
+        }
         store.updateTask(task.id, { worktree: null });
         cleaned = true;
       } catch { /* Worktree bleibt für Forensik */ }
@@ -608,27 +669,6 @@ server.registerTool(
   },
 );
 
-// -------------------------------------------------- plugin_update (Selbst-Update)
-server.registerTool(
-  "plugin_update",
-  {
-    title: "Orchestrator-Plugin prüfen/aktualisieren",
-    description:
-      "Prüft (check) ob eine neuere Plugin-Version als GitHub-Release vorliegt, oder wendet sie an (apply). git-Install: self-update via git pull + rebuild (Restart nötig). Marketplace-Install: liefert die /plugin-Update-Anleitung. Nutzt einen TTL-Cache.",
-    inputSchema: {
-      action: z.enum(["check", "apply"]).default("check"),
-      force: z.boolean().default(false).describe("Cache umgehen und frisch bei GitHub prüfen."),
-    },
-  },
-  async (a) => {
-    const now = Date.now();
-    if (a.action === "check") return ok({ ok: true, ...(await checkPluginUpdate(now, a.force)) });
-    const running = store.listTasks({ status: "running" }).length;
-    if (running > 0) return err({ ok: false, error: `Update abgelehnt: ${running} Task(s) aktiv.` });
-    return ok(await applyPluginUpdate(now));
-  },
-);
-
 // Zentrale Executor-AGENTS.md bereitstellen.
 centralAgentsMd();
 
@@ -653,9 +693,4 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error(`[orchestrator] codex-orchestrator v${installedVersion()} läuft (stdio). DB: ${config.dbPath}`);
-
-// Auto-Update im Hintergrund (blockiert den Handshake nicht).
-void maybeAutoUpdate((s) => console.error(s));
-// Plugin-Selbstprüfung im Hintergrund (TTL-gecacht, meldet neue Version).
-void maybePluginUpdate(Date.now(), (s) => console.error(s));
+console.error(`[orchestrator] codex-orchestrator v${ORCHESTRATOR_VERSION} läuft (stdio). DB: ${config.dbPath}`);

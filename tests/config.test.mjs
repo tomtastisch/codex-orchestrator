@@ -46,6 +46,29 @@ test("execution config rejects inline secrets and unknown fields", async () => {
     );
 });
 
+test("remote shell paths reject traversal and metacharacters", async () => {
+    const { parseExecutionConfig } = await import("../dist/config-schema.js");
+    const base = {
+        version: 1,
+        execution: {
+            mode: "remote-only",
+            fallback: "never",
+            remote: {
+                id: "devbox", transport: "ssh", host: "devbox",
+                repository: { localRoot: "/local", remoteRoot: "/remote" },
+                auth: { strategy: "existing" },
+            },
+        },
+    };
+    assert.equal(parseExecutionConfig(base).execution.remote.codexHome, "~/.codex");
+    for (const workerRoot of ["../escape", "~/.cache/x;touch", "relative/path"]) {
+        assert.throws(() => parseExecutionConfig({
+            ...base,
+            execution: { ...base.execution, remote: { ...base.execution.remote, workerRoot } },
+        }), /workerRoot|Pfad|path/i);
+    }
+});
+
 test("positive integer environment values fail closed", async () => {
     const { parsePositiveInteger } = await import("../dist/config-schema.js");
     assert.equal(parsePositiveInteger("2", "ORCH_MAX_CONCURRENT"), 2);
