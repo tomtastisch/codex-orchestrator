@@ -23361,7 +23361,7 @@ function buildDoctorReport(probe) {
     );
   } else if (!authenticated) {
     guidance.push(
-      "Codex ist installiert, aber nicht angemeldet. 'codex login' ausf\xFChren (oder OPENAI_API_KEY in der Umgebung bereitstellen)."
+      "Codex ist installiert, aber nicht angemeldet. 'codex login' ausf\xFChren oder eine sichere Remote-Auth-Strategie in .orchestrator/config.json konfigurieren."
     );
   }
   if (marketplaceSkipped) {
