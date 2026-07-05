@@ -23583,7 +23583,11 @@ var RemoteAuthBootstrapper = class {
         throw new TargetError("TARGET_AUTH", "Remote-Target unterst\xFCtzt keinen Auth-Bootstrap", target.id);
       }
       const credentials = loadCredentialFile(strategy.source ?? defaultCredentialSource());
-      await target.bootstrapAuth(strategy.codexHome ?? "~/.codex", credentials);
+      try {
+        await target.bootstrapAuth(strategy.codexHome ?? "~/.codex", credentials);
+      } finally {
+        credentials.fill(0);
+      }
     } else {
       if (!target.loginAccessToken) {
         throw new TargetError("TARGET_AUTH", "Remote-Target unterst\xFCtzt keinen Token-Login", target.id);

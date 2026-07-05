@@ -4895,35 +4895,39 @@ function bootstrapAuth(codexHomeValue, credentialBase64) {
   if (credentials.length === 0 || credentials.length > 64 * 1024) {
     throw new Error("Credential-Payload muss zwischen 1 Byte und 64 KiB gro\xDF sein");
   }
-  const codexHome = resolveCodexHome(codexHomeValue);
-  mkdirSync(codexHome, { recursive: true, mode: 448 });
-  if (process.platform !== "win32") chmodSync(codexHome, 448);
-  const destination = join(codexHome, "auth.json");
-  let replacing = false;
-  if (existsSync2(destination)) {
-    const metadata = lstatSync(destination);
-    if (metadata.isSymbolicLink() || !metadata.isFile()) {
-      throw new Error("Remote auth.json muss eine regul\xE4re Datei und darf kein Symlink sein");
-    }
-    if (readFileSync2(destination).equals(credentials)) {
-      if (process.platform !== "win32") chmodSync(destination, 384);
-      return { state: "already_present" };
-    }
-    replacing = true;
-  }
-  const temporary = join(codexHome, `.auth.json.${process.pid}.${Date.now()}.tmp`);
-  let descriptor;
   try {
-    descriptor = openSync(temporary, "wx", 384);
-    writeSync(descriptor, credentials);
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = void 0;
-    renameSync(temporary, destination);
-    return { state: replacing ? "updated" : "installed" };
+    const codexHome = resolveCodexHome(codexHomeValue);
+    mkdirSync(codexHome, { recursive: true, mode: 448 });
+    if (process.platform !== "win32") chmodSync(codexHome, 448);
+    const destination = join(codexHome, "auth.json");
+    let replacing = false;
+    if (existsSync2(destination)) {
+      const metadata = lstatSync(destination);
+      if (metadata.isSymbolicLink() || !metadata.isFile()) {
+        throw new Error("Remote auth.json muss eine regul\xE4re Datei und darf kein Symlink sein");
+      }
+      if (readFileSync2(destination).equals(credentials)) {
+        if (process.platform !== "win32") chmodSync(destination, 384);
+        return { state: "already_present" };
+      }
+      replacing = true;
+    }
+    const temporary = join(codexHome, `.auth.json.${process.pid}.${Date.now()}.tmp`);
+    let descriptor;
+    try {
+      descriptor = openSync(temporary, "wx", 384);
+      writeSync(descriptor, credentials);
+      fsyncSync(descriptor);
+      closeSync(descriptor);
+      descriptor = void 0;
+      renameSync(temporary, destination);
+      return { state: replacing ? "updated" : "installed" };
+    } finally {
+      if (descriptor !== void 0) closeSync(descriptor);
+      if (existsSync2(temporary)) unlinkSync(temporary);
+    }
   } finally {
-    if (descriptor !== void 0) closeSync(descriptor);
-    if (existsSync2(temporary)) unlinkSync(temporary);
+    credentials.fill(0);
   }
 }
 async function loginAccessToken(codexBin, codexHomeValue, tokenBase64) {
