@@ -1,5 +1,7 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { parseExecutionConfig, parsePositiveInteger, type OrchestratorFileConfig } from "./config-schema.js";
 import type { Effort } from "./types.js";
 
 /**
@@ -69,6 +71,8 @@ export interface OrchestratorConfig {
   signMergeCommits: boolean;
   /** Allowlist für repo_check. Frei konfigurierbar, aber vom Server fixiert. */
   checks: Record<string, CheckSpec>;
+  /** Validated local/remote execution and fallback policy. */
+  execution: OrchestratorFileConfig["execution"];
 }
 
 // Store-Isolation pro Projekt:
@@ -83,6 +87,21 @@ const HOME = process.env.ORCH_HOME
   : process.env.ORCH_GLOBAL === "true"
     ? resolve(homedir(), ".codex-orchestrator")
     : resolve(process.cwd(), ".orchestrator");
+
+function loadFileConfig(): OrchestratorFileConfig {
+  const path = resolve(process.env.ORCH_CONFIG_FILE || resolve(HOME, "config.json"));
+  if (!existsSync(path)) return parseExecutionConfig({});
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Orchestrator-Konfiguration '${path}' ist kein gültiges JSON: ${message}`);
+  }
+  return parseExecutionConfig(parsed);
+}
+
+const FILE_CONFIG = loadFileConfig();
 
 export const config: OrchestratorConfig = {
   home: HOME,
@@ -101,7 +120,7 @@ export const config: OrchestratorConfig = {
     sliceKillGraceMs: 8000,
   },
   parallelism: {
-    maxConcurrent: Number(process.env.ORCH_MAX_CONCURRENT || 2),
+    maxConcurrent: parsePositiveInteger(process.env.ORCH_MAX_CONCURRENT || "2", "ORCH_MAX_CONCURRENT"),
   },
   signMergeCommits: process.env.ORCH_SIGN_MERGE !== "false",
   // Modellnamen leben in der Config, nicht in der Logik (Plan §9). Effort ist
@@ -198,6 +217,7 @@ export const config: OrchestratorConfig = {
       description: "TypeScript typecheck",
     },
   },
+  execution: FILE_CONFIG.execution,
 };
 
 export function modelForClass(cls: ModelClass): ModelEntry {
