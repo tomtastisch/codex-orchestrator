@@ -1,5 +1,7 @@
-import { spawn } from "node:child_process";
 import { config } from "./config.js";
+import { buildChildEnvironment } from "./runtime/environment.js";
+import { startManagedProcess } from "./runtime/process.js";
+import { redact } from "./runtime/redaction.js";
 import type { Store } from "./db.js";
 
 export interface CheckRun {
@@ -11,25 +13,20 @@ export interface CheckRun {
 }
 
 function runArgv(argv: string[], cwd: string, timeoutMs = 15 * 60_000): Promise<{ code: number | null; out: string }> {
-  return new Promise((resolve) => {
-    const child = spawn(argv[0], argv.slice(1), { cwd, env: process.env });
-    let out = "";
-    const cap = (d: Buffer) => {
-      out += d.toString();
-      if (out.length > 400_000) out = out.slice(-400_000);
-    };
-    child.stdout.on("data", cap);
-    child.stderr.on("data", cap);
-    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ code, out });
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({ code: null, out: `spawn error: ${err.message}` });
-    });
+  const running = startManagedProcess({
+      command: argv[0],
+      args: argv.slice(1),
+      cwd,
+      env: buildChildEnvironment(process.env, "repository-check"),
+      timeoutMs,
+      killGraceMs: config.limits.sliceKillGraceMs,
+      maxStdoutBytes: 400_000,
+      maxStderrBytes: 64_000,
   });
+  return running.done.then((result) => ({
+    code: result.code,
+    out: result.error ? `spawn error: ${result.error}` : `${result.stdout}${result.stderr}`,
+  }));
 }
 
 /**
@@ -64,7 +61,7 @@ export async function runChecks(
 function summarizeOutput(out: string): string {
   const lines = out.split(/\r?\n/).filter((l) => l.trim().length > 0);
   const tail = lines.slice(-12).join("\n");
-  return tail.slice(0, 2000);
+  return redact(tail.slice(0, 2000));
 }
 
 /**

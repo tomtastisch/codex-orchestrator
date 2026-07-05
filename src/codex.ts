@@ -1,7 +1,8 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createInterface } from "node:readline";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { config } from "./config.js";
 import { parseSliceResult, parseStreamLines } from "./events.js";
+import { buildChildEnvironment } from "./runtime/environment.js";
+import { startManagedProcess } from "./runtime/process.js";
 import type { Effort, Sandbox, SliceOutcome } from "./types.js";
 
 export interface RunSliceOptions {
@@ -47,12 +48,30 @@ export const BLOCKED_CONFIG_PREFIXES = [
   "experimental",
   "features",                   // Feature-Flags server-seitig kontrolliert
 ];
+
+const ALLOWED_EXTRA_CONFIG = new Map<string, RegExp>([
+  ["model_verbosity", /^(low|medium|high|concise)$/],
+  ["model_reasoning_summary", /^(none|auto|concise|detailed)$/],
+  ["hide_agent_reasoning", /^(true|false)$/],
+]);
+
 export function isBlockedConfigKey(key: string): boolean {
   const k = key.trim().toLowerCase();
   if (!k || /[\s=]/.test(k)) return true;                 // ungültige/mehrdeutige Keys
   if (k.includes("danger")) return true;
   if (BLOCKED_CONFIG_KEYS.has(k)) return true;
   return BLOCKED_CONFIG_PREFIXES.some((p) => k === p || k.startsWith(p + ".") || k.startsWith(p + "_"));
+}
+
+export function validateExtraConfig(key: string, value: string): void {
+  const normalized = key.trim().toLowerCase();
+  const valueSchema = ALLOWED_EXTRA_CONFIG.get(normalized);
+  if (!valueSchema) {
+    throw new Error(`extra_config-Schlüssel '${key}' ist nicht erlaubt`);
+  }
+  if (!valueSchema.test(value.trim())) {
+    throw new Error(`extra_config-Wert für '${key}' ist nicht erlaubt`);
+  }
 }
 
 /**
@@ -77,6 +96,7 @@ export function buildCodexArgs(opts: {
   ];
   for (const [key, value] of Object.entries(opts.extraConfig ?? {})) {
     if (isBlockedConfigKey(key)) { dropped.push(key); continue; }
+    validateExtraConfig(key, value);
     cfg.push("-c", `${key}=${value}`);
   }
   const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", ...cfg];
@@ -103,56 +123,26 @@ export function startSlice(opts: RunSliceOptions): RunningSlice {
 
   const { args } = buildCodexArgs(opts);
 
-  const child = spawn(config.codexBin, args, {
-    cwd: opts.repoPath,
-    stdio: ["pipe", "pipe", "pipe"],
-    env: process.env,
-  }) as ChildProcessWithoutNullStreams;
-
-  // Prompt über stdin (vermeidet argv-Längenlimits und Quoting-Probleme).
-  child.stdin.write(opts.prompt);
-  child.stdin.end();
-
   const lines: string[] = [];
-  const rl = createInterface({ input: child.stdout });
-  rl.on("line", (line) => {
-    lines.push(line);
-    opts.onLine?.(line);
+  const managed = startManagedProcess({
+    command: config.codexBin,
+    args,
+    cwd: opts.repoPath,
+    env: buildChildEnvironment(process.env, "codex"),
+    input: opts.prompt,
+    timeoutMs: opts.timeoutMs,
+    killGraceMs: config.limits.sliceKillGraceMs,
+    maxStdoutBytes: 10 * 1024 * 1024,
+    maxStderrBytes: 64 * 1024,
+    signal: opts.signal,
+    onStdoutLine: (line) => {
+      lines.push(line);
+      if (lines.length > 10_000) lines.shift();
+      opts.onLine?.(line);
+    },
   });
-  let stderrBuf = "";
-  child.stderr.on("data", (d) => {
-    stderrBuf += d.toString();
-    if (stderrBuf.length > 200_000) stderrBuf = stderrBuf.slice(-200_000);
-  });
 
-  let killedByBudget = false;
-  let killedByCancel = false;
-
-  const killTimer = setTimeout(() => {
-    killedByBudget = true;
-    child.kill("SIGTERM");
-    setTimeout(() => {
-      if (!child.killed) child.kill("SIGKILL");
-    }, config.limits.sliceKillGraceMs);
-  }, opts.timeoutMs);
-
-  const onAbort = () => {
-    killedByCancel = true;
-    child.kill("SIGTERM");
-    setTimeout(() => {
-      if (!child.killed) child.kill("SIGKILL");
-    }, config.limits.sliceKillGraceMs);
-  };
-  if (opts.signal) {
-    if (opts.signal.aborted) onAbort();
-    else opts.signal.addEventListener("abort", onAbort, { once: true });
-  }
-
-  const done = new Promise<SliceOutcome>((resolvePromise) => {
-    child.on("close", (code) => {
-      clearTimeout(killTimer);
-      opts.signal?.removeEventListener("abort", onAbort);
-
+  const done = managed.done.then((processResult): SliceOutcome => {
       const parsed = parseStreamLines(lines);
       const lastMsg = parsed.agentMessages[parsed.agentMessages.length - 1] ?? "";
       const sliceResult = parseSliceResult(lastMsg);
@@ -160,23 +150,29 @@ export function startSlice(opts: RunSliceOptions): RunningSlice {
       let status: SliceOutcome["status"] = "normal";
       let errorMessage: string | null = null;
 
-      if (killedByCancel) {
+      if (processResult.termination === "aborted") {
         status = "killed";
         errorMessage = "abgebrochen (cancel)";
-      } else if (killedByBudget) {
+      } else if (processResult.termination === "timeout") {
         status = "killed";
         errorMessage = "Slice-Budget überschritten (killed)";
+      } else if (processResult.termination === "output_limit") {
+        status = "failed";
+        errorMessage = "Codex-Ausgabe überschritt das Sicherheitslimit";
+      } else if (processResult.termination === "spawn_error") {
+        status = "failed";
+        errorMessage = `Prozessfehler: ${processResult.error ?? "unbekannter Fehler"}`;
       } else if (parsed.turnFailed || parsed.errorMessage) {
         status = "failed";
         errorMessage =
           parsed.errorMessage ||
-          `Codex-Fehler (exit ${code}). stderr: ${stderrBuf.slice(-500)}`;
-      } else if (code !== 0 && parsed.rawEventCount === 0) {
+          `Codex-Fehler (exit ${processResult.code}). stderr: ${processResult.stderr.slice(-500)}`;
+      } else if (processResult.code !== 0 && parsed.rawEventCount === 0) {
         status = "failed";
-        errorMessage = `codex exit ${code}. stderr: ${stderrBuf.slice(-500)}`;
+        errorMessage = `codex exit ${processResult.code}. stderr: ${processResult.stderr.slice(-500)}`;
       }
 
-      resolvePromise({
+      return {
         threadId: parsed.threadId ?? opts.threadId ?? null,
         agentMessages: parsed.agentMessages,
         commands: parsed.commands,
@@ -185,25 +181,10 @@ export function startSlice(opts: RunSliceOptions): RunningSlice {
         status,
         errorMessage,
         rawEventCount: parsed.rawEventCount,
-      });
-    });
-
-    child.on("error", (err) => {
-      clearTimeout(killTimer);
-      resolvePromise({
-        threadId: opts.threadId ?? null,
-        agentMessages: [],
-        commands: [],
-        usage: null,
-        sliceResult: parseSliceResult(""),
-        status: "failed",
-        errorMessage: `Prozessfehler: ${err.message}`,
-        rawEventCount: 0,
-      });
-    });
+      };
   });
 
-  return { child, done };
+  return { child: managed.child, done };
 }
 
 export function runSlice(opts: RunSliceOptions): Promise<SliceOutcome> {
