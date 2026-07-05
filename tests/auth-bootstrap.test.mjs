@@ -44,7 +44,7 @@ test("sync-file bootstrap is followed by a fresh remote auth check", async () =>
             };
         },
         async bootstrapAuth(_home, bytes) {
-            received = bytes;
+            received = Buffer.from(bytes);
             authenticated = true;
             return { state: "installed" };
         },
