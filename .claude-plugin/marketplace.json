@@ -1,5 +1,6 @@
 {
   "name": "codex-orchestrator",
+  "description": "Official marketplace for the Codex Orchestrator Claude Code plugin.",
   "owner": {
     "name": "Tom Werner",
     "url": "https://github.com/tomtastisch"

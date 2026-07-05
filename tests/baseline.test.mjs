@@ -26,3 +26,15 @@ test("bundle verification is part of the package scripts", () => {
     assert.equal(pkg.scripts["verify:bundle"], "node scripts/verify-bundle.mjs");
     assert.equal(existsSync("scripts/verify-bundle.mjs"), true);
 });
+
+test("Claude plugin keeps project state outside the ephemeral plugin cache", () => {
+    const plugin = readJson(".claude-plugin/plugin.json");
+    const server = plugin.mcpServers["codex-orchestrator"];
+    assert.equal(server.args[0], "${CLAUDE_PLUGIN_ROOT}/bundle/server.mjs");
+    assert.equal(server.env.ORCH_HOME, "${CLAUDE_PROJECT_DIR}/.orchestrator");
+
+    const skill = readFileSync("skills/codex-orchestrator/SKILL.md", "utf8");
+    assert.match(skill, /argument-hint:/);
+    assert.match(skill, /\$ARGUMENTS/);
+    assert.match(skill, /orchestrator_doctor/);
+});

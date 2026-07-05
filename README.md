@@ -97,14 +97,21 @@ polls with a long-poll `task_wait`.
 
 ### As a Claude Code plugin (recommended)
 
-```
-/plugin marketplace add tomtastisch/codex-orchestrator
-/plugin install codex-orchestrator
+```bash
+claude plugin marketplace add tomtastisch/codex-orchestrator
+claude plugin install codex-orchestrator@codex-orchestrator --scope user
 ```
 
 This registers the MCP server (pre-bundled, no build step) and the
 `codex-orchestrator` skill, which teaches Claude the full orchestration
-workflow.
+workflow. Start Claude in a project and invoke it with:
+
+```text
+/codex-orchestrator:codex-orchestrator Implement the requested change
+```
+
+Claude plugin skills are namespaced by design. The command therefore contains
+the plugin name and the skill name.
 
 ### As a plain MCP server
 
@@ -134,11 +141,66 @@ projects fully separated:
 Without `ORCH_HOME` the store defaults to `<cwd>/.orchestrator`, so separate
 project directories are isolated automatically.
 
+## Remote Codex execution and persistent authentication
+
+Create `.orchestrator/config.json` in the project from which Claude is started:
+
+```json
+{
+  "version": 1,
+  "execution": {
+    "mode": "remote-preferred",
+    "fallback": "connectivity-only",
+    "remote": {
+      "id": "devbox",
+      "transport": "ssh",
+      "host": "devbox",
+      "repository": {
+        "localRoot": "/Users/me/projects",
+        "remoteRoot": "/home/me/projects"
+      },
+      "codexBin": "codex",
+      "workerRoot": "~/.cache/codex-orchestrator",
+      "codexHome": "~/.codex",
+      "auth": {
+        "strategy": "sync-file",
+        "source": "/Users/me/.codex/auth.json"
+      }
+    }
+  }
+}
+```
+
+The source must be an owner-controlled regular file with no group or world
+permissions (`chmod 600 ~/.codex/auth.json`). The credential is transferred in
+the validated worker protocol, written atomically to the persistent remote
+`codexHome` with mode `0600`, and never included in task events or tool results.
+Every slash-command preflight and task performs a fresh `codex login status` check. If the
+remote file is missing or stale, `sync-file` installs or refreshes it and then
+repeats the check. This survives Claude and host restarts as long as the remote
+home directory persists.
+
+For managed environments, use a secret manager command instead of a file:
+
+```json
+"auth": {
+  "strategy": "access-token",
+  "secretCommand": ["security", "find-generic-password", "-s", "codex-access-token", "-w"]
+}
+```
+
+The command output is passed only through stdin to `codex login
+--with-access-token`; it is not stored by the orchestrator. `existing` is the
+strictest strategy and fails if the remote Codex installation is not already
+authenticated. Local fallback is permitted only for retryable connectivity
+errors, never for authentication, host-key, protocol or repository mismatches.
+
 ## Tools
 
 | Tool | Purpose |
 |---|---|
 | `task_start` | Start a Codex assignment (slice budget, sandbox, model, effort, worktree, wait mode) |
+| `orchestrator_doctor` | Verify configured targets, Codex versions and authentication; securely bootstrap remote auth |
 | `task_wait` | Long-poll for new events / slice boundaries — the core orchestration primitive |
 | `task_events` | Cursor-based event history, filterable by kind |
 | `task_control` | `pause` \| `resume` \| `cancel` \| `inject` (delivered at the next slice boundary) |
@@ -151,7 +213,6 @@ project directories are isolated automatically.
 | `repo_check` | Run allow-listed checks (tests, lint, typecheck, diff stats) |
 | `plan_snapshot` | Durable TOON/JSON snapshot of the full plan state |
 | `codex_update` | Check/apply Codex CLI updates (stable or pre-release channel) |
-| `plugin_update` | Check for / apply a newer plugin release (self-update for git installs) |
 
 ## Example: from a goal to a confirmed change
 
