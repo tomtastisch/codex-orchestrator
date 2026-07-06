@@ -8,8 +8,8 @@ All notable changes to this project are documented in this file.
   review without claiming approval or listing.
 - Update GitHub workflows to `actions/checkout@v7` and
   `actions/setup-node@v6`.
-- Pin remote acceptance to the explicit `macos-15` runner during GitHub's
-  `macos-latest` migration to macOS 26.
+- Pin remote acceptance to the explicit `macos-15` runner while GitHub moves
+  the floating `macos-latest` label from macOS 15 to macOS 26.
 - Record the Build with Claude contribution PR and Cross AI Tools crawler-only
   discovery state without implying external approval.
 
