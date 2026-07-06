@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "codex-orchestrator",
   "display_name": "Codex Orchestrator",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Let Claude Desktop supervise local OpenAI Codex work through gated implementation slices.",
   "long_description": "Runs locally. Requires Git, an installed Codex CLI and an existing Codex login. Credentials are never requested or bundled.",
   "author": {
@@ -52,7 +52,7 @@
     "project_directory": {
       "type": "directory",
       "title": "Project directory",
-      "description": "Git repository in which Codex Orchestrator may work.",
+      "description": "Exact Git repository root in which Codex Orchestrator may work.",
       "required": true
     }
   }

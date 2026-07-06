@@ -21177,6 +21177,52 @@ function parsePositiveInteger(value, variableName) {
   return parsed;
 }
 
+// src/project-boundary.ts
+import { spawnSync } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute } from "node:path";
+function canonicalDirectory(path, variable) {
+  if (!isAbsolute(path)) {
+    throw new Error(`${variable} must be an absolute path`);
+  }
+  try {
+    const canonical = realpathSync(path);
+    if (!statSync(canonical).isDirectory()) {
+      throw new Error(`${variable} must be a directory`);
+    }
+    return canonical;
+  } catch (error2) {
+    if (error2 instanceof Error && error2.message === `${variable} must be a directory`) {
+      throw error2;
+    }
+    throw new Error(`${variable} must be a directory`);
+  }
+}
+function resolveConfiguredProjectRoot(configured) {
+  if (configured === void 0) return null;
+  const project = canonicalDirectory(configured, "ORCH_PROJECT_DIR");
+  const git3 = spawnSync("git", ["-C", project, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+    shell: false
+  });
+  if (git3.status !== 0) {
+    throw new Error("ORCH_PROJECT_DIR must be a Git repository root");
+  }
+  const gitRoot = canonicalDirectory(git3.stdout.trim(), "Git repository root");
+  if (gitRoot !== project) {
+    throw new Error("ORCH_PROJECT_DIR must be a Git repository root");
+  }
+  return project;
+}
+function assertProjectPathAllowed(candidate, configuredRoot) {
+  if (configuredRoot === null) return candidate;
+  const canonical = canonicalDirectory(candidate, "repo_path");
+  if (canonical !== configuredRoot) {
+    throw new Error("repo_path is outside the configured project repository");
+  }
+  return canonical;
+}
+
 // src/config.ts
 var HOME = process.env.ORCH_HOME ? resolve(process.env.ORCH_HOME) : process.env.ORCH_GLOBAL === "true" ? resolve(homedir(), ".codex-orchestrator") : resolve(process.cwd(), ".orchestrator");
 function loadFileConfig() {
@@ -21197,6 +21243,7 @@ var config2 = {
   dbPath: resolve(HOME, "state.sqlite"),
   worktreeRoot: resolve(HOME, "worktrees"),
   codexBin: process.env.ORCH_CODEX_BIN || "codex",
+  projectRoot: resolveConfiguredProjectRoot(process.env.ORCH_PROJECT_DIR),
   allowedSandboxes: ["read-only", "workspace-write"],
   networkDefault: false,
   requireHypothesis: process.env.ORCH_REQUIRE_HYPOTHESIS !== "false",
@@ -23155,18 +23202,18 @@ var ClusterStateMachine = class {
 };
 
 // src/worktree.ts
-import { spawnSync } from "node:child_process";
+import { spawnSync as spawnSync2 } from "node:child_process";
 import { mkdirSync as mkdirSync2, existsSync as existsSync3 } from "node:fs";
 import { resolve as resolve2 } from "node:path";
 function git(cwd, args) {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8" });
+  const r = spawnSync2("git", args, { cwd, encoding: "utf8" });
   if (r.status !== 0) {
     throw new Error(`git ${args.join(" ")} fehlgeschlagen: ${r.stderr || r.stdout}`);
   }
   return (r.stdout || "").trim();
 }
 function isGitRepo(repoPath) {
-  const r = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoPath, encoding: "utf8" });
+  const r = spawnSync2("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoPath, encoding: "utf8" });
   return r.status === 0 && r.stdout.trim() === "true";
 }
 var WorktreeManager = class {
@@ -23194,19 +23241,19 @@ var WorktreeManager = class {
     const args = ["merge", opts?.noFf ? "--no-ff" : "--ff"];
     if (opts?.noGpgSign) args.push("--no-gpg-sign");
     args.push(branch);
-    const r = spawnSync("git", args, { cwd: repoPath, encoding: "utf8" });
+    const r = spawnSync2("git", args, { cwd: repoPath, encoding: "utf8" });
     const output = (r.stdout || "") + (r.stderr || "");
     if (r.status === 0) return { ok: true, conflict: false, output };
     const conflict = /conflict/i.test(output);
     if (conflict) {
-      spawnSync("git", ["merge", "--abort"], { cwd: repoPath });
+      spawnSync2("git", ["merge", "--abort"], { cwd: repoPath });
     }
     return { ok: false, conflict, output };
   }
   /** Worktree entfernen (Aufräumen). Bei Cancel bewusst NICHT automatisch. */
   remove(repoPath, worktree, deleteBranch) {
-    spawnSync("git", ["worktree", "remove", "--force", worktree], { cwd: repoPath });
-    if (deleteBranch) spawnSync("git", ["branch", "-D", deleteBranch], { cwd: repoPath });
+    spawnSync2("git", ["worktree", "remove", "--force", worktree], { cwd: repoPath });
+    if (deleteBranch) spawnSync2("git", ["branch", "-D", deleteBranch], { cwd: repoPath });
   }
   list(repoPath) {
     return git(repoPath, ["worktree", "list"]);
@@ -23271,7 +23318,7 @@ function repoPathForCluster(store2, clusterId) {
   const cluster = store2.getCluster(clusterId);
   if (!cluster) return null;
   const plan = store2.getPlan(cluster.plan_id);
-  return plan?.repo_path ?? null;
+  return plan ? assertProjectPathAllowed(plan.repo_path, config2.projectRoot) : null;
 }
 function latestWorktreeForCluster(store2, clusterId) {
   const tasks = store2.listTasks({ clusterId });
@@ -23304,15 +23351,15 @@ function centralAgentsMd() {
 }
 
 // src/updater.ts
-import { spawn as spawn2, spawnSync as spawnSync2 } from "node:child_process";
+import { spawn as spawn2, spawnSync as spawnSync3 } from "node:child_process";
 function installedVersion(codexBin = "codex") {
-  const r = spawnSync2(codexBin, ["--version"], { encoding: "utf8" });
+  const r = spawnSync3(codexBin, ["--version"], { encoding: "utf8" });
   if (r.status !== 0) return null;
   const m = (r.stdout || "").match(/(\d+\.\d+\.\d+[^\s]*)/);
   return m ? m[1] : (r.stdout || "").trim() || null;
 }
 function latestVersion(channel) {
-  const r = spawnSync2("npm", ["view", `@openai/codex@${channel}`, "version"], { encoding: "utf8" });
+  const r = spawnSync3("npm", ["view", `@openai/codex@${channel}`, "version"], { encoding: "utf8" });
   if (r.status !== 0) return null;
   return (r.stdout || "").trim() || null;
 }
@@ -24575,7 +24622,7 @@ var ExecutionTargetRouter = class {
 // src/execution/ssh/target.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { existsSync as existsSync6 } from "node:fs";
-import { dirname as dirname3, isAbsolute, relative, resolve as resolve5, sep as sep2 } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute2, relative, resolve as resolve5, sep as sep2 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/execution/ssh/client.ts
@@ -24620,7 +24667,7 @@ import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync5, readFileSync as readFileSync4 } from "node:fs";
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.5.0";
+var ORCHESTRATOR_VERSION = "1.5.1";
 
 // src/execution/ssh/deploy.ts
 function safeRemotePath(path) {
@@ -24849,7 +24896,7 @@ var SshExecutionTarget = class {
     const localRoot = resolve5(this.options.localRoot);
     const candidate = resolve5(localPath);
     const suffix = relative(localRoot, candidate);
-    if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute(suffix)) {
+    if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute2(suffix)) {
       throw new TargetError("TARGET_REPOSITORY", "Repository-Pfad liegt au\xDFerhalb des lokalen Mappings", this.id);
     }
     return resolve5(this.options.remoteRoot, suffix);
@@ -25256,6 +25303,7 @@ server.registerTool(
       ok: healthy,
       version: ORCHESTRATOR_VERSION,
       execution: config2.execution.mode,
+      project_root: config2.projectRoot,
       environment,
       targets
     });
@@ -25300,13 +25348,23 @@ server.registerTool(
     const stopCondition = a.slice_budget?.stop_condition ?? null;
     const waitFor = a.wait_for;
     let repoPath = null;
-    if (a.cluster_id) {
-      repoPath = repoPathForCluster(store, a.cluster_id);
-      if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
-    } else if (a.repo_path) {
-      repoPath = a.repo_path;
-    } else {
-      return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });
+    try {
+      if (a.cluster_id) {
+        repoPath = repoPathForCluster(store, a.cluster_id);
+        if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
+      } else if (a.repo_path) {
+        repoPath = assertProjectPathAllowed(a.repo_path, config2.projectRoot);
+      } else {
+        return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });
+      }
+    } catch (e) {
+      return err({ ok: false, error: e?.message ?? String(e) });
+    }
+    if (config2.projectRoot && a.worktree !== "none" && a.worktree !== "auto") {
+      return err({
+        ok: false,
+        error: "explicit worktree paths are disabled when ORCH_PROJECT_DIR is configured; use 'none' or 'auto'"
+      });
     }
     if (waitFor === "completed" && maxMinutes > config2.syncMaxMinutes) {
       return err({
@@ -25604,10 +25662,23 @@ server.registerTool(
     }
   },
   async (a) => {
+    let repoPath;
+    try {
+      repoPath = assertProjectPathAllowed(a.repo_path, config2.projectRoot);
+      if (!isGitRepo(repoPath)) {
+        return err({ ok: false, error: `Kein git-Repo: ${repoPath}` });
+      }
+      if (a.plan_id) {
+        const existing = store.getPlan(a.plan_id);
+        if (existing) assertProjectPathAllowed(existing.repo_path, config2.projectRoot);
+      }
+    } catch (e) {
+      return err({ ok: false, error: e?.message ?? String(e) });
+    }
     return store.tx(() => {
       let planId = a.plan_id;
       if (!planId || !store.getPlan(planId)) {
-        const p = store.createPlan(a.goal, a.constraints ?? null, a.repo_path);
+        const p = store.createPlan(a.goal, a.constraints ?? null, repoPath);
         planId = p.id;
       }
       const persisted = a.clusters.map(

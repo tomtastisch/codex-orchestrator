@@ -62,7 +62,7 @@ import {
   writeSync
 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { isAbsolute, join, resolve as resolve4 } from "node:path";
+import { isAbsolute as isAbsolute2, join, resolve as resolve4 } from "node:path";
 
 // src/config.ts
 import { homedir } from "node:os";
@@ -4176,6 +4176,44 @@ function parsePositiveInteger(value, variableName) {
   return parsed;
 }
 
+// src/project-boundary.ts
+import { spawnSync } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute } from "node:path";
+function canonicalDirectory(path, variable) {
+  if (!isAbsolute(path)) {
+    throw new Error(`${variable} must be an absolute path`);
+  }
+  try {
+    const canonical = realpathSync(path);
+    if (!statSync(canonical).isDirectory()) {
+      throw new Error(`${variable} must be a directory`);
+    }
+    return canonical;
+  } catch (error) {
+    if (error instanceof Error && error.message === `${variable} must be a directory`) {
+      throw error;
+    }
+    throw new Error(`${variable} must be a directory`);
+  }
+}
+function resolveConfiguredProjectRoot(configured) {
+  if (configured === void 0) return null;
+  const project = canonicalDirectory(configured, "ORCH_PROJECT_DIR");
+  const git = spawnSync("git", ["-C", project, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+    shell: false
+  });
+  if (git.status !== 0) {
+    throw new Error("ORCH_PROJECT_DIR must be a Git repository root");
+  }
+  const gitRoot = canonicalDirectory(git.stdout.trim(), "Git repository root");
+  if (gitRoot !== project) {
+    throw new Error("ORCH_PROJECT_DIR must be a Git repository root");
+  }
+  return project;
+}
+
 // src/config.ts
 var HOME = process.env.ORCH_HOME ? resolve(process.env.ORCH_HOME) : process.env.ORCH_GLOBAL === "true" ? resolve(homedir(), ".codex-orchestrator") : resolve(process.cwd(), ".orchestrator");
 function loadFileConfig() {
@@ -4196,6 +4234,7 @@ var config = {
   dbPath: resolve(HOME, "state.sqlite"),
   worktreeRoot: resolve(HOME, "worktrees"),
   codexBin: process.env.ORCH_CODEX_BIN || "codex",
+  projectRoot: resolveConfiguredProjectRoot(process.env.ORCH_PROJECT_DIR),
   allowedSandboxes: ["read-only", "workspace-write"],
   networkDefault: false,
   requireHypothesis: process.env.ORCH_REQUIRE_HYPOTHESIS !== "false",
@@ -4905,10 +4944,10 @@ function parseWorkerRequest(input) {
 }
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.5.0";
+var ORCHESTRATOR_VERSION = "1.5.1";
 
 // src/worker/path-policy.ts
-import { realpathSync } from "node:fs";
+import { realpathSync as realpathSync2 } from "node:fs";
 import { resolve as resolve3, sep as sep2 } from "node:path";
 
 // src/execution/errors.ts
@@ -4927,8 +4966,8 @@ var TargetError = class extends Error {
 
 // src/worker/path-policy.ts
 function assertAllowedPath(allowedRoot, cwd) {
-  const root = realpathSync(resolve3(allowedRoot));
-  const candidate = realpathSync(resolve3(cwd));
+  const root = realpathSync2(resolve3(allowedRoot));
+  const candidate = realpathSync2(resolve3(cwd));
   if (candidate !== root && !candidate.startsWith(`${root}${sep2}`)) {
     throw new TargetError("TARGET_REPOSITORY", "Repository-Pfad liegt au\xDFerhalb der erlaubten Wurzel", "remote");
   }
@@ -4939,7 +4978,7 @@ function assertAllowedPath(allowedRoot, cwd) {
 function resolveCodexHome(value) {
   if (value === "~") return homedir2();
   if (value.startsWith("~/")) return resolve4(homedir2(), value.slice(2));
-  if (!isAbsolute(value)) throw new Error("codexHome muss absolut sein oder mit ~/ beginnen");
+  if (!isAbsolute2(value)) throw new Error("codexHome muss absolut sein oder mit ~/ beginnen");
   return resolve4(value);
 }
 function bootstrapAuth(codexHomeValue, credentialBase64) {
