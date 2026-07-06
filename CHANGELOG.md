@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.4.1 - 2026-07-06
+
+### Documentation
+
+- Added the exact Claude Code, Codex CLI and authentication prerequisites.
+- Added installation, verification, update and removal commands.
+- Distinguished the first-party marketplace from Anthropic's official
+  marketplace.
+- Published the Claude Desktop MCPB and claude.ai Remote MCP roadmap.
+
 ## 1.4.0 - 2026-07-06
 
 ### Added

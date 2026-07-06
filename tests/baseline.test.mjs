@@ -40,3 +40,9 @@ test("Claude plugin keeps project state outside the ephemeral plugin cache", () 
     assert.match(skill, /\$ARGUMENTS/);
     assert.match(skill, /orchestrator_doctor/);
 });
+
+test("marketplace identifies itself as first-party, not Anthropic-official", () => {
+    const marketplace = readJson(".claude-plugin/marketplace.json");
+    assert.match(marketplace.description, /First-party/);
+    assert.doesNotMatch(marketplace.description, /Official marketplace/i);
+});
