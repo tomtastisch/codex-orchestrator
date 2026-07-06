@@ -71,7 +71,7 @@ test("version changes on main publish and retain exactly one stable release", ()
     assert.doesNotMatch(workflow, /git tag --list/);
     assert.doesNotMatch(workflow, /\[\[ "\$tag" =~/);
     assert.doesNotMatch(workflow, /node-version: "22"/);
-    assert.match(ci, /release:[\s\S]*needs: \[test, remote-acceptance\]/);
+    assert.match(ci, /release:[\s\S]*needs: \[portable, quality, remote-acceptance\]/);
     assert.match(ci, /release:[\s\S]*github\.event_name == 'push'/);
     assert.match(ci, /release:[\s\S]*contents: write/);
     assert.match(ci, /release:[\s\S]*uses: \.\/\.github\/workflows\/release\.yml/);
@@ -87,6 +87,7 @@ test("workflows use the current supported action majors", () => {
     assert.match(ci, /actions\/setup-node@v6/);
     assert.match(release, /actions\/checkout@v7/);
     assert.match(release, /actions\/setup-node@v6/);
+    assert.match(ci, /actions\/upload-artifact@v7/);
     assert.doesNotMatch(workflows, /actions\/(?:checkout|setup-node)@v4/);
     assert.match(remoteAcceptance, /^    runs-on: macos-15$/m);
     assert.doesNotMatch(ci, /runs-on: macos-latest/);
