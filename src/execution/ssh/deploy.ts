@@ -4,7 +4,7 @@ import { buildChildEnvironment } from "../../runtime/environment.js";
 import { startManagedProcess } from "../../runtime/process.js";
 import { ORCHESTRATOR_VERSION } from "../../version.js";
 import { TargetError } from "../errors.js";
-import { sshOptions, type SshClientOptions } from "./client.js";
+import { scpOptions, sshOptions, type SshClientOptions } from "./client.js";
 
 /** @typedef WorkerDeploymentOptions */
 export interface WorkerDeploymentOptions extends SshClientOptions {
@@ -60,7 +60,7 @@ export class WorkerDeployer {
         }
 
         const copied = await run(this.options.scpBin ?? "scp", [
-            "-q", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+            ...scpOptions(this.options),
             this.options.workerBundlePath, `${this.options.host}:${temporary}`,
         ], 60_000);
         if (copied.code !== 0) {

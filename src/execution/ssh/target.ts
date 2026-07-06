@@ -32,6 +32,7 @@ export interface SshExecutionTargetOptions {
     workerEntry?: string;
     sshBin?: string;
     scpBin?: string;
+    configFile?: string;
     skipDeploy?: boolean;
 }
 
@@ -70,6 +71,7 @@ export class SshExecutionTarget implements ExecutionTarget {
                 host: options.host,
                 sshBin: options.sshBin,
                 scpBin: options.scpBin,
+                configFile: options.configFile,
                 workerBundlePath: options.workerBundlePath ?? defaultWorkerBundle(),
                 workerRoot: options.workerRoot ?? "~/.cache/codex-orchestrator",
             });
@@ -103,7 +105,7 @@ export class SshExecutionTarget implements ExecutionTarget {
         const requestId = randomUUID();
         let final: WorkerFrame | undefined;
         const process = startWorkerProcess(
-            { host: this.options.host, sshBin: this.options.sshBin },
+            { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
             this.workerEntry,
             {
                 requestId,
@@ -248,7 +250,7 @@ export class SshExecutionTarget implements ExecutionTarget {
     private async invoke(request: { requestId: string; [key: string]: unknown }, timeoutMs: number): Promise<unknown> {
         let final: WorkerFrame | undefined;
         const process = startWorkerProcess(
-            { host: this.options.host, sshBin: this.options.sshBin },
+            { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
             this.workerEntry,
             request,
             timeoutMs,

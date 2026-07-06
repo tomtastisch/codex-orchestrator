@@ -6,15 +6,26 @@ import { startManagedProcess, type RunningManagedProcess } from "../../runtime/p
 export interface SshClientOptions {
     host: string;
     sshBin?: string;
+    configFile?: string;
     connectTimeoutSeconds?: number;
 }
 
 export function sshOptions(options: SshClientOptions): string[] {
     return [
+        ...(options.configFile ? ["-F", options.configFile] : []),
         "-T",
         "-o", "BatchMode=yes",
         "-o", "StrictHostKeyChecking=yes",
         "-o", `ConnectTimeout=${options.connectTimeoutSeconds ?? 10}`,
+    ];
+}
+
+export function scpOptions(options: SshClientOptions): string[] {
+    return [
+        ...(options.configFile ? ["-F", options.configFile] : []),
+        "-q",
+        "-o", "BatchMode=yes",
+        "-o", "StrictHostKeyChecking=yes",
     ];
 }
 
