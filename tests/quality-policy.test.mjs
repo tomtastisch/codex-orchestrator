@@ -11,6 +11,7 @@ test("package supports only the verified Node LTS lines", () => {
 });
 
 test("CI requires the complete Node and operating-system matrix", () => {
+    assert.match(ci, /^permissions:\n  contents: read$/m);
     for (const value of ["ubuntu-latest", "macos-15", "windows-latest", '"22"', '"24"']) {
         assert.ok(ci.includes(value), `CI matrix entry missing: ${value}`);
     }
@@ -49,6 +50,8 @@ test("CodeQL scans application and workflow code with current actions", () => {
     assert.match(codeql, /github\/codeql-action\/init@v4/);
     assert.match(codeql, /github\/codeql-action\/analyze@v4/);
     assert.match(codeql, /security-events: write/);
+    assert.match(codeql, /actions: read/);
+    assert.doesNotMatch(codeql, /packages: read/);
     assert.match(codeql, /schedule:/);
     assert.doesNotMatch(codeql, /continue-on-error:\s*true/);
 });
