@@ -13,7 +13,9 @@ function registeredNames(kind) {
 
 test("README states the exact platform support status", () => {
     assert.match(readme, /Claude Code CLI\s*\|\s*Production ready/);
-    assert.match(readme, new RegExp(`Claude Desktop MCPB[^\\n]*\\|\\s*Released[^\\n]*${pkg.version}`));
+    assert.ok(readme.includes(
+        `| Claude Desktop MCPB | Released; technical verification passed | Latest GitHub release, version ${pkg.version} |`,
+    ));
     assert.match(readme, /claude\.ai Remote MCP[^\n]*\|\s*In development/);
     assert.match(readme, /Claude Desktop is not a prerequisite/);
     assert.match(readme, /technical verification (?:has )?passed/i);
