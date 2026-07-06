@@ -24620,7 +24620,7 @@ import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync5, readFileSync as readFileSync4 } from "node:fs";
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.4.0";
+var ORCHESTRATOR_VERSION = "1.4.1";
 
 // src/execution/ssh/deploy.ts
 function safeRemotePath(path) {
