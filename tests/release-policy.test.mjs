@@ -13,6 +13,7 @@ test("version changes on main publish and retain exactly one stable release", ()
         "workflow_call",
         "group: codex-orchestrator-release",
         "contents: write",
+        'node-version: ">=22.5.0 <23"',
         "npm run typecheck",
         "npm test",
         "npm run verify:bundle",
@@ -44,12 +45,14 @@ test("version changes on main publish and retain exactly one stable release", ()
     assert.doesNotMatch(workflow, /outputs\.changed/);
     assert.match(workflow, /current_tag_exists[\s\S]*current_release_exists[\s\S]*release_count[\s\S]*tag_count/);
     assert.match(workflow, /if \[ "\$current_tag_exists" = true \] && \[ "\$current_release_exists" = true \]/);
+    assert.match(workflow, /while true; do[\s\S]*removed_release=false[\s\S]*gh release delete[\s\S]*\[ "\$removed_release" = false \] && break/);
     assert.match(workflow, /remote_tag_sha[\s\S]*GITHUB_SHA/);
     assert.match(workflow, /tag_count=\$\(git ls-remote --tags --refs origin 'refs\/tags\/v\*'/);
     assert.match(workflow, /remote_tag=\$\(git ls-remote --tags --refs origin "refs\/tags\/\$CURRENT_TAG"/);
     assert.match(workflow, /if \[ "\$release_count" -ne 1 \] \|\| \[ "\$tag_count" -ne 1 \]/);
     assert.doesNotMatch(workflow, /git tag --list/);
     assert.doesNotMatch(workflow, /\[\[ "\$tag" =~/);
+    assert.doesNotMatch(workflow, /node-version: "22"/);
     assert.match(ci, /release:[\s\S]*needs: \[test, remote-acceptance\]/);
     assert.match(ci, /release:[\s\S]*github\.event_name == 'push'/);
     assert.match(ci, /release:[\s\S]*contents: write/);

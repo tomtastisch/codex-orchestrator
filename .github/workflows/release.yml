@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ">=22.5.0 <23"
       - name: Determine release mode
         id: version
         env:
@@ -136,11 +136,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          while IFS= read -r tag; do
-            [ -z "$tag" ] && continue
-            [ "$tag" = "$CURRENT_TAG" ] && continue
-            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-          done < <(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName')
+          while true; do
+            removed_release=false
+            while IFS= read -r tag; do
+              [ -z "$tag" ] && continue
+              [ "$tag" = "$CURRENT_TAG" ] && continue
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+              removed_release=true
+            done < <(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName')
+            [ "$removed_release" = false ] && break
+          done
 
           while IFS= read -r tag; do
             [ -z "$tag" ] && continue
