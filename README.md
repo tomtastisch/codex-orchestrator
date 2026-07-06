@@ -206,8 +206,8 @@ The channels have different owners and must not be conflated:
 | First-party GitHub marketplace | Codex Orchestrator project | Available now with the terminal commands above |
 | `claude-community` | Anthropic, reviewed third-party directory | Submitted; Anthropic review pending; not yet listed |
 | `claude-plugins-official` | Anthropic, separately curated | No application process; inclusion is solely at Anthropic's discretion |
-| [Build with Claude](https://buildwithclaude.com) | Independent community directory | External discovery target; not an official Anthropic channel |
-| [Cross AI Tools](https://crossaitools.com) | Independent community directory | Crawler/editorial discovery target; not an official Anthropic channel |
+| [Build with Claude](https://buildwithclaude.com) | Independent community directory | [PR #222 pending maintainer review](https://github.com/davepoon/buildwithclaude/pull/222); not an official Anthropic channel |
+| [Cross AI Tools](https://crossaitools.com) | Independent community directory | Crawler-eligible; listing depends on external quality and editorial review; not an official Anthropic channel |
 
 Anthropic's current process sends third-party plugins to `claude-community`
 through the [Console submission form](https://platform.claude.com/plugins/submit).
@@ -218,10 +218,13 @@ contains the plugin. The separate `claude-plugins-official` catalog has no
 application process.
 
 Build with Claude and Cross AI Tools are independent community directories,
-not installation authorities. Their discovery pages may lag until their
-repository crawler or editorial review indexes this marketplace. The
-first-party commands in this README remain valid independently of those
-listings.
+not installation authorities. The Build with Claude metadata contribution is
+currently awaiting maintainer review in
+[PR #222](https://github.com/davepoon/buildwithclaude/pull/222). Cross AI Tools
+has no direct submission form; its crawler discovers valid GitHub marketplace
+schemas, then applies independent adoption, quality and editorial criteria.
+The first-party commands in this README remain valid independently of those
+external listings.
 
 ### Claude Desktop MCPB (released in 1.5.2)
 

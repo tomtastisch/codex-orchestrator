@@ -4,6 +4,24 @@ import { existsSync, readFileSync } from "node:fs";
 
 const workflowPath = ".github/workflows/release.yml";
 
+/**
+ * Return one top-level workflow job without allowing matches in later jobs.
+ *
+ * @param {string} workflow complete workflow source
+ * @param {string} jobName exact job identifier
+ * @returns {string} isolated job source
+ */
+function workflowJob(workflow, jobName) {
+    const header = `  ${jobName}:\n`;
+    const start = workflow.indexOf(header);
+    assert.notEqual(start, -1, `workflow job missing: ${jobName}`);
+    const bodyStart = start + header.length;
+    const remaining = workflow.slice(bodyStart);
+    const nextJobOffset = remaining.search(/^  [A-Za-z0-9_-]+:\n/m);
+    const end = nextJobOffset === -1 ? workflow.length : bodyStart + nextJobOffset;
+    return workflow.slice(start, end);
+}
+
 test("version changes on main publish and retain exactly one stable release", () => {
     assert.equal(existsSync(workflowPath), true, `${workflowPath} must exist`);
     const workflow = readFileSync(workflowPath, "utf8");
@@ -63,10 +81,13 @@ test("workflows use the current supported action majors", () => {
     const ci = readFileSync(".github/workflows/ci.yml", "utf8");
     const release = readFileSync(workflowPath, "utf8");
     const workflows = `${ci}\n${release}`;
+    const remoteAcceptance = workflowJob(ci, "remote-acceptance");
 
     assert.match(ci, /actions\/checkout@v7/);
     assert.match(ci, /actions\/setup-node@v6/);
     assert.match(release, /actions\/checkout@v7/);
     assert.match(release, /actions\/setup-node@v6/);
     assert.doesNotMatch(workflows, /actions\/(?:checkout|setup-node)@v4/);
+    assert.match(remoteAcceptance, /^    runs-on: macos-15$/m);
+    assert.doesNotMatch(ci, /runs-on: macos-latest/);
 });
