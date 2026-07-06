@@ -29,12 +29,13 @@ GitHub must expose exactly one current stable release and one corresponding
 semantic-version tag. Historical versions remain auditable in Git history and
 `CHANGELOG.md`, but are not offered as installable releases.
 
-A release workflow runs only after the version in `package.json` changes on
-`main`. It validates version agreement, executes all release gates, builds the
-MCPB and checksum, publishes the new release, removes older GitHub releases and
-semantic-version tags, marks the new release as latest, and verifies the final
-one-release/one-tag invariant. Concurrency is serialized to prevent competing
-publish operations.
+A release workflow runs after green `main` CI and compares the version in
+`package.json` with the current GitHub release and tag state. It selects a
+no-op, cleanup-only or publish mode, validates version agreement, executes all
+release gates before publishing, builds the MCPB and checksum, removes older
+GitHub releases and version tags, marks the new release as latest, and verifies
+the final one-release/one-tag invariant. Concurrency is serialized to prevent
+competing publish operations.
 
 ## Documentation contract
 

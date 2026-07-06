@@ -31,12 +31,19 @@ test("version changes on main publish and retain exactly one stable release", ()
         "--cleanup-tag",
         "git push origin \":refs/tags/$tag\"",
         "--latest",
+        "mode=publish",
+        "mode=cleanup",
+        "mode=noop",
+        "current_release_exists",
+        "current_tag_exists",
         "release_count",
         "tag_count",
     ]) assert.ok(workflow.includes(required), `release workflow contract missing: ${required}`);
 
-    assert.match(workflow, /previous_version[\s\S]*current_version/);
-    assert.match(workflow, /if \[ "\$previous_version" = "\$current_version" \]/);
+    assert.doesNotMatch(workflow, /HEAD\^:package\.json/);
+    assert.doesNotMatch(workflow, /outputs\.changed/);
+    assert.match(workflow, /current_tag_exists[\s\S]*current_release_exists[\s\S]*release_count[\s\S]*tag_count/);
+    assert.match(workflow, /if \[ "\$current_tag_exists" = true \] && \[ "\$current_release_exists" = true \]/);
     assert.match(workflow, /remote_tag_sha[\s\S]*GITHUB_SHA/);
     assert.match(workflow, /tag_count=\$\(git ls-remote --tags --refs origin 'refs\/tags\/v\*'/);
     assert.match(workflow, /remote_tag=\$\(git ls-remote --tags --refs origin "refs\/tags\/\$CURRENT_TAG"/);

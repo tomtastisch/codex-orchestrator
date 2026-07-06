@@ -28,9 +28,9 @@ Files:
 Files:
 - Create: `.github/workflows/release.yml`
 
-- [ ] Detect a real `package.json` version change on `main`, enforce tag
-  immutability and safely resume a partially completed release for the same
-  commit.
+- [ ] Compare `package.json` with the current GitHub release/tag state, select
+  no-op, cleanup or publish mode, enforce tag immutability and safely resume a
+  partially completed release for the same commit.
 - [ ] Run the complete release gate set and build the MCPB plus checksum.
 - [ ] Publish the versioned release, prune older releases and semantic-version
   tags, set the new release as latest and assert exactly one remains.
