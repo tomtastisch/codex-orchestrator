@@ -45,7 +45,12 @@ Anthropic review is pending or if Anthropic declines the submission.
 ## Independent discovery directories
 
 - Build with Claude: https://buildwithclaude.com
+  - Metadata contribution: https://github.com/davepoon/buildwithclaude/pull/222
+  - Status: Pending maintainer review
 - Cross AI Tools: https://crossaitools.com
+  - Status: Crawler-eligible; not listed
+  - Cross AI Tools has no direct submission form. Its crawler and editor apply
+    independent adoption, quality and editorial criteria.
 
 Both are community-run directories and are not affiliated with Anthropic.
 Their crawler or editorial status does not change the supported installation

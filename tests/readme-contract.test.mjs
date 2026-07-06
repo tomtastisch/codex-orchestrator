@@ -53,6 +53,14 @@ test("README and submission record reflect Anthropic acknowledgement without cla
     assert.doesNotMatch(submission, /^Status: (?:Approved|Listed)/m);
 });
 
+test("README and submission record expose current independent-directory states", () => {
+    assert.ok(readme.includes("https://github.com/davepoon/buildwithclaude/pull/222"));
+    assert.match(readme, /Build with Claude[^\n]*PR #222 pending maintainer review/);
+    assert.match(readme, /Cross AI Tools[^\n]*Crawler-eligible; listing depends on external quality and editorial review/);
+    assert.ok(submission.includes("https://github.com/davepoon/buildwithclaude/pull/222"));
+    assert.match(submission, /Cross AI Tools has no direct submission form/i);
+});
+
 test("README documents the complete Claude Desktop MCPB lifecycle", () => {
     for (const required of [
         "https://github.com/tomtastisch/codex-orchestrator/releases/latest",

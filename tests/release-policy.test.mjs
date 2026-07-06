@@ -69,4 +69,6 @@ test("workflows use the current supported action majors", () => {
     assert.match(release, /actions\/checkout@v7/);
     assert.match(release, /actions\/setup-node@v6/);
     assert.doesNotMatch(workflows, /actions\/(?:checkout|setup-node)@v4/);
+    assert.match(ci, /remote-acceptance:[\s\S]*runs-on: macos-15/);
+    assert.doesNotMatch(ci, /runs-on: macos-latest/);
 });
