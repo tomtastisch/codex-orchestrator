@@ -7,7 +7,11 @@ var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -10714,7 +10718,7 @@ ZodNaN.create = (params) => {
     ...processCreateParams(params)
   });
 };
-var BRAND = Symbol("zod_brand");
+var BRAND = /* @__PURE__ */ Symbol("zod_brand");
 var ZodBranded = class extends ZodType {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
@@ -10916,14 +10920,14 @@ var ostring = () => stringType().optional();
 var onumber = () => numberType().optional();
 var oboolean = () => booleanType().optional();
 var coerce = {
-  string: (arg) => ZodString.create({ ...arg, coerce: true }),
-  number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
-  boolean: (arg) => ZodBoolean.create({
+  string: ((arg) => ZodString.create({ ...arg, coerce: true })),
+  number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
+  boolean: ((arg) => ZodBoolean.create({
     ...arg,
     coerce: true
-  }),
-  bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
-  date: (arg) => ZodDate.create({ ...arg, coerce: true })
+  })),
+  bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
+  date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
 };
 var NEVER = INVALID;
 
@@ -10974,7 +10978,6 @@ function $constructor(name, initializer3, params) {
   Object.defineProperty(_, "name", { value: name });
   return _;
 }
-var $brand = Symbol("zod_brand");
 var $ZodAsyncError = class extends Error {
   constructor() {
     super(`Encountered Promise during synchronous parse. Use .parseAsync() instead.`);
@@ -13478,8 +13481,6 @@ function en_default2() {
 }
 
 // node_modules/zod/v4/core/registries.js
-var $output = Symbol("ZodOutput");
-var $input = Symbol("ZodInput");
 var $ZodRegistry = class {
   constructor() {
     this._map = /* @__PURE__ */ new Map();
@@ -14757,10 +14758,10 @@ var ZodMiniType = /* @__PURE__ */ $constructor("ZodMiniType", (inst, def) => {
   };
   inst.clone = (_def, params) => clone(inst, _def, params);
   inst.brand = () => inst;
-  inst.register = (reg, meta) => {
+  inst.register = ((reg, meta) => {
     reg.add(inst, meta);
     return inst;
-  };
+  });
 });
 var ZodMiniObject = /* @__PURE__ */ $constructor("ZodMiniObject", (inst, def) => {
   $ZodObject.init(inst, def);
@@ -15023,10 +15024,10 @@ var ZodType2 = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
   };
   inst.clone = (def2, params) => clone(inst, def2, params);
   inst.brand = () => inst;
-  inst.register = (reg, meta) => {
+  inst.register = ((reg, meta) => {
     reg.add(inst, meta);
     return inst;
-  };
+  });
   inst.parse = (data, params) => parse2(inst, data, params, { callee: inst.parse });
   inst.safeParse = (data, params) => safeParse3(inst, data, params);
   inst.parseAsync = async (data, params) => parseAsync2(inst, data, params, { callee: inst.parseAsync });
@@ -16996,11 +16997,13 @@ function assertCompleteRequestPrompt(request) {
   if (request.params.ref.type !== "ref/prompt") {
     throw new TypeError(`Expected CompleteRequestPrompt, but got ${request.params.ref.type}`);
   }
+  void request;
 }
 function assertCompleteRequestResourceTemplate(request) {
   if (request.params.ref.type !== "ref/resource") {
     throw new TypeError(`Expected CompleteRequestResourceTemplate, but got ${request.params.ref.type}`);
   }
+  void request;
 }
 var CompleteResultSchema = ResultSchema.extend({
   completion: looseObject({
@@ -17153,7 +17156,7 @@ function isTerminal(status) {
 }
 
 // node_modules/zod-to-json-schema/dist/esm/Options.js
-var ignoreOverride = Symbol("Let zodToJsonSchema decide on which parser to use");
+var ignoreOverride = /* @__PURE__ */ Symbol("Let zodToJsonSchema decide on which parser to use");
 var defaultOptions = {
   name: void 0,
   $refStrategy: "root",
@@ -20129,7 +20132,7 @@ var Server = class extends Protocol {
 };
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/completable.js
-var COMPLETABLE_SYMBOL = Symbol.for("mcp.completable");
+var COMPLETABLE_SYMBOL = /* @__PURE__ */ Symbol.for("mcp.completable");
 function isCompletable(schema) {
   return !!schema && typeof schema === "object" && COMPLETABLE_SYMBOL in schema;
 }
@@ -22102,6 +22105,7 @@ function parseSliceResult(agentText) {
       default:
         break;
     }
+    void lower;
   }
   if (result.blockerText) result.blockerText = result.blockerText.trim();
   return result;
@@ -22136,13 +22140,8 @@ function buildChildEnvironment(source, purpose) {
 import { spawn } from "node:child_process";
 
 // src/runtime/redaction.ts
-var REDACTED = "[REDACTED]";
-var SECRET_ASSIGNMENT = new RegExp(
-  String.raw`\b(OPENAI_API_KEY|CODEX_API_KEY|CODEX_ACCESS_TOKEN|GITHUB_TOKEN|GH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN)\s*([:=])\s*([^\s]+)`,
-  "gi"
-);
 function redact(value) {
-  return value.replace(/(Authorization\s*:\s*Bearer\s+)[^\s]+/gi, `$1${REDACTED}`).replace(SECRET_ASSIGNMENT, (_match, name, separator) => `${name}${separator}${REDACTED}`).replace(/([?&](?:access_token|api_key|token)=)[^&\s]+/gi, `$1${REDACTED}`).replace(/-----BEGIN(?: [A-Z]+)* PRIVATE KEY-----[\s\S]*?-----END(?: [A-Z]+)* PRIVATE KEY-----/g, REDACTED);
+  return redactText(value);
 }
 
 // src/runtime/process.ts
@@ -22306,11 +22305,13 @@ function startSlice(opts) {
   }
   const { args } = buildCodexArgs(opts);
   const lines = [];
+  const childEnvironment = buildChildEnvironment(process.env, "codex");
+  if (opts.codexHome) childEnvironment.CODEX_HOME = opts.codexHome;
   const managed = startManagedProcess({
     command: opts.codexBin ?? config2.codexBin,
     args,
     cwd: opts.repoPath,
-    env: buildChildEnvironment(process.env, "codex"),
+    env: childEnvironment,
     input: opts.prompt,
     timeoutMs: opts.timeoutMs,
     killGraceMs: config2.limits.sliceKillGraceMs,
@@ -22367,11 +22368,13 @@ var LocalExecutionTarget = class {
   id = "local";
   kind = "local";
   codexBin;
+  codexHome;
   constructor(options = {}) {
     this.codexBin = options.codexBin ?? config2.codexBin;
+    this.codexHome = options.codexHome;
   }
   async doctor() {
-    const version2 = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5e3, "codex");
+    const version2 = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5e3, "codex", this.codexHome);
     if (version2.code !== 0) {
       return {
         targetId: this.id,
@@ -22384,7 +22387,7 @@ var LocalExecutionTarget = class {
       };
     }
     const match = version2.stdout.match(/(\d+\.\d+\.\d+[^\s]*)/);
-    const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5e3, "codex");
+    const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5e3, "codex", this.codexHome);
     const auth = parseAuthStatus(login.code, `${login.stdout}
 ${login.stderr}`);
     return {
@@ -22398,7 +22401,7 @@ ${login.stderr}`);
     };
   }
   startCodex(request) {
-    return startSlice({ ...request, codexBin: this.codexBin });
+    return startSlice({ ...request, codexBin: this.codexBin, codexHome: this.codexHome });
   }
   async repositoryIdentity(repoPath) {
     const result = await this.runGit({
@@ -22418,12 +22421,14 @@ ${login.stderr}`);
   runGit(request) {
     return this.runBinary("git", request.argv, request.cwd, request.timeoutMs ?? 6e4, "repository-check");
   }
-  async runBinary(command, args, cwd, timeoutMs, purpose) {
+  async runBinary(command, args, cwd, timeoutMs, purpose, codexHome) {
+    const environment = buildChildEnvironment(process.env, purpose);
+    if (purpose === "codex" && codexHome) environment.CODEX_HOME = codexHome;
     const running = startManagedProcess({
       command,
       args,
       cwd,
-      env: buildChildEnvironment(process.env, purpose),
+      env: environment,
       timeoutMs,
       killGraceMs: config2.limits.sliceKillGraceMs,
       maxStdoutBytes: 4e5,
@@ -22523,6 +22528,8 @@ var SessionManager = class {
     this.targetFor = targetFor;
     this.emitter.setMaxListeners(0);
   }
+  store;
+  targetFor;
   controls = /* @__PURE__ */ new Map();
   emitter = new EventEmitter();
   active = 0;
@@ -22982,6 +22989,7 @@ var ClusterStateMachine = class {
   constructor(store2) {
     this.store = store2;
   }
+  store;
   /** Prüft, ob Cluster N gestartet werden darf (Vorgänger confirmed + Retro). */
   predecessorsReady(cluster) {
     if (cluster.parallel_ok) return { ok: true, blocking: [] };
@@ -23166,6 +23174,7 @@ var WorktreeManager = class {
     this.root = root;
     mkdirSync2(this.root, { recursive: true });
   }
+  root;
   create(repoPath, taskId, baseBranch) {
     if (!isGitRepo(repoPath)) {
       throw new Error(`Kein git-Repo: ${repoPath}. Worktree-Isolation nicht m\xF6glich.`);
@@ -23466,7 +23475,6 @@ function isSafeUnquoted(value, delimiter = DEFAULT_DELIMITER) {
 function isNumericLike(value) {
   return NUMERIC_LIKE_PATTERN.test(value) || LEADING_ZERO_PATTERN.test(value);
 }
-var QUOTED_KEY_MARKER = Symbol("quotedKey");
 function tryFoldKeyChain(key, value, siblings, options, rootLiteralKeys, pathPrefix, flattenDepth) {
   if (options.keyFolding !== "safe") return;
   if (!isJsonObject(value)) return;
@@ -23872,6 +23880,7 @@ var HypothesisRepo = class _HypothesisRepo {
   constructor(store2) {
     this.store = store2;
   }
+  store;
   get db() {
     return this.store.db;
   }
@@ -24425,6 +24434,9 @@ var TargetError = class extends Error {
     this.retryable = retryable;
     this.name = "TargetError";
   }
+  code;
+  targetId;
+  retryable;
 };
 
 // src/auth/bootstrap.ts
@@ -24516,6 +24528,7 @@ var ExecutionTargetRouter = class {
   constructor(options) {
     this.options = options;
   }
+  options;
   async select(repoPath) {
     if (this.options.mode === "local-only") {
       const repository = await this.requireHealthy(this.options.local, repoPath);
@@ -24568,6 +24581,7 @@ import { fileURLToPath as fileURLToPath2 } from "node:url";
 // src/execution/ssh/client.ts
 function sshOptions(options) {
   return [
+    ...options.configFile ? ["-F", options.configFile] : [],
     "-T",
     "-o",
     "BatchMode=yes",
@@ -24575,6 +24589,16 @@ function sshOptions(options) {
     "StrictHostKeyChecking=yes",
     "-o",
     `ConnectTimeout=${options.connectTimeoutSeconds ?? 10}`
+  ];
+}
+function scpOptions(options) {
+  return [
+    ...options.configFile ? ["-F", options.configFile] : [],
+    "-q",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes"
   ];
 }
 function startWorkerProcess(options, workerEntry, request, timeoutMs, onLine) {
@@ -24596,7 +24620,7 @@ import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync5, readFileSync as readFileSync4 } from "node:fs";
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.3.1";
+var ORCHESTRATOR_VERSION = "1.4.0";
 
 // src/execution/ssh/deploy.ts
 function safeRemotePath(path) {
@@ -24620,6 +24644,7 @@ var WorkerDeployer = class {
   constructor(options) {
     this.options = options;
   }
+  options;
   async ensure() {
     if (!existsSync5(this.options.workerBundlePath)) {
       throw new TargetError("TARGET_VERSION", "Remote-Worker-Bundle fehlt", this.options.host);
@@ -24650,11 +24675,7 @@ var WorkerDeployer = class {
       throw new TargetError("TARGET_CONNECTIVITY", `Worker-Verzeichnis nicht erstellbar: ${created.output}`, this.options.host, true);
     }
     const copied = await run(this.options.scpBin ?? "scp", [
-      "-q",
-      "-o",
-      "BatchMode=yes",
-      "-o",
-      "StrictHostKeyChecking=yes",
+      ...scpOptions(this.options),
       this.options.workerBundlePath,
       `${this.options.host}:${temporary}`
     ], 6e4);
@@ -24732,15 +24753,25 @@ var CheckNameSchema = external_exports.enum([
   "lint",
   "typecheck"
 ]);
+var CodexHomeSchema = external_exports.string().regex(
+  /^(?:~\/|\/)[A-Za-z0-9._/-]+$/,
+  "codexHome must be absolute or start with ~/ and contain no shell characters"
+).refine((value) => !value.split("/").includes(".."), "codexHome must not contain traversal");
 var WorkerRequestSchema = external_exports.union([
   external_exports.object({ ...RequestBase, operation: external_exports.literal("handshake") }).strict(),
-  external_exports.object({ ...RequestBase, operation: external_exports.literal("doctor"), codexBin: external_exports.string().min(1).optional() }).strict(),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("doctor"),
+    codexBin: external_exports.string().min(1).optional(),
+    codexHome: CodexHomeSchema
+  }).strict(),
   safeScope({ operation: external_exports.literal("repository.identity") }),
   safeScope({ operation: external_exports.literal("check.run"), checkName: CheckNameSchema }),
   safeScope({ operation: external_exports.literal("git.run"), args: GitArgumentsSchema }),
   safeScope({
     operation: external_exports.literal("codex.run"),
     codexBin: external_exports.string().min(1),
+    codexHome: CodexHomeSchema,
     options: external_exports.object({
       threadId: external_exports.string().nullable().optional(),
       prompt: external_exports.string().max(2e6),
@@ -24752,18 +24783,23 @@ var WorkerRequestSchema = external_exports.union([
       extraConfig: external_exports.record(external_exports.string()).optional()
     }).strict()
   }),
-  external_exports.object({ ...RequestBase, operation: external_exports.literal("auth.status"), codexBin: external_exports.string().min(1) }).strict(),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("auth.status"),
+    codexBin: external_exports.string().min(1),
+    codexHome: CodexHomeSchema
+  }).strict(),
   external_exports.object({
     ...RequestBase,
     operation: external_exports.literal("auth.bootstrap"),
-    codexHome: external_exports.string().min(1),
+    codexHome: CodexHomeSchema,
     credentialBase64: external_exports.string().max(128 * 1024)
   }).strict(),
   external_exports.object({
     ...RequestBase,
     operation: external_exports.literal("auth.login-token"),
     codexBin: external_exports.string().min(1),
-    codexHome: external_exports.string().min(1),
+    codexHome: CodexHomeSchema,
     tokenBase64: external_exports.string().max(128 * 1024)
   }).strict()
 ]);
@@ -24797,11 +24833,13 @@ var SshExecutionTarget = class {
         host: options.host,
         sshBin: options.sshBin,
         scpBin: options.scpBin,
+        configFile: options.configFile,
         workerBundlePath: options.workerBundlePath ?? defaultWorkerBundle(),
         workerRoot: options.workerRoot ?? "~/.cache/codex-orchestrator"
       });
     }
   }
+  options;
   kind = "ssh";
   id;
   deployer;
@@ -24822,7 +24860,8 @@ var SshExecutionTarget = class {
       requestId: randomUUID2(),
       protocol: WORKER_PROTOCOL_VERSION,
       operation: "doctor",
-      codexBin: this.options.codexBin
+      codexBin: this.options.codexBin,
+      codexHome: this.options.codexHome
     }, 2e4);
     return { ...data, targetId: this.id, kind: this.kind };
   }
@@ -24831,7 +24870,7 @@ var SshExecutionTarget = class {
     const requestId = randomUUID2();
     let final;
     const process3 = startWorkerProcess(
-      { host: this.options.host, sshBin: this.options.sshBin },
+      { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
       this.workerEntry,
       {
         requestId,
@@ -24840,6 +24879,7 @@ var SshExecutionTarget = class {
         allowedRoot: this.options.remoteRoot,
         cwd: this.mapRepository(request.repoPath),
         codexBin: this.options.codexBin,
+        codexHome: this.options.codexHome,
         options: {
           threadId: request.threadId,
           prompt: request.prompt,
@@ -24975,7 +25015,7 @@ var SshExecutionTarget = class {
   async invoke(request, timeoutMs) {
     let final;
     const process3 = startWorkerProcess(
-      { host: this.options.host, sshBin: this.options.sshBin },
+      { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
       this.workerEntry,
       request,
       timeoutMs,
@@ -25032,6 +25072,9 @@ var AuthenticatedExecutionTarget = class {
     this.id = target.id;
     this.kind = target.kind;
   }
+  target;
+  strategy;
+  bootstrapper;
   id;
   kind;
   doctor() {
@@ -25086,6 +25129,7 @@ function createExecutionRuntime(configuration) {
       localRoot: remoteConfig.repository.localRoot,
       remoteRoot: remoteConfig.repository.remoteRoot,
       codexBin: remoteConfig.codexBin,
+      codexHome: remoteConfig.codexHome,
       workerRoot: remoteConfig.workerRoot
     });
     const strategy = remoteConfig.auth.strategy === "existing" ? remoteConfig.auth : { ...remoteConfig.auth, codexHome: remoteConfig.codexHome };

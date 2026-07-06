@@ -18,6 +18,19 @@ jobs:
       - run: npm test
       - run: npm run bundle
       - run: npm run verify:bundle
+      - run: npm run benchmark
       - run: node scripts/bundlecheck.mjs
       - run: npx --yes @anthropic-ai/claude-code plugin validate . --strict
       - run: npm audit --audit-level=moderate
+
+  remote-acceptance:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run build
+      - run: npm run bundle
+      - run: npm run test:remote

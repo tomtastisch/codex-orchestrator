@@ -10,10 +10,12 @@ test("package, lockfile and Claude plugin versions agree", () => {
     const pkg = readJson("package.json");
     const lock = readJson("package-lock.json");
     const plugin = readJson(".claude-plugin/plugin.json");
+    const runtimeVersion = readFileSync("src/version.ts", "utf8").match(/ORCHESTRATOR_VERSION = "([^"]+)"/)?.[1];
 
     assert.equal(lock.version, pkg.version);
     assert.equal(lock.packages[""].version, pkg.version);
     assert.equal(plugin.version, pkg.version);
+    assert.equal(runtimeVersion, pkg.version);
 });
 
 test("npm test always builds ignored dist artifacts first", () => {
