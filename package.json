@@ -36,6 +36,9 @@
     "test": "node --test tests/*.test.mjs",
     "test:coverage": "node --experimental-test-coverage --test tests/*.test.mjs",
     "verify:bundle": "node scripts/verify-bundle.mjs",
+    "mcpb:build": "node scripts/build-mcpb.mjs",
+    "mcpb:validate": "mcpb validate packaging/mcpb/manifest.json",
+    "mcpb:verify": "node scripts/verify-mcpb.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "benchmark": "node scripts/benchmark.mjs",
     "test:remote": "node scripts/e2e-remote-ssh.mjs",
@@ -47,9 +50,14 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
     "@types/node": "^22.20.0",
     "esbuild": "^0.28.1",
+    "fflate": "0.8.2",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "tmp": "0.2.7"
   },
   "engines": {
     "node": ">=22.5.0"
