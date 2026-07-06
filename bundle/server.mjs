@@ -3649,49 +3649,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative3, options, skipNormalization) {
+    function resolveComponent(base, relative2, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options), options);
-        relative3 = parse4(serialize(relative3, options), options);
+        relative2 = parse4(serialize(relative2, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative3.scheme) {
-        target.scheme = relative3.scheme;
-        target.userinfo = relative3.userinfo;
-        target.host = relative3.host;
-        target.port = relative3.port;
-        target.path = removeDotSegments(relative3.path || "");
-        target.query = relative3.query;
+      if (!options.tolerant && relative2.scheme) {
+        target.scheme = relative2.scheme;
+        target.userinfo = relative2.userinfo;
+        target.host = relative2.host;
+        target.port = relative2.port;
+        target.path = removeDotSegments(relative2.path || "");
+        target.query = relative2.query;
       } else {
-        if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
-          target.userinfo = relative3.userinfo;
-          target.host = relative3.host;
-          target.port = relative3.port;
-          target.path = removeDotSegments(relative3.path || "");
-          target.query = relative3.query;
+        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
+          target.userinfo = relative2.userinfo;
+          target.host = relative2.host;
+          target.port = relative2.port;
+          target.path = removeDotSegments(relative2.path || "");
+          target.query = relative2.query;
         } else {
-          if (!relative3.path) {
+          if (!relative2.path) {
             target.path = base.path;
-            if (relative3.query !== void 0) {
-              target.query = relative3.query;
+            if (relative2.query !== void 0) {
+              target.query = relative2.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative3.path[0] === "/") {
-              target.path = removeDotSegments(relative3.path);
+            if (relative2.path[0] === "/") {
+              target.path = removeDotSegments(relative2.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative3.path;
+                target.path = "/" + relative2.path;
               } else if (!base.path) {
-                target.path = relative3.path;
+                target.path = relative2.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative3.query;
+            target.query = relative2.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3699,7 +3699,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative3.fragment;
+      target.fragment = relative2.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -23271,7 +23271,7 @@ async function diffSize(repoPath, target = new LocalExecutionTarget()) {
 // src/project-boundary.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
-import { isAbsolute, relative } from "node:path";
+import { isAbsolute } from "node:path";
 function canonicalDirectory(path, variable) {
   if (!isAbsolute(path)) {
     throw new Error(`${variable} must be an absolute path`);
@@ -23291,15 +23291,15 @@ function canonicalDirectory(path, variable) {
 }
 function assertGitRepositoryRoot(candidate) {
   const project = canonicalDirectory(candidate, "repo_path");
-  const git3 = spawnSync2("git", ["-C", project, "rev-parse", "--show-toplevel"], {
+  const git3 = spawnSync2("git", ["-C", project, "rev-parse", "--is-inside-work-tree", "--show-prefix"], {
     encoding: "utf8",
     shell: false
   });
   if (git3.status !== 0) {
     throw new Error("repo_path must be a Git repository root");
   }
-  const gitRoot = canonicalDirectory(git3.stdout.trim(), "Git repository root");
-  if (relative(project, gitRoot) !== "") {
+  const [insideWorktree, ...prefixLines] = git3.stdout.split(/\r?\n/);
+  if (insideWorktree !== "true" || prefixLines.join("\n").trim() !== "") {
     throw new Error("repo_path must be a Git repository root");
   }
   return project;
@@ -24624,7 +24624,7 @@ var ExecutionTargetRouter = class {
 // src/execution/ssh/target.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { existsSync as existsSync6 } from "node:fs";
-import { dirname as dirname3, isAbsolute as isAbsolute3, relative as relative2, resolve as resolve5, sep as sep2 } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute3, relative, resolve as resolve5, sep as sep2 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/execution/ssh/client.ts
@@ -24910,7 +24910,7 @@ var SshExecutionTarget = class {
   mapRepository(localPath) {
     const localRoot = resolve5(this.options.localRoot);
     const candidate = resolve5(localPath);
-    const suffix = relative2(localRoot, candidate);
+    const suffix = relative(localRoot, candidate);
     if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute3(suffix)) {
       throw new TargetError("TARGET_REPOSITORY", "Repository-Pfad liegt au\xDFerhalb des lokalen Mappings", this.id);
     }

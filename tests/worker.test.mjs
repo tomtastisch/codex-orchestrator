@@ -140,7 +140,9 @@ test("worker expands the documented tilde Codex home for doctor and slices", asy
     const remoteHome = mkdtempSync(join(tmpdir(), "orch-worker-remote-home-"));
     const codexHome = join(remoteHome, ".codex");
     const previousHome = process.env.HOME;
+    const previousUserProfile = process.env.USERPROFILE;
     process.env.HOME = remoteHome;
+    process.env.USERPROFILE = remoteHome;
     try {
         mkdirSync(codexHome, { mode: 0o700 });
         writeFileSync(join(codexHome, "auth.json"), "synthetic", { mode: 0o600, flag: "wx" });
@@ -164,6 +166,8 @@ test("worker expands the documented tilde Codex home for doctor and slices", asy
     } finally {
         if (previousHome === undefined) delete process.env.HOME;
         else process.env.HOME = previousHome;
+        if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = previousUserProfile;
         rmSync(remoteHome, { recursive: true, force: true });
     }
 });
