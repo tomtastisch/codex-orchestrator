@@ -18,6 +18,7 @@ function options() {
         localRoot: process.cwd(),
         remoteRoot: process.cwd(),
         codexBin: fakeCodex,
+        codexHome: "~/.codex",
         sshBin: fakeSsh,
         workerEntry,
         skipDeploy: true,

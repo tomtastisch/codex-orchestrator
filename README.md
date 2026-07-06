@@ -176,9 +176,11 @@ The source must be an owner-controlled regular file with no group or world
 permissions (`chmod 600 ~/.codex/auth.json`). The credential is transferred in
 the validated worker protocol, written atomically to the persistent remote
 `codexHome` with mode `0600`, and never included in task events or tool results.
-Every slash-command preflight and task performs a fresh `codex login status` check. If the
-remote file is missing or stale, `sync-file` installs or refreshes it and then
-repeats the check. This survives Claude and host restarts as long as the remote
+Every slash-command preflight and task resolves `~/` against the remote user's
+home, starts Codex with that exact `CODEX_HOME` and performs a fresh
+`codex login status` check. If the remote file
+is missing or stale, `sync-file` installs or refreshes it and then repeats the
+check. This survives Claude, plugin and target restarts as long as the remote
 home directory persists.
 
 For managed environments, use a secret manager command instead of a file:
@@ -362,11 +364,33 @@ npm ci
 npm run build        # TypeScript → dist/
 npm test             # unit tests (parser, state machine, isolation) — no API calls
 npm run bundle       # single-file bundle → bundle/server.mjs
+npm run verify:bundle # reproducibly rebuild and compare both release bundles
+npm run benchmark    # 7 MCP starts; enforce size and p95 latency budgets
+npm run test:remote  # real loopback OpenSSH, synthetic auth and fake Codex slice
+npm run test:remote:real # real local Codex auth; no model turn
 node scripts/modelcheck.mjs    # model/effort validation (no API)
 node scripts/bundlecheck.mjs   # MCP handshake against the bundle (no API)
 node scripts/e2e-mcp.mjs       # end-to-end with a real Codex slice (uses your Codex account)
 node scripts/e2e-m1m3.mjs      # worktree, pause/inject/resume, merge (uses your Codex account)
 ```
+
+The unit suite includes protocol and fake-SSH coverage. `npm run test:remote`
+adds a real OpenSSH transport: it creates ephemeral host and user keys, deploys
+the actual worker bundle, bootstraps a synthetic credential, executes one fake
+Codex slice, creates a fresh target instance and confirms that authentication
+still works after the local source credential has been removed. CI runs this
+acceptance test on macOS.
+
+`npm run test:remote:real` repeats the persistence check with the current local
+Codex binary and private `auth.json`. It does not execute a model turn. Both
+remote tests use only temporary directories, terminate their owned `sshd`
+process and remove all temporary keys and credentials before exit.
+
+The release benchmark fails when either bundle exceeds its size budget or when
+the p95 MCP cold-start/Doctor latency exceeds its budget. Current limits are
+1.25 MiB for `bundle/server.mjs`, 256 KiB for `bundle/worker.mjs`, 2,500 ms for
+cold start and 1,500 ms for Doctor. Override only the sample count with
+`ORCH_BENCHMARK_ITERATIONS=5..50`; release budgets are intentionally fixed.
 
 ## License
 

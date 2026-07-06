@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.4.0 - 2026-07-06
+
+### Added
+
+- Real loopback OpenSSH acceptance tests for worker deployment, synthetic
+  slices and persistent remote authentication across fresh target instances.
+- Optional real-auth acceptance mode that validates the local Codex credential
+  without executing a model turn.
+- Enforced release budgets for bundle size, MCP cold start and Doctor latency.
+
+### Fixed
+
+- Propagated the configured remote `codexHome` through Doctor, authentication
+  and every Codex slice, including remote `~/` expansion, so the same
+  persistent credential store is always used.
+- Added explicit SSH config-file support to keep non-default and isolated SSH
+  installations deterministic.
+
+### Changed
+
+- Removed obsolete plugin self-update code and its isolated tests.
+- Consolidated runtime redaction behind the canonical redaction implementation.
+- Added benchmark and real-OpenSSH acceptance gates to CI.
+
+### Security
+
+- Remote acceptance credentials and SSH keys are ephemeral, owner-only and
+  removed together with the owned test daemon after every run.
+- Restart persistence is verified after deleting the local credential source;
+  credential contents never appear in test output.
+
 ## 1.3.1 - 2026-07-05
 
 ### Fixed

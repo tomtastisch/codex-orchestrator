@@ -6,14 +6,45 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/redact.ts
+var PLACEHOLDER = "\xABredacted\xBB";
+var PATTERNS = [
+  // Private-Key-Blöcke (PEM).
+  { re: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----/g },
+  // OpenAI-Keys (sk-..., inkl. sk-proj-).
+  { re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b/g },
+  // GitHub-Tokens (ghp_, gho_, ghu_, ghs_, ghr_, github_pat_).
+  { re: /\bgh[posru]_[A-Za-z0-9]{20,}\b/g },
+  { re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
+  // AWS Access Key IDs.
+  { re: /\bAKIA[0-9A-Z]{16}\b/g },
+  // Slack-Tokens.
+  { re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
+  // Google API keys.
+  { re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  // JWTs (header.payload.signature).
+  { re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+  // Bearer-Header.
+  { re: /\bBearer\s+[A-Za-z0-9._-]{12,}/gi, replace: () => `Bearer ${PLACEHOLDER}` },
+  // key=value / key: value für sensible Schlüsselnamen (Env-Vars, Passwörter, Tokens).
+  // Werte-Klasse schließt Backslash aus: verhindert das Fressen von JSON-Escapes
+  // (z. B. in eingebettetem JSON des .toln) und hält die Redaction idempotent.
+  {
+    re: /\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|AUTH|CREDENTIAL)[A-Za-z0-9_]*)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s"'\\]+)/gi,
+    replace: (_m, key, sep3) => `${key}${sep3}${PLACEHOLDER}`
+  }
+];
+function redactText(input) {
+  let out = input;
+  for (const p of PATTERNS) {
+    out = p.replace ? out.replace(p.re, p.replace) : out.replace(p.re, PLACEHOLDER);
+  }
+  return out;
+}
+
 // src/runtime/redaction.ts
-var REDACTED = "[REDACTED]";
-var SECRET_ASSIGNMENT = new RegExp(
-  String.raw`\b(OPENAI_API_KEY|CODEX_API_KEY|CODEX_ACCESS_TOKEN|GITHUB_TOKEN|GH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN)\s*([:=])\s*([^\s]+)`,
-  "gi"
-);
 function redact(value) {
-  return value.replace(/(Authorization\s*:\s*Bearer\s+)[^\s]+/gi, `$1${REDACTED}`).replace(SECRET_ASSIGNMENT, (_match, name, separator) => `${name}${separator}${REDACTED}`).replace(/([?&](?:access_token|api_key|token)=)[^&\s]+/gi, `$1${REDACTED}`).replace(/-----BEGIN(?: [A-Z]+)* PRIVATE KEY-----[\s\S]*?-----END(?: [A-Z]+)* PRIVATE KEY-----/g, REDACTED);
+  return redactText(value);
 }
 
 // src/worker/operations.ts
@@ -3866,7 +3897,7 @@ ZodNaN.create = (params) => {
     ...processCreateParams(params)
   });
 };
-var BRAND = Symbol("zod_brand");
+var BRAND = /* @__PURE__ */ Symbol("zod_brand");
 var ZodBranded = class extends ZodType {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
@@ -4068,14 +4099,14 @@ var ostring = () => stringType().optional();
 var onumber = () => numberType().optional();
 var oboolean = () => booleanType().optional();
 var coerce = {
-  string: (arg) => ZodString.create({ ...arg, coerce: true }),
-  number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
-  boolean: (arg) => ZodBoolean.create({
+  string: ((arg) => ZodString.create({ ...arg, coerce: true })),
+  number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
+  boolean: ((arg) => ZodBoolean.create({
     ...arg,
     coerce: true
-  }),
-  bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
-  date: (arg) => ZodDate.create({ ...arg, coerce: true })
+  })),
+  bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
+  date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
 };
 var NEVER = INVALID;
 
@@ -4429,6 +4460,7 @@ function parseSliceResult(agentText) {
       default:
         break;
     }
+    void lower;
   }
   if (result.blockerText) result.blockerText = result.blockerText.trim();
   return result;
@@ -4621,11 +4653,13 @@ function startSlice(opts) {
   }
   const { args } = buildCodexArgs(opts);
   const lines = [];
+  const childEnvironment = buildChildEnvironment(process.env, "codex");
+  if (opts.codexHome) childEnvironment.CODEX_HOME = opts.codexHome;
   const managed = startManagedProcess({
     command: opts.codexBin ?? config.codexBin,
     args,
     cwd: opts.repoPath,
-    env: buildChildEnvironment(process.env, "codex"),
+    env: childEnvironment,
     input: opts.prompt,
     timeoutMs: opts.timeoutMs,
     killGraceMs: config.limits.sliceKillGraceMs,
@@ -4682,11 +4716,13 @@ var LocalExecutionTarget = class {
   id = "local";
   kind = "local";
   codexBin;
+  codexHome;
   constructor(options = {}) {
     this.codexBin = options.codexBin ?? config.codexBin;
+    this.codexHome = options.codexHome;
   }
   async doctor() {
-    const version = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5e3, "codex");
+    const version = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5e3, "codex", this.codexHome);
     if (version.code !== 0) {
       return {
         targetId: this.id,
@@ -4699,7 +4735,7 @@ var LocalExecutionTarget = class {
       };
     }
     const match = version.stdout.match(/(\d+\.\d+\.\d+[^\s]*)/);
-    const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5e3, "codex");
+    const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5e3, "codex", this.codexHome);
     const auth = parseAuthStatus(login.code, `${login.stdout}
 ${login.stderr}`);
     return {
@@ -4713,7 +4749,7 @@ ${login.stderr}`);
     };
   }
   startCodex(request) {
-    return startSlice({ ...request, codexBin: this.codexBin });
+    return startSlice({ ...request, codexBin: this.codexBin, codexHome: this.codexHome });
   }
   async repositoryIdentity(repoPath) {
     const result = await this.runGit({
@@ -4733,12 +4769,14 @@ ${login.stderr}`);
   runGit(request) {
     return this.runBinary("git", request.argv, request.cwd, request.timeoutMs ?? 6e4, "repository-check");
   }
-  async runBinary(command, args, cwd, timeoutMs, purpose) {
+  async runBinary(command, args, cwd, timeoutMs, purpose, codexHome) {
+    const environment = buildChildEnvironment(process.env, purpose);
+    if (purpose === "codex" && codexHome) environment.CODEX_HOME = codexHome;
     const running = startManagedProcess({
       command,
       args,
       cwd,
-      env: buildChildEnvironment(process.env, purpose),
+      env: environment,
       timeoutMs,
       killGraceMs: config.limits.sliceKillGraceMs,
       maxStdoutBytes: 4e5,
@@ -4812,15 +4850,25 @@ var CheckNameSchema = external_exports.enum([
   "lint",
   "typecheck"
 ]);
+var CodexHomeSchema = external_exports.string().regex(
+  /^(?:~\/|\/)[A-Za-z0-9._/-]+$/,
+  "codexHome must be absolute or start with ~/ and contain no shell characters"
+).refine((value) => !value.split("/").includes(".."), "codexHome must not contain traversal");
 var WorkerRequestSchema = external_exports.union([
   external_exports.object({ ...RequestBase, operation: external_exports.literal("handshake") }).strict(),
-  external_exports.object({ ...RequestBase, operation: external_exports.literal("doctor"), codexBin: external_exports.string().min(1).optional() }).strict(),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("doctor"),
+    codexBin: external_exports.string().min(1).optional(),
+    codexHome: CodexHomeSchema
+  }).strict(),
   safeScope({ operation: external_exports.literal("repository.identity") }),
   safeScope({ operation: external_exports.literal("check.run"), checkName: CheckNameSchema }),
   safeScope({ operation: external_exports.literal("git.run"), args: GitArgumentsSchema }),
   safeScope({
     operation: external_exports.literal("codex.run"),
     codexBin: external_exports.string().min(1),
+    codexHome: CodexHomeSchema,
     options: external_exports.object({
       threadId: external_exports.string().nullable().optional(),
       prompt: external_exports.string().max(2e6),
@@ -4832,18 +4880,23 @@ var WorkerRequestSchema = external_exports.union([
       extraConfig: external_exports.record(external_exports.string()).optional()
     }).strict()
   }),
-  external_exports.object({ ...RequestBase, operation: external_exports.literal("auth.status"), codexBin: external_exports.string().min(1) }).strict(),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("auth.status"),
+    codexBin: external_exports.string().min(1),
+    codexHome: CodexHomeSchema
+  }).strict(),
   external_exports.object({
     ...RequestBase,
     operation: external_exports.literal("auth.bootstrap"),
-    codexHome: external_exports.string().min(1),
+    codexHome: CodexHomeSchema,
     credentialBase64: external_exports.string().max(128 * 1024)
   }).strict(),
   external_exports.object({
     ...RequestBase,
     operation: external_exports.literal("auth.login-token"),
     codexBin: external_exports.string().min(1),
-    codexHome: external_exports.string().min(1),
+    codexHome: CodexHomeSchema,
     tokenBase64: external_exports.string().max(128 * 1024)
   }).strict()
 ]);
@@ -4852,7 +4905,7 @@ function parseWorkerRequest(input) {
 }
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.3.1";
+var ORCHESTRATOR_VERSION = "1.4.0";
 
 // src/worker/path-policy.ts
 import { realpathSync } from "node:fs";
@@ -4867,6 +4920,9 @@ var TargetError = class extends Error {
     this.retryable = retryable;
     this.name = "TargetError";
   }
+  code;
+  targetId;
+  retryable;
 };
 
 // src/worker/path-policy.ts
@@ -4964,9 +5020,15 @@ async function executeWorkerRequest(input, onEvent = () => {
         architecture: process.arch
       };
     case "doctor":
-      return new LocalExecutionTarget({ codexBin: request.codexBin }).doctor();
+      return new LocalExecutionTarget({
+        codexBin: request.codexBin,
+        codexHome: resolveCodexHome(request.codexHome)
+      }).doctor();
     case "auth.status": {
-      const health = await new LocalExecutionTarget({ codexBin: request.codexBin }).doctor();
+      const health = await new LocalExecutionTarget({
+        codexBin: request.codexBin,
+        codexHome: resolveCodexHome(request.codexHome)
+      }).doctor();
       return health.auth;
     }
     case "auth.bootstrap":
@@ -4989,7 +5051,10 @@ async function executeWorkerRequest(input, onEvent = () => {
     }
     case "codex.run": {
       const cwd = assertAllowedPath(request.allowedRoot, request.cwd);
-      const target = new LocalExecutionTarget({ codexBin: request.codexBin });
+      const target = new LocalExecutionTarget({
+        codexBin: request.codexBin,
+        codexHome: resolveCodexHome(request.codexHome)
+      });
       const running = target.startCodex({
         repoPath: cwd,
         threadId: request.options.threadId,

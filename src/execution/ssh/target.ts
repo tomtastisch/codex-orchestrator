@@ -26,11 +26,13 @@ export interface SshExecutionTargetOptions {
     localRoot: string;
     remoteRoot: string;
     codexBin: string;
+    codexHome: string;
     workerRoot?: string;
     workerBundlePath?: string;
     workerEntry?: string;
     sshBin?: string;
     scpBin?: string;
+    configFile?: string;
     skipDeploy?: boolean;
 }
 
@@ -69,6 +71,7 @@ export class SshExecutionTarget implements ExecutionTarget {
                 host: options.host,
                 sshBin: options.sshBin,
                 scpBin: options.scpBin,
+                configFile: options.configFile,
                 workerBundlePath: options.workerBundlePath ?? defaultWorkerBundle(),
                 workerRoot: options.workerRoot ?? "~/.cache/codex-orchestrator",
             });
@@ -92,6 +95,7 @@ export class SshExecutionTarget implements ExecutionTarget {
             protocol: WORKER_PROTOCOL_VERSION,
             operation: "doctor",
             codexBin: this.options.codexBin,
+            codexHome: this.options.codexHome,
         }, 20_000) as TargetHealth;
         return { ...data, targetId: this.id, kind: this.kind };
     }
@@ -101,7 +105,7 @@ export class SshExecutionTarget implements ExecutionTarget {
         const requestId = randomUUID();
         let final: WorkerFrame | undefined;
         const process = startWorkerProcess(
-            { host: this.options.host, sshBin: this.options.sshBin },
+            { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
             this.workerEntry,
             {
                 requestId,
@@ -110,6 +114,7 @@ export class SshExecutionTarget implements ExecutionTarget {
                 allowedRoot: this.options.remoteRoot,
                 cwd: this.mapRepository(request.repoPath),
                 codexBin: this.options.codexBin,
+                codexHome: this.options.codexHome,
                 options: {
                     threadId: request.threadId,
                     prompt: request.prompt,
@@ -245,7 +250,7 @@ export class SshExecutionTarget implements ExecutionTarget {
     private async invoke(request: { requestId: string; [key: string]: unknown }, timeoutMs: number): Promise<unknown> {
         let final: WorkerFrame | undefined;
         const process = startWorkerProcess(
-            { host: this.options.host, sshBin: this.options.sshBin },
+            { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
             this.workerEntry,
             request,
             timeoutMs,
