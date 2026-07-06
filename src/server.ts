@@ -24,6 +24,7 @@ import { EFFORT_LADDER } from "./types.js";
 import type { Effort, Sandbox } from "./types.js";
 import { createExecutionRuntime } from "./execution/registry.js";
 import { ORCHESTRATOR_VERSION } from "./version.js";
+import { assertProjectPathAllowed } from "./project-boundary.js";
 
 const store = new Store(config.dbPath);
 const execution = createExecutionRuntime(config);
@@ -147,6 +148,7 @@ server.registerTool(
       ok: healthy,
       version: ORCHESTRATOR_VERSION,
       execution: config.execution.mode,
+      project_root: config.projectRoot,
       environment,
       targets,
     });
@@ -195,13 +197,24 @@ server.registerTool(
     const waitFor = a.wait_for;
 
     let repoPath: string | null = null;
-    if (a.cluster_id) {
-      repoPath = repoPathForCluster(store, a.cluster_id);
-      if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
-    } else if (a.repo_path) {
-      repoPath = a.repo_path;
-    } else {
-      return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });
+    try {
+      if (a.cluster_id) {
+        repoPath = repoPathForCluster(store, a.cluster_id);
+        if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
+      } else if (a.repo_path) {
+        repoPath = assertProjectPathAllowed(a.repo_path, config.projectRoot);
+      } else {
+        return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });
+      }
+    } catch (e: any) {
+      return err({ ok: false, error: e?.message ?? String(e) });
+    }
+
+    if (config.projectRoot && a.worktree !== "none" && a.worktree !== "auto") {
+      return err({
+        ok: false,
+        error: "explicit worktree paths are disabled when ORCH_PROJECT_DIR is configured; use 'none' or 'auto'",
+      });
     }
 
     if (waitFor === "completed" && maxMinutes > config.syncMaxMinutes) {
@@ -524,10 +537,23 @@ server.registerTool(
     },
   },
   async (a) => {
+    let repoPath: string;
+    try {
+      repoPath = assertProjectPathAllowed(a.repo_path, config.projectRoot);
+      if (!isGitRepo(repoPath)) {
+        return err({ ok: false, error: `Kein git-Repo: ${repoPath}` });
+      }
+      if (a.plan_id) {
+        const existing = store.getPlan(a.plan_id);
+        if (existing) assertProjectPathAllowed(existing.repo_path, config.projectRoot);
+      }
+    } catch (e: any) {
+      return err({ ok: false, error: e?.message ?? String(e) });
+    }
     return store.tx(() => {
       let planId = a.plan_id;
       if (!planId || !store.getPlan(planId)) {
-        const p = store.createPlan(a.goal, a.constraints ?? null, a.repo_path);
+        const p = store.createPlan(a.goal, a.constraints ?? null, repoPath);
         planId = p.id;
       }
       const persisted = a.clusters.map((c, i) =>

@@ -35,13 +35,20 @@ test("MCPB manifest is version-aligned and never configures credentials", () => 
 
 test("MCPB launcher rejects missing, relative and non-directory project paths", () => {
     const filePath = join(mkdtempSync(join(tmpdir(), "orch-mcpb-file-")), "file");
+    const nonGitDirectory = mkdtempSync(join(tmpdir(), "orch-mcpb-non-git-"));
+    const repository = mkdtempSync(join(tmpdir(), "orch-mcpb-repo-"));
+    const nestedDirectory = join(repository, "nested");
     writeFileSync(filePath, "not a directory", "utf8");
+    mkdirSync(nestedDirectory);
+    assert.equal(spawnSync("git", ["init", "-q"], { cwd: repository }).status, 0);
 
     for (const [configured, expected] of [
         [undefined, /must be an absolute path/],
         ["relative/project", /must be an absolute path/],
         [filePath, /must be a directory/],
         [join(tmpdir(), "definitely-missing-orchestrator-project"), /must be a directory/],
+        [nonGitDirectory, /must be a Git repository root/],
+        [nestedDirectory, /must be a Git repository root/],
     ]) {
         const env = { ...process.env };
         if (configured === undefined) delete env.ORCH_PROJECT_DIR;
@@ -60,9 +67,12 @@ test("MCPB launcher normalizes the project path before importing the server", ()
     const fixture = mkdtempSync(join(tmpdir(), "orch-mcpb-launcher-"));
     const fixtureServerDir = join(fixture, "server");
     const project = join(fixture, "project");
+    const nestedProjectDirectory = join(project, "nested");
     const observedCwd = join(fixture, "observed-cwd.txt");
     mkdirSync(fixtureServerDir);
     mkdirSync(project);
+    assert.equal(spawnSync("git", ["init", "-q"], { cwd: project }).status, 0);
+    mkdirSync(nestedProjectDirectory);
     copyFileSync(launcherPath, join(fixtureServerDir, "launcher.mjs"));
     writeFileSync(
         join(fixtureServerDir, "server.mjs"),
@@ -70,7 +80,7 @@ test("MCPB launcher normalizes the project path before importing the server", ()
         "utf8",
     );
 
-    const configured = join(project, "..");
+    const configured = join(nestedProjectDirectory, "..");
     const result = spawnSync(process.execPath, [join(fixtureServerDir, "launcher.mjs")], {
         cwd: root,
         env: { ...process.env, ORCH_PROJECT_DIR: configured },

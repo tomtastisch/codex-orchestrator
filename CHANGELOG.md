@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.5.1 - 2026-07-06
+
+### Security
+
+- Require the Claude Desktop `project_directory` to be the canonical root of
+  one Git working tree before the MCP server starts.
+- Enforce that every direct, planned and persisted repository path is exactly
+  the configured Desktop repository; sibling, parent and nested paths fail
+  closed.
+- Disable caller-supplied worktree paths in Desktop mode; only the selected
+  repository or server-managed `worktree: auto` paths are allowed.
+- Removed the unsafe ability to select a broad home directory as the Desktop
+  project boundary.
+
 ## 1.5.0 - 2026-07-06
 
 ### Added
