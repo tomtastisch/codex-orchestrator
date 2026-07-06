@@ -1,0 +1,61 @@
+{
+  "manifest_version": "0.3",
+  "name": "codex-orchestrator",
+  "display_name": "Codex Orchestrator",
+  "version": "1.4.1",
+  "description": "Let Claude Desktop supervise local OpenAI Codex work through gated implementation slices.",
+  "long_description": "Runs locally. Requires Git, an installed Codex CLI and an existing Codex login. Credentials are never requested or bundled.",
+  "author": {
+    "name": "Tom Werner",
+    "url": "https://github.com/tomtastisch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tomtastisch/codex-orchestrator.git"
+  },
+  "homepage": "https://github.com/tomtastisch/codex-orchestrator",
+  "documentation": "https://github.com/tomtastisch/codex-orchestrator#claude-desktop",
+  "support": "https://github.com/tomtastisch/codex-orchestrator/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "server/launcher.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/launcher.mjs"
+      ],
+      "env": {
+        "ORCH_PROJECT_DIR": "${user_config.project_directory}",
+        "ORCH_HOME": "${HOME}/.codex-orchestrator/desktop"
+      }
+    }
+  },
+  "tools_generated": true,
+  "prompts_generated": true,
+  "keywords": [
+    "codex",
+    "orchestration",
+    "development",
+    "mcp"
+  ],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=22.5.0"
+    }
+  },
+  "user_config": {
+    "project_directory": {
+      "type": "directory",
+      "title": "Project directory",
+      "description": "Git repository in which Codex Orchestrator may work.",
+      "required": true,
+      "default": "${HOME}/Documents"
+    }
+  }
+}
