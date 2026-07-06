@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+const ci = readFileSync(".github/workflows/ci.yml", "utf8").replaceAll("\r\n", "\n");
 
 test("package supports only the verified Node LTS lines", () => {
     assert.equal(pkg.engines.node, ">=22.5.0 <23 || >=24 <25");
@@ -43,7 +43,7 @@ test("canonical quality gate enforces coverage and release-candidate checks", ()
 
 test("CodeQL scans application and workflow code with current actions", () => {
     assert.equal(existsSync(".github/workflows/codeql.yml"), true);
-    const codeql = readFileSync(".github/workflows/codeql.yml", "utf8");
+    const codeql = readFileSync(".github/workflows/codeql.yml", "utf8").replaceAll("\r\n", "\n");
     assert.match(codeql, /javascript-typescript/);
     assert.match(codeql, /language: actions/);
     assert.match(codeql, /queries: security-and-quality/);
