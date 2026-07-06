@@ -15,7 +15,8 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Propagated the configured remote `codexHome` through Doctor, authentication
-  and every Codex slice so the same persistent credential store is always used.
+  and every Codex slice, including remote `~/` expansion, so the same
+  persistent credential store is always used.
 - Added explicit SSH config-file support to keep non-default and isolated SSH
   installations deterministic.
 

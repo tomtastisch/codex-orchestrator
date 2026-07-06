@@ -119,11 +119,14 @@ export async function executeWorkerRequest(
                 architecture: process.arch,
             };
         case "doctor":
-            return new LocalExecutionTarget({ codexBin: request.codexBin, codexHome: request.codexHome }).doctor();
+            return new LocalExecutionTarget({
+                codexBin: request.codexBin,
+                codexHome: resolveCodexHome(request.codexHome),
+            }).doctor();
         case "auth.status": {
             const health = await new LocalExecutionTarget({
                 codexBin: request.codexBin,
-                codexHome: request.codexHome,
+                codexHome: resolveCodexHome(request.codexHome),
             }).doctor();
             return health.auth;
         }
@@ -149,7 +152,7 @@ export async function executeWorkerRequest(
             const cwd = assertAllowedPath(request.allowedRoot, request.cwd);
             const target = new LocalExecutionTarget({
                 codexBin: request.codexBin,
-                codexHome: request.codexHome,
+                codexHome: resolveCodexHome(request.codexHome),
             });
             const running = target.startCodex({
                 repoPath: cwd,

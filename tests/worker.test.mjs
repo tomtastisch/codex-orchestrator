@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -133,4 +133,37 @@ test("worker doctor and slice share the requested persistent Codex home", async 
     });
     assert.equal(result.status, "normal");
     assert.equal(result.threadId, "stateful-thread");
+});
+
+test("worker expands the documented tilde Codex home for doctor and slices", async () => {
+    const { executeWorkerRequest } = await import("../dist/worker/operations.js");
+    const remoteHome = mkdtempSync(join(tmpdir(), "orch-worker-remote-home-"));
+    const codexHome = join(remoteHome, ".codex");
+    const previousHome = process.env.HOME;
+    process.env.HOME = remoteHome;
+    try {
+        mkdirSync(codexHome, { mode: 0o700 });
+        writeFileSync(join(codexHome, "auth.json"), "synthetic", { mode: 0o600, flag: "wx" });
+        const doctor = await executeWorkerRequest({
+            requestId: randomUUID(), protocol: 1, operation: "doctor",
+            codexBin: statefulFakeCodex, codexHome: "~/.codex",
+        });
+        assert.equal(doctor.state, "healthy");
+
+        const result = await executeWorkerRequest({
+            requestId: randomUUID(), protocol: 1, operation: "codex.run",
+            allowedRoot: process.cwd(), cwd: process.cwd(),
+            codexBin: statefulFakeCodex, codexHome: "~/.codex",
+            options: {
+                prompt: "test", sandbox: "read-only", model: "gpt-5.5",
+                effort: "low", network: false, timeoutMs: 2_000,
+            },
+        });
+        assert.equal(result.status, "normal");
+        assert.equal(result.threadId, "stateful-thread");
+    } finally {
+        if (previousHome === undefined) delete process.env.HOME;
+        else process.env.HOME = previousHome;
+        rmSync(remoteHome, { recursive: true, force: true });
+    }
 });

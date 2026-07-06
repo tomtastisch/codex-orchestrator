@@ -176,8 +176,9 @@ The source must be an owner-controlled regular file with no group or world
 permissions (`chmod 600 ~/.codex/auth.json`). The credential is transferred in
 the validated worker protocol, written atomically to the persistent remote
 `codexHome` with mode `0600`, and never included in task events or tool results.
-Every slash-command preflight and task starts Codex with that exact
-`CODEX_HOME` and performs a fresh `codex login status` check. If the remote file
+Every slash-command preflight and task resolves `~/` against the remote user's
+home, starts Codex with that exact `CODEX_HOME` and performs a fresh
+`codex login status` check. If the remote file
 is missing or stale, `sync-file` installs or refreshes it and then repeats the
 check. This survives Claude, plugin and target restarts as long as the remote
 home directory persists.
