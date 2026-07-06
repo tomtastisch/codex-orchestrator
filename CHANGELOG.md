@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changed
+
+- Reconciled README platform, installation, prompt, tool, authentication and
+  distribution claims with the released 1.5.2 implementation.
+- Corrected Anthropic distribution terminology: reviewed third-party
+  submissions target `claude-community`; `claude-plugins-official` is curated
+  separately and has no application process.
+- Added an automated release workflow that runs after green main CI on version
+  changes and retains exactly one current stable GitHub release and version
+  tag while preserving history in this changelog and Git.
+
 ## 1.5.2 - 2026-07-06
 
 ### Fixed

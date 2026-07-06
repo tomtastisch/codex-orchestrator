@@ -1,0 +1,180 @@
+name: Release current version
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: codex-orchestrator-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ">=22.5.0 <23"
+      - name: Determine release mode
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_version=$(node -p "require('./package.json').version")
+          if ! [[ "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "package.json version is not stable semantic versioning: $current_version" >&2
+            exit 1
+          fi
+          current_tag="v$current_version"
+          remote_tag_sha=$(git ls-remote --tags --refs origin "refs/tags/$current_tag" | awk 'NR == 1 { print $1 }')
+          if [ -n "$remote_tag_sha" ]; then
+            current_tag_exists=true
+          else
+            current_tag_exists=false
+          fi
+          if gh release view "$current_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            current_release_exists=true
+            current_release_stable=$(gh release view "$current_tag" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,isPrerelease --jq '.isDraft == false and .isPrerelease == false')
+          else
+            current_release_exists=false
+            current_release_stable=false
+          fi
+          release_count=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq 'length')
+          tag_count=$(git ls-remote --tags --refs origin 'refs/tags/v*' | awk 'END { print NR + 0 }')
+
+          if [ "$current_tag_exists" = false ] && [ "$current_release_exists" = true ]; then
+            echo "Release $current_tag exists without its Git tag" >&2
+            exit 1
+          fi
+          if [ "$current_tag_exists" = true ] && [ "$current_release_exists" = true ]; then
+            if [ "$release_count" -eq 1 ] && [ "$tag_count" -eq 1 ] && [ "$current_release_stable" = true ]; then
+              mode=noop
+            else
+              mode=cleanup
+            fi
+          else
+            mode=publish
+          fi
+          {
+            echo "mode=$mode"
+            echo "current=$current_version"
+            echo "tag=$current_tag"
+            echo "remote_tag_sha=$remote_tag_sha"
+          } >> "$GITHUB_OUTPUT"
+      - name: Install dependencies
+        if: steps.version.outputs.mode == 'publish'
+        run: npm ci
+      - name: Validate an existing version tag
+        if: steps.version.outputs.mode == 'publish'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          REMOTE_TAG_SHA: ${{ steps.version.outputs.remote_tag_sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$REMOTE_TAG_SHA" ] && [ "$REMOTE_TAG_SHA" != "$GITHUB_SHA" ]; then
+            echo "Release tag $TAG is immutable and points to $REMOTE_TAG_SHA instead of $GITHUB_SHA" >&2
+            exit 1
+          fi
+      - name: Verify release candidate
+        if: steps.version.outputs.mode == 'publish'
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm test
+          npm run bundle
+          npm run verify:bundle
+          npm run mcpb:validate
+          npm run mcpb:build
+          npm run mcpb:verify
+          npm run benchmark
+          node scripts/bundlecheck.mjs
+          npx --yes @anthropic-ai/claude-code plugin validate . --strict
+          npm audit --audit-level=moderate
+      - name: Publish current version
+        if: steps.version.outputs.mode == 'publish'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.current }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" \
+              "release/codex-orchestrator-$VERSION.mcpb" \
+              "release/codex-orchestrator-$VERSION.mcpb.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Codex Orchestrator $VERSION" \
+              --draft=false \
+              --prerelease=false \
+              --latest
+          else
+            gh release create "$TAG" \
+              "release/codex-orchestrator-$VERSION.mcpb" \
+              "release/codex-orchestrator-$VERSION.mcpb.sha256" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Codex Orchestrator $VERSION" \
+              --generate-notes \
+              --latest
+          fi
+      - name: Remove superseded releases and version tags
+        if: steps.version.outputs.mode != 'noop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while true; do
+            removed_release=false
+            while IFS= read -r tag; do
+              [ -z "$tag" ] && continue
+              [ "$tag" = "$CURRENT_TAG" ] && continue
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+              removed_release=true
+            done < <(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName')
+            [ "$removed_release" = false ] && break
+          done
+
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            [ "$tag" = "$CURRENT_TAG" ] && continue
+            git push origin ":refs/tags/$tag"
+          done < <(git ls-remote --tags --refs origin 'refs/tags/v*' | awk '{ sub("refs/tags/", "", $2); print $2 }')
+
+          gh release edit "$CURRENT_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --prerelease=false \
+            --latest
+      - name: Verify the single-release invariant
+        if: steps.version.outputs.mode != 'noop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_count=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq 'length')
+          tag_count=$(git ls-remote --tags --refs origin 'refs/tags/v*' | awk 'END { print NR + 0 }')
+          release_tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName,isDraft,isPrerelease --jq '.[0] | select(.isDraft == false and .isPrerelease == false) | .tagName')
+          remote_tag=$(git ls-remote --tags --refs origin "refs/tags/$CURRENT_TAG" | awk 'NR == 1 { print $2 }')
+          if [ "$release_count" -ne 1 ] || [ "$tag_count" -ne 1 ]; then
+            echo "Expected one release and one version tag; got releases=$release_count tags=$tag_count" >&2
+            exit 1
+          fi
+          if [ "$release_tag" != "$CURRENT_TAG" ] || [ "$remote_tag" != "refs/tags/$CURRENT_TAG" ]; then
+            echo "Current release or tag does not match $CURRENT_TAG" >&2
+            exit 1
+          fi

@@ -37,3 +37,10 @@ jobs:
       - run: npm run build
       - run: npm run bundle
       - run: npm run test:remote
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, remote-acceptance]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
