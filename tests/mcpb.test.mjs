@@ -28,6 +28,8 @@ test("MCPB manifest is version-aligned and never configures credentials", () => 
     assert.equal(manifest.server.entry_point, "server/launcher.mjs");
     assert.equal(manifest.user_config.project_directory.type, "directory");
     assert.equal(manifest.user_config.project_directory.required, true);
+    assert.equal("default" in manifest.user_config.project_directory, false);
+    assert.deepEqual(manifest.compatibility.platforms, ["darwin", "win32"]);
     assert.equal(JSON.stringify(manifest).match(/token|api_key|auth\.json/gi), null);
 });
 

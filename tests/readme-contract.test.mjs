@@ -27,3 +27,20 @@ test("README distinguishes first-party availability from Anthropic approval", ()
     assert.match(readme, /not yet listed in the official Anthropic marketplace/i);
     assert.doesNotMatch(readme, /Official marketplace for the Codex Orchestrator/);
 });
+
+test("README documents the complete Claude Desktop MCPB lifecycle", () => {
+    for (const required of [
+        "https://github.com/tomtastisch/codex-orchestrator/releases/tag/v1.5.0",
+        "codex-orchestrator-1.5.0.mcpb",
+        "Settings → Extensions → Advanced settings → Install Extension",
+        "project_directory",
+        "codex_orchestrator",
+        "orchestrator_status",
+        "orchestrator_doctor",
+        "~/Library/Logs/Claude",
+    ]) assert.ok(readme.includes(required), `README Desktop instruction missing: ${required}`);
+
+    assert.match(readme, /Codex CLI[\s\S]*codex login status/);
+    assert.match(readme, /Claude Desktop[\s\S]*installed locally and\s+authenticated/i);
+    assert.match(readme, /does not request, copy or bundle[\s\S]*?auth\.json/i);
+});

@@ -4905,7 +4905,7 @@ function parseWorkerRequest(input) {
 }
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.4.1";
+var ORCHESTRATOR_VERSION = "1.5.0";
 
 // src/worker/path-policy.ts
 import { realpathSync } from "node:fs";

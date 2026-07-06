@@ -19,13 +19,14 @@ compaction, session switches and server restarts.
 | Runtime | Status | Distribution |
 |---|---|---|
 | Claude Code CLI | Produktionsbereit (production ready) | First-party GitHub marketplace |
-| Claude Desktop MCPB | In Entwicklung (in development) | Planned for release 1.5.0 |
+| Claude Desktop MCPB | In Entwicklung (in development) | GitHub Release v1.5.0; manual Desktop verification pending |
 | claude.ai Remote MCP | In Entwicklung (in development) | Planned for release 1.6.0 |
 
-The repository currently ships a local Claude Code plugin. Claude Desktop ist keine Voraussetzung für dieses Claude-Code-Plugin. claude.ai cannot start its
-local stdio server. Desktop and web support will be marked production ready only
-after their separate release artifacts pass installation and end-to-end
-verification.
+The repository currently ships a production-ready Claude Code plugin and a
+release-candidate Claude Desktop MCPB. Claude Desktop ist keine Voraussetzung
+für dieses Claude-Code-Plugin. claude.ai cannot start a local stdio server.
+Desktop and web support will be marked production ready only after their
+separate release artifacts pass installation and end-to-end verification.
 
 ---
 
@@ -101,14 +102,14 @@ polls with a long-poll `task_wait`.
 
 ## Prerequisites
 
-Run every check on the machine where Claude Code will start the plugin:
+Run the common checks on the machine where Claude will start the plugin or
+Desktop extension:
 
 ```bash
 node --version       # must be >= 22.5; the server uses node:sqlite
 git --version
 codex --version
 codex login status  # must report Logged in
-claude --version
 ```
 
 Required software and state:
@@ -118,10 +119,14 @@ Required software and state:
 - [Codex CLI](https://github.com/openai/codex), authenticated through
   `codex login`. The orchestrator uses this existing Codex session; it does not
   replace Codex authentication.
-- [Claude Code CLI](https://code.claude.com/docs/en/overview), installed locally
-  and authenticated. Start `claude` once and complete its login flow before
-  installing the plugin.
-- Write access to the current project and the user-specific Claude plugin cache.
+- One supported Claude runtime:
+  - [Claude Code CLI](https://code.claude.com/docs/en/overview), installed
+    locally and authenticated. `claude --version` must succeed before installing
+    the Claude Code plugin.
+  - [Claude Desktop](https://claude.com/download), installed locally and
+    authenticated before installing the MCPB.
+- Write access to the selected project. Claude Code additionally needs write
+  access to the user-specific plugin cache.
 
 Never paste `auth.json`, OAuth tokens or API keys into Claude or into an
 installation command. See [Remote Codex execution and persistent
@@ -188,13 +193,60 @@ claude plugin uninstall codex-orchestrator@codex-orchestrator --scope user --yes
 Project state remains in the project's `.orchestrator` directory unless the
 operator removes it separately.
 
-### Claude Desktop MCPB (in development)
+### Claude Desktop MCPB (release candidate)
 
-Claude Desktop does not install Claude Code plugins. Release 1.5.0 will provide
-a dedicated MCP Bundle (`.mcpb`, formerly `.dxt`) for local installation through
-Claude Desktop's Extensions settings. Until that signed release artifact exists
-and passes a clean installation test, use Claude Code for the namespaced slash
-commands documented above.
+Claude Desktop does not install Claude Code plugins. Release 1.5.0 provides a
+dedicated MCP Bundle (`.mcpb`, formerly `.dxt`) for local installation. It uses
+stdio and runs only on the local machine. It does not request, copy or bundle
+`auth.json`, OAuth tokens or API keys; the child Codex CLI uses the existing
+local `codex login` session.
+
+#### 1. Download and verify the release artifact
+
+Open the [v1.5.0 release](https://github.com/tomtastisch/codex-orchestrator/releases/tag/v1.5.0)
+and download both `codex-orchestrator-1.5.0.mcpb` and
+`codex-orchestrator-1.5.0.mcpb.sha256` into the same directory. On macOS or
+Linux, verify the download before opening it:
+
+```bash
+shasum -a 256 -c codex-orchestrator-1.5.0.mcpb.sha256
+```
+
+#### 2. Install in Claude Desktop
+
+In Claude Desktop, open
+`Settings → Extensions → Advanced settings → Install Extension`, select the
+verified `.mcpb` file and review the displayed permissions. For the required
+`project_directory`, select the absolute path of the writable Git repository
+that Codex may modify. Complete the installation and fully restart Claude
+Desktop if the connector does not appear immediately.
+
+Anthropic also supports double-clicking the `.mcpb` file or dragging it into
+Claude Desktop; the Extensions settings show the configuration and connection
+state most clearly. Team and Enterprise policies may disable custom extension
+installation.
+
+#### 3. Verify tools and slash prompts
+
+In a new Claude Desktop conversation:
+
+1. Open `Add files, connectors, and more → Connectors` and require Codex
+   Orchestrator to be connected.
+2. Open the slash-command/prompt picker and select `codex_orchestrator`, then
+   enter a bounded request. Select `orchestrator_status` to inspect an existing
+   plan. These are MCP prompts; Claude Desktop controls their final visual
+   prefix and menu presentation.
+3. Ask Claude to call `orchestrator_doctor`. Require `ok: true`, version `1.5.0`
+   and an authenticated local execution target before starting work.
+
+If connection startup fails on macOS, inspect `~/Library/Logs/Claude` and the
+extension state in Settings. Never solve a login error by pasting credentials
+into Claude; run `codex login` in a local terminal and retry Doctor.
+
+The official installation flow is documented by
+[Anthropic](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop),
+and the bundle format is maintained in the
+[MCPB specification repository](https://github.com/modelcontextprotocol/mcpb).
 
 ### claude.ai Remote MCP (in development)
 
