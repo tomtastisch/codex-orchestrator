@@ -1,6 +1,10 @@
 # Anthropic community marketplace submission
 
-Status: Prepared, not yet submitted
+Status: Submitted; Anthropic review pending
+
+Submission acknowledgement received: 2026-07-06 through the authenticated
+Anthropic Console form. Anthropic did not provide a public listing or approval
+with the acknowledgement; the plugin therefore remains pending review.
 
 ## Plugin
 

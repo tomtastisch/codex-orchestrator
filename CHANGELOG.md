@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+- Record the acknowledged Anthropic community marketplace submission as pending
+  review without claiming approval or listing.
+- Update GitHub workflows to `actions/checkout@v7` and
+  `actions/setup-node@v6`.
+
 ### Changed
 
 - Reconciled README platform, installation, prompt, tool, authentication and
