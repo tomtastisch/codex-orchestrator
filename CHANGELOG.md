@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.5.2 - 2026-07-06
+
+### Fixed
+
+- Removed the Claude Desktop installation-time project selector that could
+  persist a broad or stale path and terminate the MCP server during
+  initialization.
+- Return controlled tool errors when a repository stored by an existing plan is
+  later removed or becomes inaccessible.
+- Made the Desktop extension zero-config: it starts without a project path and
+  explicitly removes an inherited `ORCH_PROJECT_DIR` before loading the server.
+- Added an optional `repo_path` argument to the `codex_orchestrator` MCP prompt.
+  When it is absent, Claude is instructed to ask for the exact absolute Git
+  repository root and never infer it. An explicitly supplied empty value is
+  rejected instead of being treated as absent.
+
+### Security
+
+- Validate every direct, planned and persisted repository path as the canonical
+  root of a Git working tree at request time.
+- Reject attempts to update an existing plan through a different repository,
+  even when both paths are otherwise valid Git roots.
+- Allow multiple repositories through one global Desktop installation without
+  weakening the per-request repository boundary.
+- Restrict worktree selection to the validated repository or a server-managed
+  `worktree: auto`; arbitrary caller-supplied worktree paths are rejected.
+- Supersedes 1.5.1, whose installation-time boundary could make an otherwise
+  valid extension installation unavailable after startup.
+
 ## 1.5.1 - 2026-07-06
 
 ### Security

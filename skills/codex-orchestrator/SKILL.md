@@ -24,6 +24,12 @@ call `orchestrator_doctor` before creating a plan. Stop and report its exact
 target error when no configured execution target is healthy. Never request,
 display or copy credential contents in the conversation.
 
+Before calling `cluster_plan`, resolve the exact absolute Git repository root
+with `git rev-parse --show-toplevel` from the active Claude Code project and use
+that canonical output as `repo_path`. Never infer, broaden or shorten the path.
+If the command fails or the intended repository is ambiguous, stop and ask the
+user for the exact absolute Git repository root.
+
 ## State discipline
 
 All process state (plans, clusters, hypotheses, reviews, retrospectives) lives

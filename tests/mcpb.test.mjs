@@ -26,66 +26,32 @@ test("MCPB manifest is version-aligned and never configures credentials", () => 
     assert.equal(manifest.version, pkg.version);
     assert.equal(manifest.server.type, "node");
     assert.equal(manifest.server.entry_point, "server/launcher.mjs");
-    assert.equal(manifest.user_config.project_directory.type, "directory");
-    assert.equal(manifest.user_config.project_directory.required, true);
-    assert.equal("default" in manifest.user_config.project_directory, false);
+    assert.equal("user_config" in manifest, false);
+    assert.equal("ORCH_PROJECT_DIR" in manifest.server.mcp_config.env, false);
+    assert.equal(manifest.server.mcp_config.env.ORCH_HOME, "${HOME}/.codex-orchestrator/desktop");
     assert.deepEqual(manifest.compatibility.platforms, ["darwin", "win32"]);
     assert.equal(JSON.stringify(manifest).match(/token|api_key|auth\.json/gi), null);
 });
 
-test("MCPB launcher rejects missing, relative and non-directory project paths", () => {
-    const filePath = join(mkdtempSync(join(tmpdir(), "orch-mcpb-file-")), "file");
-    const nonGitDirectory = mkdtempSync(join(tmpdir(), "orch-mcpb-non-git-"));
-    const repository = mkdtempSync(join(tmpdir(), "orch-mcpb-repo-"));
-    const nestedDirectory = join(repository, "nested");
-    writeFileSync(filePath, "not a directory", "utf8");
-    mkdirSync(nestedDirectory);
-    assert.equal(spawnSync("git", ["init", "-q"], { cwd: repository }).status, 0);
-
-    for (const [configured, expected] of [
-        [undefined, /must be an absolute path/],
-        ["relative/project", /must be an absolute path/],
-        [filePath, /must be a directory/],
-        [join(tmpdir(), "definitely-missing-orchestrator-project"), /must be a directory/],
-        [nonGitDirectory, /must be a Git repository root/],
-        [nestedDirectory, /must be a Git repository root/],
-    ]) {
-        const env = { ...process.env };
-        if (configured === undefined) delete env.ORCH_PROJECT_DIR;
-        else env.ORCH_PROJECT_DIR = configured;
-        const result = spawnSync(process.execPath, [launcherPath], {
-            cwd: root,
-            env,
-            encoding: "utf8",
-        });
-        assert.notEqual(result.status, 0, `launcher unexpectedly accepted ${configured}`);
-        assert.match(result.stderr, expected);
-    }
-});
-
-test("MCPB launcher normalizes the project path before importing the server", () => {
+test("MCPB launcher starts without project configuration and clears inherited boundaries", () => {
     const fixture = mkdtempSync(join(tmpdir(), "orch-mcpb-launcher-"));
     const fixtureServerDir = join(fixture, "server");
-    const project = join(fixture, "project");
-    const nestedProjectDirectory = join(project, "nested");
-    const observedCwd = join(fixture, "observed-cwd.txt");
+    const observed = join(fixture, "observed.json");
     mkdirSync(fixtureServerDir);
-    mkdirSync(project);
-    assert.equal(spawnSync("git", ["init", "-q"], { cwd: project }).status, 0);
-    mkdirSync(nestedProjectDirectory);
     copyFileSync(launcherPath, join(fixtureServerDir, "launcher.mjs"));
     writeFileSync(
         join(fixtureServerDir, "server.mjs"),
-        `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(observedCwd)}, process.cwd(), "utf8");`,
+        `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(observed)}, JSON.stringify({ cwd: process.cwd(), project: process.env.ORCH_PROJECT_DIR ?? null }), "utf8");`,
         "utf8",
     );
 
-    const configured = join(nestedProjectDirectory, "..");
     const result = spawnSync(process.execPath, [join(fixtureServerDir, "launcher.mjs")], {
         cwd: root,
-        env: { ...process.env, ORCH_PROJECT_DIR: configured },
+        env: { ...process.env, ORCH_PROJECT_DIR: "/must/not/be/inherited" },
         encoding: "utf8",
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(readFileSync(observedCwd, "utf8"), realpathSync(resolve(configured)));
+    const data = JSON.parse(readFileSync(observed, "utf8"));
+    assert.equal(data.cwd, realpathSync(root));
+    assert.equal(data.project, null);
 });

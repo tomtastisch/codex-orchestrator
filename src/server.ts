@@ -24,7 +24,7 @@ import { EFFORT_LADDER } from "./types.js";
 import type { Effort, Sandbox } from "./types.js";
 import { createExecutionRuntime } from "./execution/registry.js";
 import { ORCHESTRATOR_VERSION } from "./version.js";
-import { assertProjectPathAllowed } from "./project-boundary.js";
+import { assertGitRepositoryRoot } from "./project-boundary.js";
 
 const store = new Store(config.dbPath);
 const execution = createExecutionRuntime(config);
@@ -76,9 +76,13 @@ server.registerPrompt(
     description: "Plan and supervise a Codex implementation through gated clusters.",
     argsSchema: {
       request: z.string().min(1).max(20_000),
+      repo_path: z.string()
+        .min(1)
+        .optional()
+        .describe("Exact absolute Git repository root; omit only when Claude should ask the user."),
     },
   },
-  ({ request }) => ({
+  ({ request, repo_path }) => ({
     messages: [{
       role: "user",
       content: {
@@ -86,7 +90,11 @@ server.registerPrompt(
         text:
           "Run orchestrator_doctor first. Then decompose this request into gated clusters, " +
           "form explicit hypotheses, delegate bounded slices to Codex, review every result " +
-          `and confirm only after declared checks pass. Request: ${request}`,
+          "and confirm only after declared checks pass. " +
+          (repo_path
+            ? `Use this exact absolute Git repository root for repo_path: ${repo_path}. `
+            : "Ask the user for the exact absolute Git repository root before calling cluster_plan; never infer it. ") +
+          `Request: ${request}`,
       },
     }],
   }),
@@ -148,7 +156,7 @@ server.registerTool(
       ok: healthy,
       version: ORCHESTRATOR_VERSION,
       execution: config.execution.mode,
-      project_root: config.projectRoot,
+      project_mode: "per-request-git-root",
       environment,
       targets,
     });
@@ -175,7 +183,7 @@ server.registerTool(
         .object({ max_minutes: z.number().int().positive().default(8), stop_condition: z.string().optional() })
         .optional(),
       wait_for: z.enum(["started", "first_checkpoint", "completed"]).default("started"),
-      worktree: z.string().default("none").describe("'none' (Repo direkt), 'auto' (isoliertes Worktree) oder Pfad."),
+      worktree: z.enum(["none", "auto"]).default("none").describe("'none' (Repo direkt) oder 'auto' (serververwaltetes isoliertes Worktree)."),
       network: z.boolean().optional().describe("Netzwerkzugriff für den Slice (Default: Server-Policy, i.d.R. aus)."),
       extra_config: z.record(z.string()).optional().describe("Zusätzliche codex -c key=value Overrides. Sicherheitskritische Keys (sandbox_mode, danger*, approval_policy, model, notify) werden ignoriert."),
     },
@@ -201,20 +209,13 @@ server.registerTool(
       if (a.cluster_id) {
         repoPath = repoPathForCluster(store, a.cluster_id);
         if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
-      } else if (a.repo_path) {
-        repoPath = assertProjectPathAllowed(a.repo_path, config.projectRoot);
+      } else if (a.repo_path !== undefined) {
+        repoPath = assertGitRepositoryRoot(a.repo_path);
       } else {
         return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });
       }
     } catch (e: any) {
       return err({ ok: false, error: e?.message ?? String(e) });
-    }
-
-    if (config.projectRoot && a.worktree !== "none" && a.worktree !== "auto") {
-      return err({
-        ok: false,
-        error: "explicit worktree paths are disabled when ORCH_PROJECT_DIR is configured; use 'none' or 'auto'",
-      });
     }
 
     if (waitFor === "completed" && maxMinutes > config.syncMaxMinutes) {
@@ -246,8 +247,6 @@ server.registerTool(
       if (selection.target.kind === "local" && !isGitRepo(repoPath)) {
         return err({ ok: false, error: `worktree:auto benötigt ein git-Repo: ${repoPath}` });
       }
-    } else if (a.worktree && a.worktree !== "none") {
-      worktree = a.worktree;
     }
 
     const model = resolveModel(a.model ?? "auto", effort);
@@ -539,13 +538,18 @@ server.registerTool(
   async (a) => {
     let repoPath: string;
     try {
-      repoPath = assertProjectPathAllowed(a.repo_path, config.projectRoot);
+      repoPath = assertGitRepositoryRoot(a.repo_path);
       if (!isGitRepo(repoPath)) {
         return err({ ok: false, error: `Kein git-Repo: ${repoPath}` });
       }
       if (a.plan_id) {
         const existing = store.getPlan(a.plan_id);
-        if (existing) assertProjectPathAllowed(existing.repo_path, config.projectRoot);
+        if (existing) {
+          const existingRepoPath = assertGitRepositoryRoot(existing.repo_path);
+          if (existingRepoPath !== repoPath) {
+            throw new Error("repo_path does not match the existing plan repository");
+          }
+        }
       }
     } catch (e: any) {
       return err({ ok: false, error: e?.message ?? String(e) });

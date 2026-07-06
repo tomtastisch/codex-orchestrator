@@ -3,7 +3,6 @@ import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { parseExecutionConfig, parsePositiveInteger, type OrchestratorFileConfig } from "./config-schema.js";
 import type { Effort } from "./types.js";
-import { resolveConfiguredProjectRoot } from "./project-boundary.js";
 
 /**
  * Serverkonfiguration. Fail-closed: alles Sicherheitsrelevante ist hier
@@ -46,8 +45,6 @@ export interface OrchestratorConfig {
   dbPath: string;
   worktreeRoot: string;
   codexBin: string;
-  /** Exakte lokale Repository-Grenze für Claude Desktop; sonst keine Zusatzgrenze. */
-  projectRoot: string | null;
   /** Sandbox-Modi, die überhaupt erlaubt sind. danger-full-access fehlt bewusst. */
   allowedSandboxes: ReadonlyArray<"read-only" | "workspace-write">;
   /** Netzwerk für Codex-Slices standardmäßig aus. */
@@ -113,7 +110,6 @@ export const config: OrchestratorConfig = {
   dbPath: resolve(HOME, "state.sqlite"),
   worktreeRoot: resolve(HOME, "worktrees"),
   codexBin: process.env.ORCH_CODEX_BIN || "codex",
-  projectRoot: resolveConfiguredProjectRoot(process.env.ORCH_PROJECT_DIR),
   allowedSandboxes: ["read-only", "workspace-write"],
   networkDefault: false,
   requireHypothesis: process.env.ORCH_REQUIRE_HYPOTHESIS !== "false",

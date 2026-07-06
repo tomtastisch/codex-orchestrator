@@ -20,37 +20,19 @@ function canonicalDirectory(path: string, variable: string): string {
     }
 }
 
-/**
- * Resolves the optional Claude Desktop repository boundary once at startup.
- * A configured value must be the canonical root of one Git working tree.
- */
-export function resolveConfiguredProjectRoot(configured: string | undefined): string | null {
-    if (configured === undefined) return null;
-    const project = canonicalDirectory(configured, "ORCH_PROJECT_DIR");
+/** Resolves and validates one repository path supplied for an orchestration request. */
+export function assertGitRepositoryRoot(candidate: string): string {
+    const project = canonicalDirectory(candidate, "repo_path");
     const git = spawnSync("git", ["-C", project, "rev-parse", "--show-toplevel"], {
         encoding: "utf8",
         shell: false,
     });
     if (git.status !== 0) {
-        throw new Error("ORCH_PROJECT_DIR must be a Git repository root");
+        throw new Error("repo_path must be a Git repository root");
     }
     const gitRoot = canonicalDirectory(git.stdout.trim(), "Git repository root");
     if (gitRoot !== project) {
-        throw new Error("ORCH_PROJECT_DIR must be a Git repository root");
+        throw new Error("repo_path must be a Git repository root");
     }
     return project;
-}
-
-/**
- * Enforces that an operator- or model-provided repository path is exactly the
- * configured Desktop repository. Claude Code remains unrestricted when no
- * Desktop boundary is configured.
- */
-export function assertProjectPathAllowed(candidate: string, configuredRoot: string | null): string {
-    if (configuredRoot === null) return candidate;
-    const canonical = canonicalDirectory(candidate, "repo_path");
-    if (canonical !== configuredRoot) {
-        throw new Error("repo_path is outside the configured project repository");
-    }
-    return canonical;
 }

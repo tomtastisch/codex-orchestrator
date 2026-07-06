@@ -1,7 +1,7 @@
 import { config, modelForClass, type ModelClass } from "./config.js";
 import type { Store } from "./db.js";
 import type { Effort } from "./types.js";
-import { assertProjectPathAllowed } from "./project-boundary.js";
+import { assertGitRepositoryRoot } from "./project-boundary.js";
 
 /** Modellname auflösen: 'auto' -> Klasse nach Effort; sonst wörtlich (nie hartkodiert). */
 export function resolveModel(model: string, effort: Effort): string {
@@ -16,7 +16,12 @@ export function repoPathForCluster(store: Store, clusterId: string): string | nu
   const cluster = store.getCluster(clusterId);
   if (!cluster) return null;
   const plan = store.getPlan(cluster.plan_id);
-  return plan ? assertProjectPathAllowed(plan.repo_path, config.projectRoot) : null;
+  if (!plan) return null;
+  try {
+    return assertGitRepositoryRoot(plan.repo_path);
+  } catch {
+    return null;
+  }
 }
 
 /** Worktree-Pfad des jüngsten Tasks eines Clusters (für scope:worktree). */
