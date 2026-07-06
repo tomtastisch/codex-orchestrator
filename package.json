@@ -34,7 +34,7 @@
     "start": "node dist/server.js",
     "pretest": "npm run build",
     "test": "node --test tests/*.test.mjs",
-    "test:coverage": "node --experimental-test-coverage --test tests/*.test.mjs",
+    "test:coverage": "npm run build && node scripts/coverage.mjs",
     "verify:bundle": "node scripts/verify-bundle.mjs",
     "mcpb:build": "node scripts/build-mcpb.mjs",
     "mcpb:validate": "mcpb validate packaging/mcpb/manifest.json",
