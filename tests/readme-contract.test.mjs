@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const readme = readFileSync("README.md", "utf8");
+const submission = readFileSync("docs/distribution/anthropic-plugin-submission.md", "utf8");
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 const server = readFileSync("src/server.ts", "utf8");
 
@@ -42,6 +43,14 @@ test("README distinguishes every distribution and discovery channel", () => {
     assert.ok(readme.includes("https://buildwithclaude.com"));
     assert.ok(readme.includes("https://crossaitools.com"));
     assert.doesNotMatch(readme, /Official marketplace for the Codex Orchestrator/);
+});
+
+test("README and submission record reflect Anthropic acknowledgement without claiming approval", () => {
+    assert.match(submission, /^Status: Submitted; Anthropic review pending$/m);
+    assert.match(submission, /Submission acknowledgement received: 2026-07-06/);
+    assert.match(readme, /claude-community[^\n]*\|\s*Submitted; Anthropic review pending/);
+    assert.doesNotMatch(readme, /Submission prepared; not yet listed/);
+    assert.doesNotMatch(submission, /^Status: (?:Approved|Listed)/m);
 });
 
 test("README documents the complete Claude Desktop MCPB lifecycle", () => {

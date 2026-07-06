@@ -58,3 +58,15 @@ test("version changes on main publish and retain exactly one stable release", ()
     assert.match(ci, /release:[\s\S]*contents: write/);
     assert.match(ci, /release:[\s\S]*uses: \.\/\.github\/workflows\/release\.yml/);
 });
+
+test("workflows use the current supported action majors", () => {
+    const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+    const release = readFileSync(workflowPath, "utf8");
+    const workflows = `${ci}\n${release}`;
+
+    assert.match(ci, /actions\/checkout@v7/);
+    assert.match(ci, /actions\/setup-node@v6/);
+    assert.match(release, /actions\/checkout@v7/);
+    assert.match(release, /actions\/setup-node@v6/);
+    assert.doesNotMatch(workflows, /actions\/(?:checkout|setup-node)@v4/);
+});

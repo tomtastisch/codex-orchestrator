@@ -204,7 +204,7 @@ The channels have different owners and must not be conflated:
 | Channel | Owner | Current state |
 |---|---|---|
 | First-party GitHub marketplace | Codex Orchestrator project | Available now with the terminal commands above |
-| `claude-community` | Anthropic, reviewed third-party directory | Submission prepared; not yet listed |
+| `claude-community` | Anthropic, reviewed third-party directory | Submitted; Anthropic review pending; not yet listed |
 | `claude-plugins-official` | Anthropic, separately curated | No application process; inclusion is solely at Anthropic's discretion |
 | [Build with Claude](https://buildwithclaude.com) | Independent community directory | External discovery target; not an official Anthropic channel |
 | [Cross AI Tools](https://crossaitools.com) | Independent community directory | Crawler/editorial discovery target; not an official Anthropic channel |
