@@ -171,11 +171,12 @@ try {
         configFile: sshConfigFile,
     };
     const firstTarget = new SshExecutionTarget(targetOptions);
-    const firstHealth = await new RemoteAuthBootstrapper().ensure(firstTarget, {
+    const authStrategy = {
         strategy: "sync-file",
         source: authSource,
         codexHome: remoteCodexHome,
-    });
+    };
+    const firstHealth = await new RemoteAuthBootstrapper().ensure(firstTarget, authStrategy);
     if (firstHealth.state !== "healthy") throw new Error(`Erster Remote-Doctor ist ${firstHealth.state}`);
     const remoteAuth = join(remoteCodexHome, "auth.json");
     if (!existsSync(remoteAuth)) throw new Error("Remote auth.json wurde nicht angelegt");
@@ -200,7 +201,7 @@ try {
 
     unlinkSync(authSource);
     const restartedTarget = new SshExecutionTarget(targetOptions);
-    const restartedHealth = await new RemoteAuthBootstrapper().ensure(restartedTarget, { strategy: "existing" });
+    const restartedHealth = await new RemoteAuthBootstrapper().ensure(restartedTarget, authStrategy);
     if (restartedHealth.state !== "healthy") throw new Error(`Doctor nach Neustart ist ${restartedHealth.state}`);
 
     process.stdout.write(`${JSON.stringify({
