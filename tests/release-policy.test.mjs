@@ -38,8 +38,11 @@ test("version changes on main publish and retain exactly one stable release", ()
     assert.match(workflow, /previous_version[\s\S]*current_version/);
     assert.match(workflow, /if \[ "\$previous_version" = "\$current_version" \]/);
     assert.match(workflow, /remote_tag_sha[\s\S]*GITHUB_SHA/);
+    assert.match(workflow, /tag_count=\$\(git ls-remote --tags --refs origin 'refs\/tags\/v\*'/);
+    assert.match(workflow, /remote_tag=\$\(git ls-remote --tags --refs origin "refs\/tags\/\$CURRENT_TAG"/);
     assert.match(workflow, /if \[ "\$release_count" -ne 1 \] \|\| \[ "\$tag_count" -ne 1 \]/);
     assert.doesNotMatch(workflow, /git tag --list/);
+    assert.doesNotMatch(workflow, /\[\[ "\$tag" =~/);
     assert.match(ci, /release:[\s\S]*needs: \[test, remote-acceptance\]/);
     assert.match(ci, /release:[\s\S]*github\.event_name == 'push'/);
     assert.match(ci, /release:[\s\S]*contents: write/);
