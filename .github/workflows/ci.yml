@@ -6,16 +6,38 @@ on:
   pull_request:
 
 jobs:
-  test:
+  portable:
+    name: portable (${{ matrix.os }}, node-${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-latest]
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run bundle
+      - run: npm run verify:bundle
+
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: npm
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:coverage
       - run: npm run bundle
       - run: npm run verify:bundle
       - run: npm run mcpb:validate
@@ -33,6 +55,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: npm
       - run: npm ci
       - run: npm run build
       - run: npm run bundle
@@ -40,7 +63,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, remote-acceptance]
+    needs: [portable, quality, remote-acceptance]
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
