@@ -23308,7 +23308,12 @@ function repoPathForCluster(store2, clusterId) {
   const cluster = store2.getCluster(clusterId);
   if (!cluster) return null;
   const plan = store2.getPlan(cluster.plan_id);
-  return plan ? assertGitRepositoryRoot(plan.repo_path) : null;
+  if (!plan) return null;
+  try {
+    return assertGitRepositoryRoot(plan.repo_path);
+  } catch {
+    return null;
+  }
 }
 function latestWorktreeForCluster(store2, clusterId) {
   const tasks = store2.listTasks({ clusterId });
@@ -25343,7 +25348,7 @@ server.registerTool(
       if (a.cluster_id) {
         repoPath = repoPathForCluster(store, a.cluster_id);
         if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
-      } else if (a.repo_path) {
+      } else if (a.repo_path !== void 0) {
         repoPath = assertGitRepositoryRoot(a.repo_path);
       } else {
         return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });

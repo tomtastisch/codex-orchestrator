@@ -209,7 +209,7 @@ server.registerTool(
       if (a.cluster_id) {
         repoPath = repoPathForCluster(store, a.cluster_id);
         if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
-      } else if (a.repo_path) {
+      } else if (a.repo_path !== undefined) {
         repoPath = assertGitRepositoryRoot(a.repo_path);
       } else {
         return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });

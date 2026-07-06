@@ -9,6 +9,8 @@ All notable changes to this project are documented in this file.
 - Removed the Claude Desktop installation-time project selector that could
   persist a broad or stale path and terminate the MCP server during
   initialization.
+- Return controlled tool errors when a repository stored by an existing plan is
+  later removed or becomes inaccessible.
 - Made the Desktop extension zero-config: it starts without a project path and
   explicitly removes an inherited `ORCH_PROJECT_DIR` before loading the server.
 - Added an optional `repo_path` argument to the `codex_orchestrator` MCP prompt.

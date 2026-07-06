@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -81,7 +81,11 @@ test("MCP validates each repository per request without installation configurati
             arguments: {
                 goal: "allowed plan",
                 repo_path: repository,
-                clusters: [],
+                clusters: [{
+                    id: "C_request",
+                    name: "Request boundary",
+                    goal: "Validate repository handling",
+                }],
             },
         });
         assert.equal(inside.isError, undefined);
@@ -114,6 +118,19 @@ test("MCP validates each repository per request without installation configurati
         assert.equal(secondRepository.isError, undefined);
         assert.equal(JSON.parse(secondRepository.content[0].text).ok, true);
 
+        const emptyRepository = await client.callTool({
+            name: "task_start",
+            arguments: {
+                repo_path: "",
+                instructions: "must reject an empty repository path",
+                sandbox: "read-only",
+                model: "auto",
+                wait_for: "started",
+            },
+        });
+        assert.equal(emptyRepository.isError, true);
+        assert.match(emptyRepository.content[0].text, /repo_path must be an absolute path/);
+
         const explicitWorktree = await client.callTool({
             name: "task_start",
             arguments: {
@@ -136,6 +153,18 @@ test("MCP validates each repository per request without installation configurati
         assert.equal(report.ok, true);
         assert.equal(report.project_mode, "per-request-git-root");
         assert.equal("project_root" in report, false);
+
+        rmSync(repository, { recursive: true, force: true });
+        const missingPersistedRepository = await client.callTool({
+            name: "repo_check",
+            arguments: {
+                cluster_id: "C_request",
+                checks: [],
+            },
+        });
+        assert.equal(missingPersistedRepository.isError, true);
+        assert.match(missingPersistedRepository.content[0].text, /Plan-Repo für Cluster nicht gefunden/);
+        assert.doesNotMatch(missingPersistedRepository.content[0].text, /Internal error/i);
     } finally {
         await client.close();
     }

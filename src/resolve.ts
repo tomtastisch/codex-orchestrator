@@ -16,7 +16,12 @@ export function repoPathForCluster(store: Store, clusterId: string): string | nu
   const cluster = store.getCluster(clusterId);
   if (!cluster) return null;
   const plan = store.getPlan(cluster.plan_id);
-  return plan ? assertGitRepositoryRoot(plan.repo_path) : null;
+  if (!plan) return null;
+  try {
+    return assertGitRepositoryRoot(plan.repo_path);
+  } catch {
+    return null;
+  }
 }
 
 /** Worktree-Pfad des jüngsten Tasks eines Clusters (für scope:worktree). */
