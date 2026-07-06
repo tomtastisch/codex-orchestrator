@@ -24620,7 +24620,7 @@ import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync5, readFileSync as readFileSync4 } from "node:fs";
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.4.1";
+var ORCHESTRATOR_VERSION = "1.5.0";
 
 // src/execution/ssh/deploy.ts
 function safeRemotePath(path) {
@@ -25184,6 +25184,44 @@ function executionTargetForCluster(clusterId) {
   const latest = store.listTasks({ clusterId }).at(-1);
   return execution.registry.get(latest?.target_id ?? "local");
 }
+server.registerPrompt(
+  "codex_orchestrator",
+  {
+    title: "Codex Orchestrator",
+    description: "Plan and supervise a Codex implementation through gated clusters.",
+    argsSchema: {
+      request: external_exports.string().min(1).max(2e4)
+    }
+  },
+  ({ request }) => ({
+    messages: [{
+      role: "user",
+      content: {
+        type: "text",
+        text: `Run orchestrator_doctor first. Then decompose this request into gated clusters, form explicit hypotheses, delegate bounded slices to Codex, review every result and confirm only after declared checks pass. Request: ${request}`
+      }
+    }]
+  })
+);
+server.registerPrompt(
+  "orchestrator_status",
+  {
+    title: "Orchestrator Status",
+    description: "Load the durable state of an orchestration plan.",
+    argsSchema: {
+      plan_id: external_exports.string().optional()
+    }
+  },
+  ({ plan_id }) => ({
+    messages: [{
+      role: "user",
+      content: {
+        type: "text",
+        text: plan_id ? `Call plan_snapshot for plan ${plan_id}, then summarize cluster, task, review and check status without changing state.` : "Identify the current plan from available task events, call plan_snapshot and summarize status without changing state."
+      }
+    }]
+  })
+);
 server.registerTool(
   "orchestrator_doctor",
   {

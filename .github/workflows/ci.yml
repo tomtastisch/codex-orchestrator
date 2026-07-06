@@ -18,6 +18,9 @@ jobs:
       - run: npm test
       - run: npm run bundle
       - run: npm run verify:bundle
+      - run: npm run mcpb:validate
+      - run: npm run mcpb:build
+      - run: npm run mcpb:verify
       - run: npm run benchmark
       - run: node scripts/bundlecheck.mjs
       - run: npx --yes @anthropic-ai/claude-code plugin validate . --strict

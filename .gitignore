@@ -5,3 +5,4 @@ dist/
 *.sqlite-shm
 .orchestrator/
 .DS_Store
+release/

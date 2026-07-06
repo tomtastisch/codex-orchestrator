@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## 1.5.0 - 2026-07-06
+
+### Added
+
+- Added two transport-neutral MCP prompts for starting and inspecting an
+  orchestration workflow from MCP clients outside Claude Code.
+- Added a Claude Desktop MCP Bundle with fail-closed project-directory
+  selection and no credential configuration.
+- Added deterministic MCPB packaging, SHA-256 generation, archive allowlist
+  validation and an extracted end-to-end MCP smoke test.
+
+### Security
+
+- The Desktop bundle contains only its manifest, license, launcher and bundled
+  server; it never requests, copies or packages Codex credentials.
+- The launcher rejects missing, relative, inaccessible and non-directory
+  project paths before starting the MCP server.
+- The MCPB build dependency is pinned and its vulnerable transitive `tmp`
+  version is overridden with the audited patched release.
+
 ## 1.4.1 - 2026-07-06
 
 ### Documentation
