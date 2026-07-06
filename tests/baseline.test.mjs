@@ -39,6 +39,9 @@ test("Claude plugin keeps project state outside the ephemeral plugin cache", () 
     assert.match(skill, /argument-hint:/);
     assert.match(skill, /\$ARGUMENTS/);
     assert.match(skill, /orchestrator_doctor/);
+    assert.match(skill, /git rev-parse --show-toplevel/);
+    assert.match(skill, /exact absolute Git repository root/);
+    assert.match(skill, /never infer/i);
 });
 
 test("marketplace identifies itself as first-party, not Anthropic-official", () => {

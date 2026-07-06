@@ -35,6 +35,17 @@ test("MCP exposes guided orchestration prompts independently of Claude Code", as
         assert.equal(rendered.messages[0]?.content.type, "text");
         assert.match(rendered.messages[0].content.text, /orchestrator_doctor/);
         assert.match(rendered.messages[0].content.text, /Add deterministic validation/);
+        assert.match(rendered.messages[0].content.text, /Ask the user for the exact absolute Git repository root/);
+
+        const withRepository = await client.getPrompt({
+            name: "codex_orchestrator",
+            arguments: {
+                request: "Add deterministic validation",
+                repo_path: "/tmp/example-repository",
+            },
+        });
+        assert.match(withRepository.messages[0].content.text, /exact absolute Git repository root/);
+        assert.match(withRepository.messages[0].content.text, /\/tmp\/example-repository/);
 
         const status = await client.getPrompt({
             name: "orchestrator_status",

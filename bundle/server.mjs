@@ -21177,52 +21177,6 @@ function parsePositiveInteger(value, variableName) {
   return parsed;
 }
 
-// src/project-boundary.ts
-import { spawnSync } from "node:child_process";
-import { realpathSync, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
-function canonicalDirectory(path, variable) {
-  if (!isAbsolute(path)) {
-    throw new Error(`${variable} must be an absolute path`);
-  }
-  try {
-    const canonical = realpathSync(path);
-    if (!statSync(canonical).isDirectory()) {
-      throw new Error(`${variable} must be a directory`);
-    }
-    return canonical;
-  } catch (error2) {
-    if (error2 instanceof Error && error2.message === `${variable} must be a directory`) {
-      throw error2;
-    }
-    throw new Error(`${variable} must be a directory`);
-  }
-}
-function resolveConfiguredProjectRoot(configured) {
-  if (configured === void 0) return null;
-  const project = canonicalDirectory(configured, "ORCH_PROJECT_DIR");
-  const git3 = spawnSync("git", ["-C", project, "rev-parse", "--show-toplevel"], {
-    encoding: "utf8",
-    shell: false
-  });
-  if (git3.status !== 0) {
-    throw new Error("ORCH_PROJECT_DIR must be a Git repository root");
-  }
-  const gitRoot = canonicalDirectory(git3.stdout.trim(), "Git repository root");
-  if (gitRoot !== project) {
-    throw new Error("ORCH_PROJECT_DIR must be a Git repository root");
-  }
-  return project;
-}
-function assertProjectPathAllowed(candidate, configuredRoot) {
-  if (configuredRoot === null) return candidate;
-  const canonical = canonicalDirectory(candidate, "repo_path");
-  if (canonical !== configuredRoot) {
-    throw new Error("repo_path is outside the configured project repository");
-  }
-  return canonical;
-}
-
 // src/config.ts
 var HOME = process.env.ORCH_HOME ? resolve(process.env.ORCH_HOME) : process.env.ORCH_GLOBAL === "true" ? resolve(homedir(), ".codex-orchestrator") : resolve(process.cwd(), ".orchestrator");
 function loadFileConfig() {
@@ -21243,7 +21197,6 @@ var config2 = {
   dbPath: resolve(HOME, "state.sqlite"),
   worktreeRoot: resolve(HOME, "worktrees"),
   codexBin: process.env.ORCH_CODEX_BIN || "codex",
-  projectRoot: resolveConfiguredProjectRoot(process.env.ORCH_PROJECT_DIR),
   allowedSandboxes: ["read-only", "workspace-write"],
   networkDefault: false,
   requireHypothesis: process.env.ORCH_REQUIRE_HYPOTHESIS !== "false",
@@ -23202,18 +23155,18 @@ var ClusterStateMachine = class {
 };
 
 // src/worktree.ts
-import { spawnSync as spawnSync2 } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdirSync as mkdirSync2, existsSync as existsSync3 } from "node:fs";
 import { resolve as resolve2 } from "node:path";
 function git(cwd, args) {
-  const r = spawnSync2("git", args, { cwd, encoding: "utf8" });
+  const r = spawnSync("git", args, { cwd, encoding: "utf8" });
   if (r.status !== 0) {
     throw new Error(`git ${args.join(" ")} fehlgeschlagen: ${r.stderr || r.stdout}`);
   }
   return (r.stdout || "").trim();
 }
 function isGitRepo(repoPath) {
-  const r = spawnSync2("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoPath, encoding: "utf8" });
+  const r = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoPath, encoding: "utf8" });
   return r.status === 0 && r.stdout.trim() === "true";
 }
 var WorktreeManager = class {
@@ -23241,19 +23194,19 @@ var WorktreeManager = class {
     const args = ["merge", opts?.noFf ? "--no-ff" : "--ff"];
     if (opts?.noGpgSign) args.push("--no-gpg-sign");
     args.push(branch);
-    const r = spawnSync2("git", args, { cwd: repoPath, encoding: "utf8" });
+    const r = spawnSync("git", args, { cwd: repoPath, encoding: "utf8" });
     const output = (r.stdout || "") + (r.stderr || "");
     if (r.status === 0) return { ok: true, conflict: false, output };
     const conflict = /conflict/i.test(output);
     if (conflict) {
-      spawnSync2("git", ["merge", "--abort"], { cwd: repoPath });
+      spawnSync("git", ["merge", "--abort"], { cwd: repoPath });
     }
     return { ok: false, conflict, output };
   }
   /** Worktree entfernen (Aufräumen). Bei Cancel bewusst NICHT automatisch. */
   remove(repoPath, worktree, deleteBranch) {
-    spawnSync2("git", ["worktree", "remove", "--force", worktree], { cwd: repoPath });
-    if (deleteBranch) spawnSync2("git", ["branch", "-D", deleteBranch], { cwd: repoPath });
+    spawnSync("git", ["worktree", "remove", "--force", worktree], { cwd: repoPath });
+    if (deleteBranch) spawnSync("git", ["branch", "-D", deleteBranch], { cwd: repoPath });
   }
   list(repoPath) {
     return git(repoPath, ["worktree", "list"]);
@@ -23308,6 +23261,43 @@ async function diffSize(repoPath, target = new LocalExecutionTarget()) {
   return { files, lines };
 }
 
+// src/project-boundary.ts
+import { spawnSync as spawnSync2 } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute } from "node:path";
+function canonicalDirectory(path, variable) {
+  if (!isAbsolute(path)) {
+    throw new Error(`${variable} must be an absolute path`);
+  }
+  try {
+    const canonical = realpathSync(path);
+    if (!statSync(canonical).isDirectory()) {
+      throw new Error(`${variable} must be a directory`);
+    }
+    return canonical;
+  } catch (error2) {
+    if (error2 instanceof Error && error2.message === `${variable} must be a directory`) {
+      throw error2;
+    }
+    throw new Error(`${variable} must be a directory`);
+  }
+}
+function assertGitRepositoryRoot(candidate) {
+  const project = canonicalDirectory(candidate, "repo_path");
+  const git3 = spawnSync2("git", ["-C", project, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+    shell: false
+  });
+  if (git3.status !== 0) {
+    throw new Error("repo_path must be a Git repository root");
+  }
+  const gitRoot = canonicalDirectory(git3.stdout.trim(), "Git repository root");
+  if (gitRoot !== project) {
+    throw new Error("repo_path must be a Git repository root");
+  }
+  return project;
+}
+
 // src/resolve.ts
 function resolveModel(model, effort) {
   if (model && model !== "auto") return model;
@@ -23318,7 +23308,7 @@ function repoPathForCluster(store2, clusterId) {
   const cluster = store2.getCluster(clusterId);
   if (!cluster) return null;
   const plan = store2.getPlan(cluster.plan_id);
-  return plan ? assertProjectPathAllowed(plan.repo_path, config2.projectRoot) : null;
+  return plan ? assertGitRepositoryRoot(plan.repo_path) : null;
 }
 function latestWorktreeForCluster(store2, clusterId) {
   const tasks = store2.listTasks({ clusterId });
@@ -24667,7 +24657,7 @@ import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync5, readFileSync as readFileSync4 } from "node:fs";
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.5.1";
+var ORCHESTRATOR_VERSION = "1.5.2";
 
 // src/execution/ssh/deploy.ts
 function safeRemotePath(path) {
@@ -25237,15 +25227,16 @@ server.registerPrompt(
     title: "Codex Orchestrator",
     description: "Plan and supervise a Codex implementation through gated clusters.",
     argsSchema: {
-      request: external_exports.string().min(1).max(2e4)
+      request: external_exports.string().min(1).max(2e4),
+      repo_path: external_exports.string().optional().describe("Exact absolute Git repository root; omit only when Claude should ask the user.")
     }
   },
-  ({ request }) => ({
+  ({ request, repo_path }) => ({
     messages: [{
       role: "user",
       content: {
         type: "text",
-        text: `Run orchestrator_doctor first. Then decompose this request into gated clusters, form explicit hypotheses, delegate bounded slices to Codex, review every result and confirm only after declared checks pass. Request: ${request}`
+        text: "Run orchestrator_doctor first. Then decompose this request into gated clusters, form explicit hypotheses, delegate bounded slices to Codex, review every result and confirm only after declared checks pass. " + (repo_path ? `Use this exact absolute Git repository root for repo_path: ${repo_path}. ` : "Ask the user for the exact absolute Git repository root before calling cluster_plan; never infer it. ") + `Request: ${request}`
       }
     }]
   })
@@ -25303,7 +25294,7 @@ server.registerTool(
       ok: healthy,
       version: ORCHESTRATOR_VERSION,
       execution: config2.execution.mode,
-      project_root: config2.projectRoot,
+      project_mode: "per-request-git-root",
       environment,
       targets
     });
@@ -25325,7 +25316,7 @@ server.registerTool(
       effort: external_exports.enum(["low", "medium", "high", "xhigh"]).default("medium").describe("Reasoning effort: low|medium|high|xhigh (extra hoch)."),
       slice_budget: external_exports.object({ max_minutes: external_exports.number().int().positive().default(8), stop_condition: external_exports.string().optional() }).optional(),
       wait_for: external_exports.enum(["started", "first_checkpoint", "completed"]).default("started"),
-      worktree: external_exports.string().default("none").describe("'none' (Repo direkt), 'auto' (isoliertes Worktree) oder Pfad."),
+      worktree: external_exports.enum(["none", "auto"]).default("none").describe("'none' (Repo direkt) oder 'auto' (serververwaltetes isoliertes Worktree)."),
       network: external_exports.boolean().optional().describe("Netzwerkzugriff f\xFCr den Slice (Default: Server-Policy, i.d.R. aus)."),
       extra_config: external_exports.record(external_exports.string()).optional().describe("Zus\xE4tzliche codex -c key=value Overrides. Sicherheitskritische Keys (sandbox_mode, danger*, approval_policy, model, notify) werden ignoriert.")
     }
@@ -25353,18 +25344,12 @@ server.registerTool(
         repoPath = repoPathForCluster(store, a.cluster_id);
         if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
       } else if (a.repo_path) {
-        repoPath = assertProjectPathAllowed(a.repo_path, config2.projectRoot);
+        repoPath = assertGitRepositoryRoot(a.repo_path);
       } else {
         return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });
       }
     } catch (e) {
       return err({ ok: false, error: e?.message ?? String(e) });
-    }
-    if (config2.projectRoot && a.worktree !== "none" && a.worktree !== "auto") {
-      return err({
-        ok: false,
-        error: "explicit worktree paths are disabled when ORCH_PROJECT_DIR is configured; use 'none' or 'auto'"
-      });
     }
     if (waitFor === "completed" && maxMinutes > config2.syncMaxMinutes) {
       return err({
@@ -25389,8 +25374,6 @@ server.registerTool(
       if (selection.target.kind === "local" && !isGitRepo(repoPath)) {
         return err({ ok: false, error: `worktree:auto ben\xF6tigt ein git-Repo: ${repoPath}` });
       }
-    } else if (a.worktree && a.worktree !== "none") {
-      worktree = a.worktree;
     }
     const model = resolveModel(a.model ?? "auto", effort);
     const known = config2.availableModels.find((m) => m.model === model);
@@ -25664,13 +25647,18 @@ server.registerTool(
   async (a) => {
     let repoPath;
     try {
-      repoPath = assertProjectPathAllowed(a.repo_path, config2.projectRoot);
+      repoPath = assertGitRepositoryRoot(a.repo_path);
       if (!isGitRepo(repoPath)) {
         return err({ ok: false, error: `Kein git-Repo: ${repoPath}` });
       }
       if (a.plan_id) {
         const existing = store.getPlan(a.plan_id);
-        if (existing) assertProjectPathAllowed(existing.repo_path, config2.projectRoot);
+        if (existing) {
+          const existingRepoPath = assertGitRepositoryRoot(existing.repo_path);
+          if (existingRepoPath !== repoPath) {
+            throw new Error("repo_path does not match the existing plan repository");
+          }
+        }
       }
     } catch (e) {
       return err({ ok: false, error: e?.message ?? String(e) });

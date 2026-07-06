@@ -19,7 +19,7 @@ compaction, session switches and server restarts.
 | Runtime | Status | Distribution |
 |---|---|---|
 | Claude Code CLI | Produktionsbereit (production ready) | First-party GitHub marketplace |
-| Claude Desktop MCPB | In Entwicklung (in development) | GitHub Release v1.5.1; manual Desktop verification pending |
+| Claude Desktop MCPB | In Entwicklung (in development) | GitHub Release v1.5.2; manual Desktop verification pending |
 | claude.ai Remote MCP | In Entwicklung (in development) | Planned for release 1.6.0 |
 
 The repository currently ships a production-ready Claude Code plugin and a
@@ -195,34 +195,33 @@ operator removes it separately.
 
 ### Claude Desktop MCPB (release candidate)
 
-Claude Desktop does not install Claude Code plugins. Release 1.5.1 provides a
+Claude Desktop does not install Claude Code plugins. Release 1.5.2 provides a
 dedicated MCP Bundle (`.mcpb`, formerly `.dxt`) for local installation. It uses
 stdio and runs only on the local machine. It does not request, copy or bundle
 `auth.json`, OAuth tokens or API keys; the child Codex CLI uses the existing
 local `codex login` session.
 
+The extension does not request an installation or project path. One global
+installation can orchestrate multiple repositories.
+
 #### 1. Download and verify the release artifact
 
-Open the [v1.5.1 release](https://github.com/tomtastisch/codex-orchestrator/releases/tag/v1.5.1)
-and download both `codex-orchestrator-1.5.1.mcpb` and
-`codex-orchestrator-1.5.1.mcpb.sha256` into the same directory. On macOS or
+Open the [v1.5.2 release](https://github.com/tomtastisch/codex-orchestrator/releases/tag/v1.5.2)
+and download both `codex-orchestrator-1.5.2.mcpb` and
+`codex-orchestrator-1.5.2.mcpb.sha256` into the same directory. On macOS or
 Linux, verify the download before opening it:
 
 ```bash
-shasum -a 256 -c codex-orchestrator-1.5.1.mcpb.sha256
+shasum -a 256 -c codex-orchestrator-1.5.2.mcpb.sha256
 ```
 
 #### 2. Install in Claude Desktop
 
 In Claude Desktop, open
 `Settings → Extensions → Advanced settings → Install Extension`, select the
-verified `.mcpb` file and review the displayed permissions. For the required
-`project_directory`, select the exact Git repository root that Codex may
-modify. A home directory, repository subdirectory, parent directory or sibling
-repository is rejected. Explicit worktree paths are disabled in Desktop mode;
-workflows may use the selected repository directly or server-managed
-`worktree: auto`. Complete the installation and fully restart Claude Desktop if
-the connector does not appear immediately.
+verified `.mcpb` file and review the displayed permissions. No installation or
+project path is requested. Complete the installation and fully restart Claude
+Desktop if the connector does not appear immediately.
 
 Anthropic also supports double-clicking the `.mcpb` file or dragging it into
 Claude Desktop; the Extensions settings show the configuration and connection
@@ -236,11 +235,23 @@ In a new Claude Desktop conversation:
 1. Open `Add files, connectors, and more → Connectors` and require Codex
    Orchestrator to be connected.
 2. Open the slash-command/prompt picker and select `codex_orchestrator`, then
-   enter a bounded request. Select `orchestrator_status` to inspect an existing
-   plan. These are MCP prompts; Claude Desktop controls their final visual
-   prefix and menu presentation.
-3. Ask Claude to call `orchestrator_doctor`. Require `ok: true`, version `1.5.1`
-   and an authenticated local execution target before starting work.
+   enter a bounded request and, when offered, the exact absolute Git repository
+   root as `repo_path`. If `repo_path` is omitted, the prompt requires Claude to
+   ask for it before creating a plan; Claude must never infer it.
+   The repository path is selected per orchestration request, not during
+   extension installation. A home directory, repository subdirectory, parent
+   directory, non-Git directory or relative path is rejected. One installation
+   may be used with different exact Git roots in separate requests.
+3. Select `orchestrator_status` to inspect an existing plan. These are MCP
+   prompts; Claude Desktop controls their final visual prefix and menu
+   presentation.
+4. Ask Claude to call `orchestrator_doctor`. Require `ok: true`, version `1.5.2`,
+   `project_mode: "per-request-git-root"` and an authenticated local execution
+   target before starting work.
+
+Callers may choose `worktree: "none"` to work directly in the validated
+repository or `worktree: "auto"` for a server-managed isolated worktree.
+Arbitrary caller-supplied worktree paths are rejected.
 
 If connection startup fails on macOS, inspect `~/Library/Logs/Claude` and the
 extension state in Settings. Never solve a login error by pasting credentials

@@ -8,8 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 import {
-    assertProjectPathAllowed,
-    resolveConfiguredProjectRoot,
+    assertGitRepositoryRoot,
 } from "../dist/project-boundary.js";
 
 function createRepository(prefix) {
@@ -19,50 +18,39 @@ function createRepository(prefix) {
     return repository;
 }
 
-test("configured Desktop project must be one exact Git repository root", () => {
+test("every requested project must be one exact Git repository root", () => {
     const repository = createRepository("orch-project-root-");
     const nested = join(repository, "nested");
     const sibling = createRepository("orch-project-sibling-");
     const nonGit = mkdtempSync(join(tmpdir(), "orch-project-non-git-"));
     mkdirSync(nested);
 
-    assert.equal(resolveConfiguredProjectRoot(undefined), null);
     assert.throws(
-        () => resolveConfiguredProjectRoot("relative/repository"),
+        () => assertGitRepositoryRoot("relative/repository"),
         /must be an absolute path/,
     );
     assert.throws(
-        () => resolveConfiguredProjectRoot(nonGit),
-        /must be a Git repository root/,
+        () => assertGitRepositoryRoot(nonGit),
+        /repo_path must be a Git repository root/,
     );
-
-    const configuredRoot = resolveConfiguredProjectRoot(repository);
-    assert.equal(configuredRoot, realpathSync(repository));
-    assert.equal(assertProjectPathAllowed(repository, configuredRoot), configuredRoot);
+    assert.equal(assertGitRepositoryRoot(repository), realpathSync(repository));
+    assert.equal(assertGitRepositoryRoot(sibling), realpathSync(sibling));
     assert.throws(
-        () => assertProjectPathAllowed(nested, configuredRoot),
-        /outside the configured project repository/,
-    );
-    assert.throws(
-        () => assertProjectPathAllowed(sibling, configuredRoot),
-        /outside the configured project repository/,
-    );
-    assert.throws(
-        () => assertProjectPathAllowed("relative/repository", configuredRoot),
-        /must be an absolute path/,
+        () => assertGitRepositoryRoot(nested),
+        /repo_path must be a Git repository root/,
     );
 });
 
-test("MCP plan creation cannot escape the configured Desktop repository", async () => {
-    const repository = createRepository("orch-boundary-server-root-");
-    const sibling = createRepository("orch-boundary-server-sibling-");
+test("MCP validates each repository per request without installation configuration", async () => {
+    const repository = createRepository("orch-request-server-root-");
+    const sibling = createRepository("orch-request-server-sibling-");
+    const nonGit = mkdtempSync(join(tmpdir(), "orch-request-server-non-git-"));
     const orchHome = mkdtempSync(join(tmpdir(), "orch-boundary-server-home-"));
     const transport = new StdioClientTransport({
         command: process.execPath,
         args: [join(process.cwd(), "bundle", "server.mjs")],
         env: {
             ...process.env,
-            ORCH_PROJECT_DIR: repository,
             ORCH_HOME: orchHome,
             ORCH_CODEX_BIN: join(process.cwd(), "tests", "fixtures", "fake-codex.mjs"),
             ORCH_REQUIRE_HYPOTHESIS: "false",
@@ -77,16 +65,16 @@ test("MCP plan creation cannot escape the configured Desktop repository", async 
 
     try {
         await client.connect(transport);
-        const outside = await client.callTool({
+        const invalid = await client.callTool({
             name: "cluster_plan",
             arguments: {
                 goal: "must be rejected",
-                repo_path: sibling,
+                repo_path: nonGit,
                 clusters: [],
             },
         });
-        assert.equal(outside.isError, true);
-        assert.match(outside.content[0].text, /outside the configured project repository/);
+        assert.equal(invalid.isError, true);
+        assert.match(invalid.content[0].text, /repo_path must be a Git repository root/);
 
         const inside = await client.callTool({
             name: "cluster_plan",
@@ -97,7 +85,34 @@ test("MCP plan creation cannot escape the configured Desktop repository", async 
             },
         });
         assert.equal(inside.isError, undefined);
-        assert.equal(JSON.parse(inside.content[0].text).ok, true);
+        const insideReport = JSON.parse(inside.content[0].text);
+        assert.equal(insideReport.ok, true);
+
+        const mismatchedPlanRepository = await client.callTool({
+            name: "cluster_plan",
+            arguments: {
+                plan_id: insideReport.plan_id,
+                goal: "must keep the original repository",
+                repo_path: sibling,
+                clusters: [],
+            },
+        });
+        assert.equal(mismatchedPlanRepository.isError, true);
+        assert.match(
+            mismatchedPlanRepository.content[0].text,
+            /repo_path does not match the existing plan repository/,
+        );
+
+        const secondRepository = await client.callTool({
+            name: "cluster_plan",
+            arguments: {
+                goal: "second allowed plan",
+                repo_path: sibling,
+                clusters: [],
+            },
+        });
+        assert.equal(secondRepository.isError, undefined);
+        assert.equal(JSON.parse(secondRepository.content[0].text).ok, true);
 
         const explicitWorktree = await client.callTool({
             name: "task_start",
@@ -111,7 +126,7 @@ test("MCP plan creation cannot escape the configured Desktop repository", async 
             },
         });
         assert.equal(explicitWorktree.isError, true);
-        assert.match(explicitWorktree.content[0].text, /explicit worktree paths are disabled/);
+        assert.match(explicitWorktree.content[0].text, /Expected 'none' \| 'auto'/);
 
         const doctor = await client.callTool({
             name: "orchestrator_doctor",
@@ -119,7 +134,8 @@ test("MCP plan creation cannot escape the configured Desktop repository", async 
         });
         const report = JSON.parse(doctor.content[0].text);
         assert.equal(report.ok, true);
-        assert.equal(report.project_root, realpathSync(repository));
+        assert.equal(report.project_mode, "per-request-git-root");
+        assert.equal("project_root" in report, false);
     } finally {
         await client.close();
     }
