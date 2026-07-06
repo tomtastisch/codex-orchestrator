@@ -14,19 +14,22 @@ import type {
 /** @typedef LocalExecutionTargetOptions */
 export interface LocalExecutionTargetOptions {
     codexBin?: string;
+    codexHome?: string;
 }
 
 export class LocalExecutionTarget implements ExecutionTarget {
     readonly id = "local";
     readonly kind = "local" as const;
     private readonly codexBin: string;
+    private readonly codexHome?: string;
 
     constructor(options: LocalExecutionTargetOptions = {}) {
         this.codexBin = options.codexBin ?? config.codexBin;
+        this.codexHome = options.codexHome;
     }
 
     async doctor(): Promise<TargetHealth> {
-        const version = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5_000, "codex");
+        const version = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5_000, "codex", this.codexHome);
         if (version.code !== 0) {
             return {
                 targetId: this.id,
@@ -40,7 +43,7 @@ export class LocalExecutionTarget implements ExecutionTarget {
         }
 
         const match = version.stdout.match(/(\d+\.\d+\.\d+[^\s]*)/);
-        const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5_000, "codex");
+        const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5_000, "codex", this.codexHome);
         const auth = parseAuthStatus(login.code, `${login.stdout}\n${login.stderr}`);
         return {
             targetId: this.id,
@@ -54,7 +57,7 @@ export class LocalExecutionTarget implements ExecutionTarget {
     }
 
     startCodex(request: RunSliceOptions): RunningSlice {
-        return startSlice({ ...request, codexBin: this.codexBin });
+        return startSlice({ ...request, codexBin: this.codexBin, codexHome: this.codexHome });
     }
 
     async repositoryIdentity(repoPath: string): Promise<RepositoryIdentity> {
@@ -84,12 +87,15 @@ export class LocalExecutionTarget implements ExecutionTarget {
         cwd: string,
         timeoutMs: number,
         purpose: "codex" | "repository-check",
+        codexHome?: string,
     ): Promise<TargetCommandResult> {
+        const environment = buildChildEnvironment(process.env, purpose);
+        if (purpose === "codex" && codexHome) environment.CODEX_HOME = codexHome;
         const running = startManagedProcess({
             command,
             args,
             cwd,
-            env: buildChildEnvironment(process.env, purpose),
+            env: environment,
             timeoutMs,
             killGraceMs: config.limits.sliceKillGraceMs,
             maxStdoutBytes: 400_000,

@@ -59,15 +59,26 @@ const CheckNameSchema = z.enum([
     "typecheck",
 ]);
 
+const CodexHomeSchema = z.string().regex(
+    /^(?:~\/|\/)[A-Za-z0-9._/-]+$/,
+    "codexHome must be absolute or start with ~/ and contain no shell characters",
+).refine((value) => !value.split("/").includes(".."), "codexHome must not contain traversal");
+
 const WorkerRequestSchema = z.union([
     z.object({ ...RequestBase, operation: z.literal("handshake") }).strict(),
-    z.object({ ...RequestBase, operation: z.literal("doctor"), codexBin: z.string().min(1).optional() }).strict(),
+    z.object({
+        ...RequestBase,
+        operation: z.literal("doctor"),
+        codexBin: z.string().min(1).optional(),
+        codexHome: CodexHomeSchema,
+    }).strict(),
     safeScope({ operation: z.literal("repository.identity") }),
     safeScope({ operation: z.literal("check.run"), checkName: CheckNameSchema }),
     safeScope({ operation: z.literal("git.run"), args: GitArgumentsSchema }),
     safeScope({
         operation: z.literal("codex.run"),
         codexBin: z.string().min(1),
+        codexHome: CodexHomeSchema,
         options: z.object({
             threadId: z.string().nullable().optional(),
             prompt: z.string().max(2_000_000),
@@ -79,18 +90,23 @@ const WorkerRequestSchema = z.union([
             extraConfig: z.record(z.string()).optional(),
         }).strict(),
     }),
-    z.object({ ...RequestBase, operation: z.literal("auth.status"), codexBin: z.string().min(1) }).strict(),
+    z.object({
+        ...RequestBase,
+        operation: z.literal("auth.status"),
+        codexBin: z.string().min(1),
+        codexHome: CodexHomeSchema,
+    }).strict(),
     z.object({
         ...RequestBase,
         operation: z.literal("auth.bootstrap"),
-        codexHome: z.string().min(1),
+        codexHome: CodexHomeSchema,
         credentialBase64: z.string().max(128 * 1024),
     }).strict(),
     z.object({
         ...RequestBase,
         operation: z.literal("auth.login-token"),
         codexBin: z.string().min(1),
-        codexHome: z.string().min(1),
+        codexHome: CodexHomeSchema,
         tokenBase64: z.string().max(128 * 1024),
     }).strict(),
 ]);

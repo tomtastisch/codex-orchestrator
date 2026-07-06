@@ -8,6 +8,8 @@ import type { Effort, Sandbox, SliceOutcome } from "./types.js";
 export interface RunSliceOptions {
   /** Target-specific Codex binary. Defaults to the local configured binary. */
   codexBin?: string;
+  /** Target-specific persistent Codex home. */
+  codexHome?: string;
   repoPath: string;
   /** Wenn gesetzt: resume dieses Threads statt Neustart. */
   threadId?: string | null;
@@ -126,11 +128,13 @@ export function startSlice(opts: RunSliceOptions): RunningSlice {
   const { args } = buildCodexArgs(opts);
 
   const lines: string[] = [];
+  const childEnvironment = buildChildEnvironment(process.env, "codex");
+  if (opts.codexHome) childEnvironment.CODEX_HOME = opts.codexHome;
   const managed = startManagedProcess({
     command: opts.codexBin ?? config.codexBin,
     args,
     cwd: opts.repoPath,
-    env: buildChildEnvironment(process.env, "codex"),
+    env: childEnvironment,
     input: opts.prompt,
     timeoutMs: opts.timeoutMs,
     killGraceMs: config.limits.sliceKillGraceMs,

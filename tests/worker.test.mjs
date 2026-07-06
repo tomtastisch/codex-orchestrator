@@ -1,12 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const fakeCodex = resolve("tests/fixtures/fake-codex.mjs");
+const statefulFakeCodex = resolve("tests/fixtures/stateful-fake-codex.mjs");
 chmodSync(fakeCodex, 0o755);
+chmodSync(statefulFakeCodex, 0o755);
 
 test("worker handshake exposes protocol without environment or credentials", async () => {
     const worker = await import("../dist/worker/operations.js").catch(() => null);
@@ -25,6 +27,7 @@ test("worker doctor uses the remote Codex binary", async () => {
     const { executeWorkerRequest } = await import("../dist/worker/operations.js");
     const result = await executeWorkerRequest({
         requestId: randomUUID(), protocol: 1, operation: "doctor", codexBin: fakeCodex,
+        codexHome: mkdtempSync(join(tmpdir(), "orch-worker-doctor-home-")),
     });
 
     assert.equal(result.state, "healthy");
@@ -92,6 +95,7 @@ test("worker streams and returns a Codex slice", async () => {
         allowedRoot: process.cwd(),
         cwd: process.cwd(),
         codexBin: fakeCodex,
+        codexHome: mkdtempSync(join(tmpdir(), "orch-worker-slice-home-")),
         options: {
             prompt: "test",
             sandbox: "read-only",
@@ -105,4 +109,28 @@ test("worker streams and returns a Codex slice", async () => {
     assert.equal(result.status, "normal");
     assert.equal(result.threadId, "fake-thread");
     assert.equal(events.some((line) => line.includes("thread.started")), true);
+});
+
+test("worker doctor and slice share the requested persistent Codex home", async () => {
+    const { executeWorkerRequest } = await import("../dist/worker/operations.js");
+    const codexHome = mkdtempSync(join(tmpdir(), "orch-worker-stateful-home-"));
+    const doctorRequest = {
+        requestId: randomUUID(), protocol: 1, operation: "doctor",
+        codexBin: statefulFakeCodex, codexHome,
+    };
+    assert.equal((await executeWorkerRequest(doctorRequest)).state, "unhealthy");
+    writeFileSync(join(codexHome, "auth.json"), "synthetic", { mode: 0o600 });
+    assert.equal((await executeWorkerRequest({ ...doctorRequest, requestId: randomUUID() })).state, "healthy");
+
+    const result = await executeWorkerRequest({
+        requestId: randomUUID(), protocol: 1, operation: "codex.run",
+        allowedRoot: process.cwd(), cwd: process.cwd(),
+        codexBin: statefulFakeCodex, codexHome,
+        options: {
+            prompt: "test", sandbox: "read-only", model: "gpt-5.5",
+            effort: "low", network: false, timeoutMs: 2_000,
+        },
+    });
+    assert.equal(result.status, "normal");
+    assert.equal(result.threadId, "stateful-thread");
 });

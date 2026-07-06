@@ -94,6 +94,7 @@ export function createExecutionRuntime(configuration: OrchestratorConfig): {
             localRoot: remoteConfig.repository.localRoot,
             remoteRoot: remoteConfig.repository.remoteRoot,
             codexBin: remoteConfig.codexBin,
+            codexHome: remoteConfig.codexHome,
             workerRoot: remoteConfig.workerRoot,
         });
         const strategy: RemoteAuthStrategy = remoteConfig.auth.strategy === "existing"

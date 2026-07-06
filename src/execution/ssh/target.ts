@@ -26,6 +26,7 @@ export interface SshExecutionTargetOptions {
     localRoot: string;
     remoteRoot: string;
     codexBin: string;
+    codexHome: string;
     workerRoot?: string;
     workerBundlePath?: string;
     workerEntry?: string;
@@ -92,6 +93,7 @@ export class SshExecutionTarget implements ExecutionTarget {
             protocol: WORKER_PROTOCOL_VERSION,
             operation: "doctor",
             codexBin: this.options.codexBin,
+            codexHome: this.options.codexHome,
         }, 20_000) as TargetHealth;
         return { ...data, targetId: this.id, kind: this.kind };
     }
@@ -110,6 +112,7 @@ export class SshExecutionTarget implements ExecutionTarget {
                 allowedRoot: this.options.remoteRoot,
                 cwd: this.mapRepository(request.repoPath),
                 codexBin: this.options.codexBin,
+                codexHome: this.options.codexHome,
                 options: {
                     threadId: request.threadId,
                     prompt: request.prompt,

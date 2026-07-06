@@ -56,3 +56,26 @@ test("worker protocol rejects arbitrary check names and git subcommands", async 
         /args|Git/,
     );
 });
+
+test("worker protocol requires an explicit Codex home for Codex operations", async () => {
+    const { parseWorkerRequest } = await import("../dist/execution/ssh/protocol.js");
+    assert.throws(() => parseWorkerRequest({
+        requestId: randomUUID(), protocol: 1, operation: "doctor", codexBin: "/bin/codex",
+    }), /codexHome/);
+    const doctor = parseWorkerRequest({
+        requestId: randomUUID(), protocol: 1, operation: "doctor",
+        codexBin: "/bin/codex", codexHome: "/srv/codex-home",
+    });
+    assert.equal(doctor.codexHome, "/srv/codex-home");
+
+    const base = {
+        requestId: randomUUID(), protocol: 1, operation: "codex.run",
+        allowedRoot: "/srv/project", cwd: "/srv/project", codexBin: "/bin/codex",
+        options: {
+            prompt: "test", sandbox: "read-only", model: "gpt-5.5",
+            effort: "low", network: false, timeoutMs: 2_000,
+        },
+    };
+    assert.throws(() => parseWorkerRequest(base), /codexHome/);
+    assert.equal(parseWorkerRequest({ ...base, codexHome: "~/.codex" }).codexHome, "~/.codex");
+});
