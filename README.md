@@ -14,19 +14,24 @@ compaction, session switches and server restarts.
 ![Node >= 22.5](https://img.shields.io/badge/node-%3E%3D22.5-brightgreen)
 ![Status: stable](https://img.shields.io/badge/status-stable-green)
 
+Current version: 1.5.2
+
 ## Platform support
 
 | Runtime | Status | Distribution |
 |---|---|---|
-| Claude Code CLI | Produktionsbereit (production ready) | First-party GitHub marketplace |
-| Claude Desktop MCPB | In Entwicklung (in development) | GitHub Release v1.5.2; manual Desktop verification pending |
-| claude.ai Remote MCP | In Entwicklung (in development) | Planned for release 1.6.0 |
+| Claude Code CLI | Production ready | First-party GitHub marketplace |
+| Claude Desktop MCPB | Released; technical verification passed | Latest GitHub release, version 1.5.2 |
+| claude.ai Remote MCP | In development | Planned for release 1.6.0 |
 
-The repository currently ships a production-ready Claude Code plugin and a
-release-candidate Claude Desktop MCPB. Claude Desktop ist keine Voraussetzung
-für dieses Claude-Code-Plugin. claude.ai cannot start a local stdio server.
-Desktop and web support will be marked production ready only after their
-separate release artifacts pass installation and end-to-end verification.
+The repository ships a production-ready Claude Code plugin and the released
+Claude Desktop MCPB. Claude Desktop is not a prerequisite for the Claude Code
+plugin. The Desktop artifact, checksum, startup, MCP handshake,
+17 tools, two prompts and Doctor preflight have passed technical verification.
+The remaining conversation-level slash-prompt run is an operator acceptance
+check, not an unreleased implementation item. claude.ai cannot start this local
+stdio server; its separate HTTP/OAuth connector therefore remains in
+development for 1.6.0.
 
 ---
 
@@ -102,11 +107,9 @@ polls with a long-poll `task_wait`.
 
 ## Prerequisites
 
-Run the common checks on the machine where Claude will start the plugin or
-Desktop extension:
+Run the common checks on the machine that executes Codex:
 
 ```bash
-node --version       # must be >= 22.5; the server uses node:sqlite
 git --version
 codex --version
 codex login status  # must report Logged in
@@ -114,7 +117,6 @@ codex login status  # must report Logged in
 
 Required software and state:
 
-- Node.js ≥ 22.5.
 - Git for repository and worktree operations.
 - [Codex CLI](https://github.com/openai/codex), authenticated through
   `codex login`. The orchestrator uses this existing Codex session; it does not
@@ -122,9 +124,12 @@ Required software and state:
 - One supported Claude runtime:
   - [Claude Code CLI](https://code.claude.com/docs/en/overview), installed
     locally and authenticated. `claude --version` must succeed before installing
-    the Claude Code plugin.
+    the Claude Code plugin. Its local plugin server requires Node.js ≥ 22.5;
+    verify it with `node --version`.
   - [Claude Desktop](https://claude.com/download), installed locally and
-    authenticated before installing the MCPB.
+    authenticated before installing the MCPB. Desktop runs the MCPB with its
+    built-in Node.js runtime; a separate project installation path and a
+    separate local Node.js installation are not requested by the extension.
 - Write access to the selected project. Claude Code additionally needs write
   access to the user-specific plugin cache.
 
@@ -138,8 +143,7 @@ configuring a second host.
 ### As a Claude Code plugin (recommended, production ready)
 
 The plugin is available immediately from the project's First-party GitHub
-marketplace. It is not yet listed in the official Anthropic marketplace;
-Anthropic reviews and approves that directory independently.
+marketplace. This canonical repository is the current installation source.
 
 #### 1. Install from a terminal
 
@@ -193,7 +197,33 @@ claude plugin uninstall codex-orchestrator@codex-orchestrator --scope user --yes
 Project state remains in the project's `.orchestrator` directory unless the
 operator removes it separately.
 
-### Claude Desktop MCPB (release candidate)
+### Distribution and discovery status
+
+The channels have different owners and must not be conflated:
+
+| Channel | Owner | Current state |
+|---|---|---|
+| First-party GitHub marketplace | Codex Orchestrator project | Available now with the terminal commands above |
+| `claude-community` | Anthropic, reviewed third-party directory | Submission prepared; not yet listed |
+| `claude-plugins-official` | Anthropic, separately curated | No application process; inclusion is solely at Anthropic's discretion |
+| [Build with Claude](https://buildwithclaude.com) | Independent community directory | External discovery target; not an official Anthropic channel |
+| [Cross AI Tools](https://crossaitools.com) | Independent community directory | Crawler/editorial discovery target; not an official Anthropic channel |
+
+Anthropic's current process sends third-party plugins to `claude-community`
+through the [Console submission form](https://platform.claude.com/plugins/submit).
+After approval, users add `anthropics/claude-plugins-community` and install the
+plugin as `codex-orchestrator@claude-community`. Approval and catalog sync are
+external states; this README does not claim either before the public catalog
+contains the plugin. The separate `claude-plugins-official` catalog has no
+application process.
+
+Build with Claude and Cross AI Tools are independent community directories,
+not installation authorities. Their discovery pages may lag until their
+repository crawler or editorial review indexes this marketplace. The
+first-party commands in this README remain valid independently of those
+listings.
+
+### Claude Desktop MCPB (released in 1.5.2)
 
 Claude Desktop does not install Claude Code plugins. Release 1.5.2 provides a
 dedicated MCP Bundle (`.mcpb`, formerly `.dxt`) for local installation. It uses
@@ -206,7 +236,7 @@ installation can orchestrate multiple repositories.
 
 #### 1. Download and verify the release artifact
 
-Open the [v1.5.2 release](https://github.com/tomtastisch/codex-orchestrator/releases/tag/v1.5.2)
+Open the [latest release](https://github.com/tomtastisch/codex-orchestrator/releases/latest)
 and download both `codex-orchestrator-1.5.2.mcpb` and
 `codex-orchestrator-1.5.2.mcpb.sha256` into the same directory. On macOS or
 Linux, verify the download before opening it:
@@ -248,6 +278,11 @@ In a new Claude Desktop conversation:
 4. Ask Claude to call `orchestrator_doctor`. Require `ok: true`, version `1.5.2`,
    `project_mode: "per-request-git-root"` and an authenticated local execution
    target before starting work.
+
+The published bundle has already passed archive verification, startup,
+`initialize`, `tools/list`, `prompts/list` and Doctor checks. Steps 1–4 above
+are the final manual operator acceptance for the installed Desktop UI and one
+real conversation, not deferred development work.
 
 Callers may choose `worktree: "none"` to work directly in the validated
 repository or `worktree: "auto"` for a server-managed isolated worktree.
@@ -353,7 +388,16 @@ strictest strategy and fails if the remote Codex installation is not already
 authenticated. Local fallback is permitted only for retryable connectivity
 errors, never for authentication, host-key, protocol or repository mismatches.
 
-## Tools
+## MCP prompts and tools
+
+### Prompts
+
+| Prompt | Purpose |
+|---|---|
+| `codex_orchestrator` | Start a guided, gated orchestration request; accept or request the exact Git repository root per invocation |
+| `orchestrator_status` | Load and summarize durable plan, task, review and check state without mutation |
+
+### Tools
 
 | Tool | Purpose |
 |---|---|
@@ -501,16 +545,33 @@ part of the skill and the `models_list` output.
 
 ## Staying up to date
 
-- **The plugin itself.** Claude's marketplace lifecycle is authoritative:
+- The plugin itself follows Claude's marketplace lifecycle:
   `claude plugin marketplace update codex-orchestrator`, followed by a Claude
   restart or `/reload-plugins`. The MCP server never mutates its own installed
   bundle.
-- **The Codex CLI.** `codex_update` explicitly checks/applies Codex releases
-  (stable `latest` or pre-release `alpha`); no update runs implicitly at startup.
+- The Codex CLI is updated only after an explicit `codex_update` call. The tool
+  supports `check` and `apply` for `latest`, `alpha` and `beta`, and refuses to
+  apply while tasks are active.
+
+### Release policy
+
+GitHub exposes exactly one current stable GitHub release and one corresponding
+version tag. The latest supported artifact is always available through
+[releases/latest](https://github.com/tomtastisch/codex-orchestrator/releases/latest).
+Historical changes remain auditable in `CHANGELOG.md` and Git history instead
+of being presented as parallel installable versions.
+
+After a version change reaches `main`, the release workflow waits for the test
+and remote-acceptance jobs, rebuilds and verifies the release artifacts,
+publishes the new version, removes superseded releases and semantic-version
+tags, marks the new release as latest, and checks the one-release/one-tag
+invariant.
 
 Relevant environment variables: `ORCH_HOME`, `ORCH_CONFIG_FILE`,
-`ORCH_MAX_CONCURRENT`, `ORCH_SIGN_MERGE`, `ORCH_CODEX_BIN`,
-`ORCH_MODEL_FAST|BALANCED|STRONG`.
+`ORCH_GLOBAL`, `ORCH_MAX_CONCURRENT`, `ORCH_SIGN_MERGE`, `ORCH_CODEX_BIN`,
+`ORCH_REQUIRE_HYPOTHESIS`, `ORCH_MODEL_FAST`, `ORCH_MODEL_BALANCED` and
+`ORCH_MODEL_STRONG`. Security-relevant defaults remain server-controlled;
+unknown file configuration fields fail validation.
 
 ## Development
 
