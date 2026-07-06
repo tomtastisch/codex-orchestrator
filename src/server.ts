@@ -77,6 +77,7 @@ server.registerPrompt(
     argsSchema: {
       request: z.string().min(1).max(20_000),
       repo_path: z.string()
+        .min(1)
         .optional()
         .describe("Exact absolute Git repository root; omit only when Claude should ask the user."),
     },

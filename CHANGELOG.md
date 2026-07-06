@@ -13,7 +13,8 @@ All notable changes to this project are documented in this file.
   explicitly removes an inherited `ORCH_PROJECT_DIR` before loading the server.
 - Added an optional `repo_path` argument to the `codex_orchestrator` MCP prompt.
   When it is absent, Claude is instructed to ask for the exact absolute Git
-  repository root and never infer it.
+  repository root and never infer it. An explicitly supplied empty value is
+  rejected instead of being treated as absent.
 
 ### Security
 

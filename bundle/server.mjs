@@ -25228,7 +25228,7 @@ server.registerPrompt(
     description: "Plan and supervise a Codex implementation through gated clusters.",
     argsSchema: {
       request: external_exports.string().min(1).max(2e4),
-      repo_path: external_exports.string().optional().describe("Exact absolute Git repository root; omit only when Claude should ask the user.")
+      repo_path: external_exports.string().min(1).optional().describe("Exact absolute Git repository root; omit only when Claude should ask the user.")
     }
   },
   ({ request, repo_path }) => ({
