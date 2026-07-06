@@ -47,6 +47,20 @@ jobs:
       - run: node scripts/bundlecheck.mjs
       - run: npx --yes @anthropic-ai/claude-code plugin validate . --strict
       - run: npm audit --audit-level=moderate
+      - name: Read package version
+        id: package
+        shell: bash
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+      - name: Upload verified PR artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: quality-${{ github.sha }}-v${{ steps.package.outputs.version }}
+          path: |
+            release/*.mcpb
+            release/*.sha256
+            coverage/summary.txt
+          if-no-files-found: error
+          retention-days: 7
 
   remote-acceptance:
     runs-on: macos-15
