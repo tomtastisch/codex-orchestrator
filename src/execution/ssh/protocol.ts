@@ -1,4 +1,4 @@
-import { resolve, sep } from "node:path";
+import { isAbsolute, resolve, sep } from "node:path";
 import { z } from "zod";
 
 export const WORKER_PROTOCOL_VERSION = 1 as const;
@@ -59,10 +59,23 @@ const CheckNameSchema = z.enum([
     "typecheck",
 ]);
 
-const CodexHomeSchema = z.string().regex(
-    /^(?:~\/|\/)[A-Za-z0-9._/-]+$/,
-    "codexHome must be absolute or start with ~/ and contain no shell characters",
-).refine((value) => !value.split("/").includes(".."), "codexHome must not contain traversal");
+const CodexHomeSchema = z.string().superRefine((value, context) => {
+    if (!value.startsWith("~/") && !isAbsolute(value)) {
+        context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "codexHome must be absolute or start with ~/",
+        });
+    }
+    if (/[\0\r\n`$;&|<>"']/.test(value)) {
+        context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "codexHome contains unsupported control or shell characters",
+        });
+    }
+    if (value.split(/[\\/]/).includes("..")) {
+        context.addIssue({ code: z.ZodIssueCode.custom, message: "codexHome must not contain traversal" });
+    }
+});
 
 const WorkerRequestSchema = z.union([
     z.object({ ...RequestBase, operation: z.literal("handshake") }).strict(),

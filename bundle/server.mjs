@@ -3649,49 +3649,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative2, options, skipNormalization) {
+    function resolveComponent(base, relative3, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options), options);
-        relative2 = parse4(serialize(relative2, options), options);
+        relative3 = parse4(serialize(relative3, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative2.scheme) {
-        target.scheme = relative2.scheme;
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (!options.tolerant && relative3.scheme) {
+        target.scheme = relative3.scheme;
+        target.userinfo = relative3.userinfo;
+        target.host = relative3.host;
+        target.port = relative3.port;
+        target.path = removeDotSegments(relative3.path || "");
+        target.query = relative3.query;
       } else {
-        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-          target.userinfo = relative2.userinfo;
-          target.host = relative2.host;
-          target.port = relative2.port;
-          target.path = removeDotSegments(relative2.path || "");
-          target.query = relative2.query;
+        if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
+          target.userinfo = relative3.userinfo;
+          target.host = relative3.host;
+          target.port = relative3.port;
+          target.path = removeDotSegments(relative3.path || "");
+          target.query = relative3.query;
         } else {
-          if (!relative2.path) {
+          if (!relative3.path) {
             target.path = base.path;
-            if (relative2.query !== void 0) {
-              target.query = relative2.query;
+            if (relative3.query !== void 0) {
+              target.query = relative3.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative2.path[0] === "/") {
-              target.path = removeDotSegments(relative2.path);
+            if (relative3.path[0] === "/") {
+              target.path = removeDotSegments(relative3.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative2.path;
+                target.path = "/" + relative3.path;
               } else if (!base.path) {
-                target.path = relative2.path;
+                target.path = relative3.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative2.query;
+            target.query = relative3.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3699,7 +3699,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative2.fragment;
+      target.fragment = relative3.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -22145,13 +22145,20 @@ function redact(value) {
 }
 
 // src/runtime/process.ts
+function resolveManagedCommand(command, args, platform = process.platform) {
+  if (platform === "win32" && /\.(?:c|m)?js$/i.test(command)) {
+    return { command: process.execPath, args: [command, ...args] };
+  }
+  return { command, args };
+}
 function appendBounded(current, chunk, maximum) {
   const next = current + chunk.toString();
   if (Buffer.byteLength(next) <= maximum) return { value: next, exceeded: false };
   return { value: next.slice(-maximum), exceeded: true };
 }
 function startManagedProcess(options) {
-  const child = spawn(options.command, options.args, {
+  const resolved = resolveManagedCommand(options.command, options.args);
+  const child = spawn(resolved.command, resolved.args, {
     cwd: options.cwd,
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"]
@@ -23264,7 +23271,7 @@ async function diffSize(repoPath, target = new LocalExecutionTarget()) {
 // src/project-boundary.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { isAbsolute, relative } from "node:path";
 function canonicalDirectory(path, variable) {
   if (!isAbsolute(path)) {
     throw new Error(`${variable} must be an absolute path`);
@@ -23292,7 +23299,7 @@ function assertGitRepositoryRoot(candidate) {
     throw new Error("repo_path must be a Git repository root");
   }
   const gitRoot = canonicalDirectory(git3.stdout.trim(), "Git repository root");
-  if (gitRoot !== project) {
+  if (relative(project, gitRoot) !== "") {
     throw new Error("repo_path must be a Git repository root");
   }
   return project;
@@ -24617,7 +24624,7 @@ var ExecutionTargetRouter = class {
 // src/execution/ssh/target.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { existsSync as existsSync6 } from "node:fs";
-import { dirname as dirname3, isAbsolute as isAbsolute2, relative, resolve as resolve5, sep as sep2 } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute3, relative as relative2, resolve as resolve5, sep as sep2 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/execution/ssh/client.ts
@@ -24743,7 +24750,7 @@ var WorkerDeployer = class {
 };
 
 // src/execution/ssh/protocol.ts
-import { resolve as resolve4, sep } from "node:path";
+import { isAbsolute as isAbsolute2, resolve as resolve4, sep } from "node:path";
 var WORKER_PROTOCOL_VERSION = 1;
 var RequestBase = {
   requestId: external_exports.string().uuid(),
@@ -24795,10 +24802,23 @@ var CheckNameSchema = external_exports.enum([
   "lint",
   "typecheck"
 ]);
-var CodexHomeSchema = external_exports.string().regex(
-  /^(?:~\/|\/)[A-Za-z0-9._/-]+$/,
-  "codexHome must be absolute or start with ~/ and contain no shell characters"
-).refine((value) => !value.split("/").includes(".."), "codexHome must not contain traversal");
+var CodexHomeSchema = external_exports.string().superRefine((value, context) => {
+  if (!value.startsWith("~/") && !isAbsolute2(value)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "codexHome must be absolute or start with ~/"
+    });
+  }
+  if (/[\0\r\n`$;&|<>"']/.test(value)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "codexHome contains unsupported control or shell characters"
+    });
+  }
+  if (value.split(/[\\/]/).includes("..")) {
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "codexHome must not contain traversal" });
+  }
+});
 var WorkerRequestSchema = external_exports.union([
   external_exports.object({ ...RequestBase, operation: external_exports.literal("handshake") }).strict(),
   external_exports.object({
@@ -24890,8 +24910,8 @@ var SshExecutionTarget = class {
   mapRepository(localPath) {
     const localRoot = resolve5(this.options.localRoot);
     const candidate = resolve5(localPath);
-    const suffix = relative(localRoot, candidate);
-    if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute2(suffix)) {
+    const suffix = relative2(localRoot, candidate);
+    if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute3(suffix)) {
       throw new TargetError("TARGET_REPOSITORY", "Repository-Pfad liegt au\xDFerhalb des lokalen Mappings", this.id);
     }
     return resolve5(this.options.remoteRoot, suffix);

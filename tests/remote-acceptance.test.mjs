@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 test("remote acceptance helpers fail closed on missing binaries", async () => {
     const helpers = await import("../scripts/lib/remote-acceptance.mjs");
@@ -47,10 +47,10 @@ test("remote acceptance resolves real auth before isolating the SSH client home"
     const { resolveCodexAuthSource } = await import("../scripts/lib/remote-acceptance.mjs");
     assert.equal(
         resolveCodexAuthSource({}, "/Users/tester"),
-        "/Users/tester/.codex/auth.json",
+        join("/Users/tester", ".codex", "auth.json"),
     );
     assert.equal(
         resolveCodexAuthSource({ CODEX_HOME: "/secure/codex" }, "/Users/tester"),
-        "/secure/codex/auth.json",
+        join("/secure/codex", "auth.json"),
     );
 });

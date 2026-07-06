@@ -12,6 +12,7 @@ const workflowPath = ".github/workflows/release.yml";
  * @returns {string} isolated job source
  */
 function workflowJob(workflow, jobName) {
+    workflow = workflow.replaceAll("\r\n", "\n");
     const header = `  ${jobName}:\n`;
     const start = workflow.indexOf(header);
     assert.notEqual(start, -1, `workflow job missing: ${jobName}`);

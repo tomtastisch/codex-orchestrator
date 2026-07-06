@@ -92,7 +92,21 @@ test("managed process escalates an ignored SIGTERM to SIGKILL", async () => {
 
     const result = await running.done;
     assert.equal(result.termination, "timeout");
-    assert.equal(result.signal, "SIGKILL");
+    if (process.platform === "win32") assert.notEqual(result.signal, null);
+    else assert.equal(result.signal, "SIGKILL");
+});
+
+test("managed process resolves JavaScript launchers without a shell on Windows", async () => {
+    const runtime = await import("../dist/runtime/process.js");
+    const fixture = "C:\\fixtures\\fake-codex.mjs";
+    assert.deepEqual(
+        runtime.resolveManagedCommand(fixture, ["--version"], "win32"),
+        { command: process.execPath, args: [fixture, "--version"] },
+    );
+    assert.deepEqual(
+        runtime.resolveManagedCommand("codex", ["--version"], "win32"),
+        { command: "codex", args: ["--version"] },
+    );
 });
 
 test("merge eligibility requires confirmed cluster, review, checks and task ownership", async () => {

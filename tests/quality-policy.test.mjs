@@ -7,7 +7,7 @@ const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 
 test("package supports only the verified Node LTS lines", () => {
     assert.equal(pkg.engines.node, ">=22.5.0 <23 || >=24 <25");
-    assert.equal(readFileSync(".nvmrc", "utf8"), "24\n");
+    assert.equal(readFileSync(".nvmrc", "utf8").trim(), "24");
 });
 
 test("CI requires the complete Node and operating-system matrix", () => {

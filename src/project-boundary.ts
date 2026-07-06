@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { isAbsolute, relative } from "node:path";
 
 function canonicalDirectory(path: string, variable: string): string {
     if (!isAbsolute(path)) {
@@ -31,7 +31,7 @@ export function assertGitRepositoryRoot(candidate: string): string {
         throw new Error("repo_path must be a Git repository root");
     }
     const gitRoot = canonicalDirectory(git.stdout.trim(), "Git repository root");
-    if (gitRoot !== project) {
+    if (relative(project, gitRoot) !== "") {
         throw new Error("repo_path must be a Git repository root");
     }
     return project;

@@ -62,7 +62,7 @@ import {
   writeSync
 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { isAbsolute, join, resolve as resolve4 } from "node:path";
+import { isAbsolute as isAbsolute2, join, resolve as resolve4 } from "node:path";
 
 // src/config.ts
 import { homedir } from "node:os";
@@ -4493,13 +4493,20 @@ function buildChildEnvironment(source, purpose) {
 
 // src/runtime/process.ts
 import { spawn } from "node:child_process";
+function resolveManagedCommand(command, args, platform = process.platform) {
+  if (platform === "win32" && /\.(?:c|m)?js$/i.test(command)) {
+    return { command: process.execPath, args: [command, ...args] };
+  }
+  return { command, args };
+}
 function appendBounded(current, chunk, maximum) {
   const next = current + chunk.toString();
   if (Buffer.byteLength(next) <= maximum) return { value: next, exceeded: false };
   return { value: next.slice(-maximum), exceeded: true };
 }
 function startManagedProcess(options) {
-  const child = spawn(options.command, options.args, {
+  const resolved = resolveManagedCommand(options.command, options.args);
+  const child = spawn(resolved.command, resolved.args, {
     cwd: options.cwd,
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"]
@@ -4798,7 +4805,7 @@ function parseAuthStatus(code, output) {
 }
 
 // src/execution/ssh/protocol.ts
-import { resolve as resolve2, sep } from "node:path";
+import { isAbsolute, resolve as resolve2, sep } from "node:path";
 var WORKER_PROTOCOL_VERSION = 1;
 var RequestBase = {
   requestId: external_exports.string().uuid(),
@@ -4850,10 +4857,23 @@ var CheckNameSchema = external_exports.enum([
   "lint",
   "typecheck"
 ]);
-var CodexHomeSchema = external_exports.string().regex(
-  /^(?:~\/|\/)[A-Za-z0-9._/-]+$/,
-  "codexHome must be absolute or start with ~/ and contain no shell characters"
-).refine((value) => !value.split("/").includes(".."), "codexHome must not contain traversal");
+var CodexHomeSchema = external_exports.string().superRefine((value, context) => {
+  if (!value.startsWith("~/") && !isAbsolute(value)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "codexHome must be absolute or start with ~/"
+    });
+  }
+  if (/[\0\r\n`$;&|<>"']/.test(value)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "codexHome contains unsupported control or shell characters"
+    });
+  }
+  if (value.split(/[\\/]/).includes("..")) {
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "codexHome must not contain traversal" });
+  }
+});
 var WorkerRequestSchema = external_exports.union([
   external_exports.object({ ...RequestBase, operation: external_exports.literal("handshake") }).strict(),
   external_exports.object({
@@ -4939,7 +4959,7 @@ function assertAllowedPath(allowedRoot, cwd) {
 function resolveCodexHome(value) {
   if (value === "~") return homedir2();
   if (value.startsWith("~/")) return resolve4(homedir2(), value.slice(2));
-  if (!isAbsolute(value)) throw new Error("codexHome muss absolut sein oder mit ~/ beginnen");
+  if (!isAbsolute2(value)) throw new Error("codexHome muss absolut sein oder mit ~/ beginnen");
   return resolve4(value);
 }
 function bootstrapAuth(codexHomeValue, credentialBase64) {
