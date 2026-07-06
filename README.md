@@ -14,6 +14,19 @@ compaction, session switches and server restarts.
 ![Node >= 22.5](https://img.shields.io/badge/node-%3E%3D22.5-brightgreen)
 ![Status: stable](https://img.shields.io/badge/status-stable-green)
 
+## Platform support
+
+| Runtime | Status | Distribution |
+|---|---|---|
+| Claude Code CLI | Produktionsbereit (production ready) | First-party GitHub marketplace |
+| Claude Desktop MCPB | In Entwicklung (in development) | Planned for release 1.5.0 |
+| claude.ai Remote MCP | In Entwicklung (in development) | Planned for release 1.6.0 |
+
+The repository currently ships a local Claude Code plugin. Claude Desktop ist keine Voraussetzung für dieses Claude-Code-Plugin. claude.ai cannot start its
+local stdio server. Desktop and web support will be marked production ready only
+after their separate release artifacts pass installation and end-to-end
+verification.
+
 ---
 
 ## Why
@@ -88,19 +101,62 @@ polls with a long-poll `task_wait`.
 
 ## Prerequisites
 
-- Node.js ≥ 22.5 (uses the built-in `node:sqlite`)
-- [Codex CLI](https://github.com/openai/codex) installed and logged in
-  (`codex login status` → *Logged in*)
-- git (for worktree isolation and merge)
+Run every check on the machine where Claude Code will start the plugin:
+
+```bash
+node --version       # must be >= 22.5; the server uses node:sqlite
+git --version
+codex --version
+codex login status  # must report Logged in
+claude --version
+```
+
+Required software and state:
+
+- Node.js ≥ 22.5.
+- Git for repository and worktree operations.
+- [Codex CLI](https://github.com/openai/codex), authenticated through
+  `codex login`. The orchestrator uses this existing Codex session; it does not
+  replace Codex authentication.
+- [Claude Code CLI](https://code.claude.com/docs/en/overview), installed locally
+  and authenticated. Start `claude` once and complete its login flow before
+  installing the plugin.
+- Write access to the current project and the user-specific Claude plugin cache.
+
+Never paste `auth.json`, OAuth tokens or API keys into Claude or into an
+installation command. See [Remote Codex execution and persistent
+authentication](#remote-codex-execution-and-persistent-authentication) before
+configuring a second host.
 
 ## Installation
 
-### As a Claude Code plugin (recommended)
+### As a Claude Code plugin (recommended, production ready)
+
+The plugin is available immediately from the project's First-party GitHub
+marketplace. It is not yet listed in the official Anthropic marketplace;
+Anthropic reviews and approves that directory independently.
+
+#### 1. Install from a terminal
 
 ```bash
 claude plugin marketplace add tomtastisch/codex-orchestrator
 claude plugin install codex-orchestrator@codex-orchestrator --scope user
 ```
+
+No repository clone or local build is required. The marketplace installs the
+pre-bundled MCP server into Claude's user plugin cache.
+
+#### 2. Verify the installation
+
+```bash
+claude plugin list --json
+claude mcp list
+```
+
+Require `codex-orchestrator@codex-orchestrator` to be enabled at the documented
+version and `plugin:codex-orchestrator:codex-orchestrator` to report
+`Connected`. If Claude Code was already running, restart it or run
+`/reload-plugins` before checking the commands.
 
 This registers the MCP server (pre-bundled, no build step) and the
 `codex-orchestrator` skill, which teaches Claude the full orchestration
@@ -113,6 +169,39 @@ workflow. Start Claude in a project and invoke it with:
 Claude plugin skills are namespaced by design. The command therefore contains
 the plugin name and the skill name. The companion status command is
 `/codex-orchestrator:orchestrator-status [plan_id]`.
+
+#### 3. Update
+
+```bash
+claude plugin marketplace update codex-orchestrator
+```
+
+Restart Claude Code or run `/reload-plugins`, then repeat the two verification
+commands. The MCP server never mutates its own installed bundle.
+
+#### 4. Uninstall
+
+```bash
+claude plugin uninstall codex-orchestrator@codex-orchestrator --scope user --yes
+```
+
+Project state remains in the project's `.orchestrator` directory unless the
+operator removes it separately.
+
+### Claude Desktop MCPB (in development)
+
+Claude Desktop does not install Claude Code plugins. Release 1.5.0 will provide
+a dedicated MCP Bundle (`.mcpb`, formerly `.dxt`) for local installation through
+Claude Desktop's Extensions settings. Until that signed release artifact exists
+and passes a clean installation test, use Claude Code for the namespaced slash
+commands documented above.
+
+### claude.ai Remote MCP (in development)
+
+claude.ai cannot run this repository's local stdio plugin. Release 1.6.0 will
+provide a self-hosted, OAuth-protected Streamable HTTP connector for an
+operator-controlled host. Do not expose the current stdio process through a
+public tunnel and do not upload local Codex credentials to claude.ai.
 
 ### As a plain MCP server
 
