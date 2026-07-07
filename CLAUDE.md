@@ -74,3 +74,25 @@ cluster only when documented.
 You may use Codex as a read-only sparring partner at any time
 (`task_start` with `sandbox:read-only`, high/xhigh effort, single slice).
 Sparring is not implementation. You make the final decision.
+
+## Mandatory pull-request review gate
+1. Request review only after green CI and bind the evidence to the pull
+   request's exact-head commit. A stale-head review never authorizes merge.
+2. If Copilot is unavailable, record the fail-closed state as
+   `unavailable/unknown`. Classify quota exhaustion only from explicit provider
+   or operator evidence; API silence or an absent review is not quota evidence.
+3. Start a read-only independent review agent with clean context and no
+   implementation or chat history. The independent agent must author every
+   finding as a separate unresolved PR review thread. All unresolved PR review
+   threads remain open until evidence-backed processing. Chat-only findings do
+   not satisfy this gate.
+4. The implementation executor evaluates each thread, fixes confirmed findings
+   test-first, posts an in-thread reply with commit, test and CI evidence, and
+   may resolve the thread only after that evidence exists. Evidence-backed
+   disagreement is also recorded in the same thread before resolution.
+5. After every correction round, require a fresh exact-head review. Repeat the
+   review, correction, reply and resolve loop until explicit merge approval is
+   issued by the independent reviewer.
+6. Merge only when the reviewer approves the exact head, all required checks
+   are green, and there are zero unresolved review threads. Read back the
+   unresolved thread count immediately before merge.
