@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 
 test("repository checks never inherit parent secrets", async () => {
     const runtime = await import("../dist/runtime/environment.js").catch(() => null);
@@ -107,6 +110,45 @@ test("managed process resolves JavaScript launchers without a shell on Windows",
         runtime.resolveManagedCommand("codex", ["--version"], "win32"),
         { command: "codex", args: ["--version"] },
     );
+});
+
+test("managed process owns a shell-free cross-platform executable resolver", () => {
+    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+    const source = readFileSync("src/runtime/process.ts", "utf8");
+
+    assert.equal(pkg.dependencies["cross-spawn"], "^7.0.6");
+    assert.match(source, /from "cross-spawn"/);
+    assert.doesNotMatch(source, /shell\s*:\s*true/);
+});
+
+test("managed process launches a Windows command shim by its bare name", {
+    skip: process.platform !== "win32",
+}, async () => {
+    const runtime = await import("../dist/runtime/process.js");
+    const directory = mkdtempSync(join(tmpdir(), "orch-windows-shim-"));
+    try {
+        writeFileSync(join(directory, "codex.cmd"), "@echo off\r\necho shim-ok\r\n", "utf8");
+        const running = runtime.startManagedProcess({
+            command: "codex",
+            args: [],
+            cwd: directory,
+            env: {
+                ...process.env,
+                PATH: `${directory}${delimiter}${process.env.PATH ?? ""}`,
+            },
+            timeoutMs: 5_000,
+            killGraceMs: 100,
+            maxStdoutBytes: 8_192,
+            maxStderrBytes: 8_192,
+        });
+
+        const result = await running.done;
+        assert.equal(result.termination, "normal");
+        assert.equal(result.code, 0);
+        assert.match(result.stdout, /shim-ok/);
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
+    }
 });
 
 test("merge eligibility requires confirmed cluster, review, checks and task ownership", async () => {

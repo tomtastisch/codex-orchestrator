@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import spawn from "cross-spawn";
 import { redact } from "./redaction.js";
 
 /** @typedef ManagedTermination */
