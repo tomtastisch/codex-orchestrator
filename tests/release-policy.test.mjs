@@ -32,7 +32,7 @@ test("version changes on main publish and retain exactly one stable release", ()
         "workflow_call",
         "group: codex-orchestrator-release",
         "contents: write",
-        'node-version: ">=22.5.0 <23"',
+        'node-version: ">=22.13.0 <23"',
         "npm run typecheck",
         "npm test",
         "npm run verify:bundle",

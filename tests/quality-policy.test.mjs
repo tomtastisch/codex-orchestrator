@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+const mcpb = JSON.parse(readFileSync("packaging/mcpb/manifest.json", "utf8"));
 const ci = readFileSync(".github/workflows/ci.yml", "utf8").replaceAll("\r\n", "\n");
 
 test("package supports only the verified Node LTS lines", () => {
-    assert.equal(pkg.engines.node, ">=22.5.0 <23 || >=24 <25");
+    assert.equal(pkg.engines.node, ">=22.13.0 <23 || >=24 <25");
+    assert.equal(mcpb.compatibility.runtimes.node, ">=22.13.0");
     assert.equal(readFileSync(".nvmrc", "utf8").trim(), "24");
 });
 
@@ -16,14 +18,14 @@ test("CI requires the complete Node and operating-system matrix", () => {
         "ubuntu-latest",
         "macos-15",
         "windows-latest",
-        '"22.5.0"',
+        '"22.13.0"',
         '"22"',
         '"24.0.0"',
         '"24"',
     ]) {
         assert.ok(ci.includes(value), `CI matrix entry missing: ${value}`);
     }
-    assert.match(ci, /node:\s*\["22\.5\.0", "22", "24\.0\.0", "24"\]/);
+    assert.match(ci, /node:\s*\["22\.13\.0", "22", "24\.0\.0", "24"\]/);
     assert.match(ci, /portable:[\s\S]*fail-fast: false/);
     assert.match(
         ci,

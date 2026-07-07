@@ -46,7 +46,7 @@ const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 
 test("package supports only the verified Node LTS lines", () => {
-    assert.equal(pkg.engines.node, ">=22.5.0 <23 || >=24 <25");
+    assert.equal(pkg.engines.node, ">=22.13.0 <23 || >=24 <25");
     assert.equal(readFileSync(".nvmrc", "utf8"), "24\n");
 });
 
@@ -137,7 +137,7 @@ git commit -m "test: define cross-platform quality policy"
 Set both root engine entries in `package.json` and `package-lock.json` to:
 
 ```json
-"node": ">=22.5.0 <23 || >=24 <25"
+"node": ">=22.13.0 <23 || >=24 <25"
 ```
 
 Create `.nvmrc` with exactly:
@@ -462,7 +462,7 @@ Keep Release publishing in `.github/workflows/release.yml`; the quality artifact
 Update the README badge and prerequisites to state:
 
 ```text
-Node.js 22.5–22.x and Node.js 24.x are supported for external runtimes.
+Node.js 22.13–22.x and Node.js 24.x are supported for external runtimes.
 Ubuntu, macOS and Windows are tested in CI on both LTS lines.
 ```
 

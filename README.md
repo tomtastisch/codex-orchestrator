@@ -11,7 +11,7 @@ green. All process state is persisted in SQLite — it survives context
 compaction, session switches and server restarts.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Node 22.5–22.x or 24.x](https://img.shields.io/badge/node-22.5%E2%80%9322.x%20%7C%2024.x-brightgreen)
+![Node 22.13–22.x or 24.x](https://img.shields.io/badge/node-22.13%E2%80%9322.x%20%7C%2024.x-brightgreen)
 ![Status: stable](https://img.shields.io/badge/status-stable-green)
 
 Current version: 1.5.2
@@ -34,9 +34,11 @@ stdio server; its separate HTTP/OAuth connector therefore remains in
 development for 1.6.0.
 
 The externally installed server runtime is continuously verified with
-Node.js 22.5–22.x and Node.js 24.x on Ubuntu, macOS and Windows. Claude Desktop's
+Node.js 22.13–22.x and Node.js 24.x on Ubuntu, macOS and Windows. Claude Desktop's
 built-in Node.js runtime is independent of this external-runtime matrix. The
-canonical quality gate enforces these production-code coverage floors:
+22.13 minimum is required because the built-in `node:sqlite` module is available
+without the `--experimental-sqlite` start flag only from Node.js 22.13 onward.
+The canonical quality gate enforces these production-code coverage floors:
 75 % lines, 70 % branches and 75 % functions. CodeQL scans both
 JavaScript/TypeScript and GitHub Actions workflow code.
 
@@ -131,7 +133,7 @@ Required software and state:
 - One supported Claude runtime:
   - [Claude Code CLI](https://code.claude.com/docs/en/overview), installed
     locally and authenticated. `claude --version` must succeed before installing
-    the Claude Code plugin. Its local plugin server requires Node.js 22.5–22.x
+    the Claude Code plugin. Its local plugin server requires Node.js 22.13–22.x
     or Node.js 24.x; verify it with `node --version`.
   - [Claude Desktop](https://claude.com/download), installed locally and
     authenticated before installing the MCPB. Desktop runs the MCPB with its

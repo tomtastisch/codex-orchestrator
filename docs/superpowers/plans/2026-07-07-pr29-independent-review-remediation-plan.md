@@ -6,7 +6,7 @@
 
 **Architecture:** Keep process execution shell-free while delegating Windows executable-shim resolution to `cross-spawn`. Replace Node's loaded-module-only coverage mode with `c8 --all`, exercise the compiled MCP server and previously untested production modules, prove the declared Node lower bounds in CI, and pin every external action to an immutable commit. Encode the Copilot-unavailable fallback as repository policy; create a separate governance issue for API-driven availability evidence because GitHub exposes no reliable Copilot quota endpoint.
 
-**Tech Stack:** TypeScript 5.9, Node.js 22.5/22-current/24.0/24-current, Node test runner, c8 11, cross-spawn 7, GitHub Actions, GitHub GraphQL review threads.
+**Tech Stack:** TypeScript 5.9, Node.js 22.13/22-current/24.0/24-current, Node test runner, c8 11, cross-spawn 7, GitHub Actions, GitHub GraphQL review threads.
 
 ---
 
@@ -195,7 +195,7 @@ git commit -m "test: measure the complete production surface"
 
 - [ ] **Step 1: Write the failing CI matrix contract**
 
-Require exact matrix entries `"22.5.0"`, `"22"`, `"24.0.0"`, and `"24"` for each of `ubuntu-latest`, `macos-15`, and `windows-latest`. Reject a matrix containing only the moving major aliases.
+Require exact matrix entries `"22.13.0"`, `"22"`, `"24.0.0"`, and `"24"` for each of `ubuntu-latest`, `macos-15`, and `windows-latest`. Reject a matrix containing only the moving major aliases. The initial `22.5.0` probe is expected to fail because `node:sqlite` still requires `--experimental-sqlite` there.
 
 - [ ] **Step 2: Run the contract and verify RED**
 
@@ -203,11 +203,11 @@ Require exact matrix entries `"22.5.0"`, `"22"`, `"24.0.0"`, and `"24"` for each
 node --test tests/quality-policy.test.mjs
 ```
 
-Expected: failure because `22.5.0` and `24.0.0` are absent.
+Expected: failure because `22.13.0` and `24.0.0` are absent.
 
 - [ ] **Step 3: Extend the portable matrix**
 
-Set `matrix.node` to `["22.5.0", "22", "24.0.0", "24"]` while retaining all three operating systems and `fail-fast: false`. Do not weaken package engines or README claims.
+Set `matrix.node` to `["22.13.0", "22", "24.0.0", "24"]` while retaining all three operating systems and `fail-fast: false`. Align package engines, MCPB compatibility and README with the first no-extra-flag `node:sqlite` runtime.
 
 - [ ] **Step 4: Run the contract and commit**
 

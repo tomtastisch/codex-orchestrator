@@ -109,7 +109,7 @@ test("README documents implemented environment controls without stale claims", (
 });
 
 test("README documents the verified runtime and quality matrix", () => {
-    assert.match(readme, /Node\.js 22\.5–22\.x and Node\.js 24\.x/);
+    assert.match(readme, /Node\.js 22\.13–22\.x and Node\.js 24\.x/);
     for (const platform of ["Ubuntu", "macOS", "Windows"]) assert.ok(readme.includes(platform));
     assert.match(readme, /75 % lines, 70 % branches and 75 % functions/);
     assert.match(readme, /CodeQL/);

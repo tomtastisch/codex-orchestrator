@@ -157,7 +157,7 @@ Create `packaging/mcpb/manifest.json`:
   "license": "MIT",
   "compatibility": {
     "platforms": ["darwin", "win32", "linux"],
-    "runtimes": { "node": ">=22.5.0" }
+    "runtimes": { "node": ">=22.13.0" }
   },
   "user_config": {
     "project_directory": {
