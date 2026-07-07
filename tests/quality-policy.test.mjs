@@ -43,7 +43,7 @@ test("canonical quality gate enforces coverage and release-candidate checks", ()
         "plugin validate . --strict",
         "npm audit --audit-level=moderate",
     ]) assert.ok(ci.includes(command), `quality command missing: ${command}`);
-    assert.match(ci, /actions\/upload-artifact@v7/);
+    assert.match(ci, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7\.0\.1/);
     assert.match(ci, /retention-days: 7/);
     assert.match(ci, /coverage\/summary\.txt/);
     assert.match(ci, /release\/\*\.mcpb/);
@@ -56,11 +56,28 @@ test("CodeQL scans application and workflow code with current actions", () => {
     assert.match(codeql, /javascript-typescript/);
     assert.match(codeql, /language: actions/);
     assert.match(codeql, /queries: security-and-quality/);
-    assert.match(codeql, /github\/codeql-action\/init@v4/);
-    assert.match(codeql, /github\/codeql-action\/analyze@v4/);
+    assert.match(codeql, /github\/codeql-action\/init@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4\.36\.3/);
+    assert.match(codeql, /github\/codeql-action\/analyze@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4\.36\.3/);
     assert.match(codeql, /security-events: write/);
     assert.match(codeql, /actions: read/);
     assert.doesNotMatch(codeql, /packages: read/);
     assert.match(codeql, /schedule:/);
     assert.doesNotMatch(codeql, /continue-on-error:\s*true/);
+});
+
+test("every external GitHub Action is pinned to an immutable reviewed commit", () => {
+    for (const path of [
+        ".github/workflows/ci.yml",
+        ".github/workflows/codeql.yml",
+        ".github/workflows/release.yml",
+    ]) {
+        const workflow = readFileSync(path, "utf8").replaceAll("\r\n", "\n");
+        const externalUses = [...workflow.matchAll(/^\s*-?\s*uses:\s+([^\s#]+)(?:\s+#\s+(\S+))?\s*$/gm)]
+            .filter((match) => !match[1].startsWith("./"));
+        assert.ok(externalUses.length > 0, `external actions missing from ${path}`);
+        for (const [, reference, release] of externalUses) {
+            assert.match(reference, /^[\w.-]+\/[\w.-]+(?:\/[\w.-]+)?@[0-9a-f]{40}$/, reference);
+            assert.match(release ?? "", /^v\d+\.\d+\.\d+$/, `${reference} lacks an audited release comment`);
+        }
+    }
 });

@@ -78,18 +78,18 @@ test("version changes on main publish and retain exactly one stable release", ()
     assert.match(ci, /release:[\s\S]*uses: \.\/\.github\/workflows\/release\.yml/);
 });
 
-test("workflows use the current supported action majors", () => {
+test("workflows use the audited immutable action releases", () => {
     const ci = readFileSync(".github/workflows/ci.yml", "utf8");
     const release = readFileSync(workflowPath, "utf8");
     const workflows = `${ci}\n${release}`;
     const remoteAcceptance = workflowJob(ci, "remote-acceptance");
 
-    assert.match(ci, /actions\/checkout@v7/);
-    assert.match(ci, /actions\/setup-node@v6/);
-    assert.match(release, /actions\/checkout@v7/);
-    assert.match(release, /actions\/setup-node@v6/);
-    assert.match(ci, /actions\/upload-artifact@v7/);
-    assert.doesNotMatch(workflows, /actions\/(?:checkout|setup-node)@v4/);
+    assert.match(ci, /actions\/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7\.0\.0/);
+    assert.match(ci, /actions\/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6\.4\.0/);
+    assert.match(release, /actions\/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7\.0\.0/);
+    assert.match(release, /actions\/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6\.4\.0/);
+    assert.match(ci, /actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7\.0\.1/);
+    assert.doesNotMatch(workflows, /uses:\s+actions\/(?:checkout|setup-node)@v\d/);
     assert.match(remoteAcceptance, /^    runs-on: macos-15$/m);
     assert.doesNotMatch(ci, /runs-on: macos-latest/);
 });
