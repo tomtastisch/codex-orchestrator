@@ -12,9 +12,18 @@ test("package supports only the verified Node LTS lines", () => {
 
 test("CI requires the complete Node and operating-system matrix", () => {
     assert.match(ci, /^permissions:\n  contents: read$/m);
-    for (const value of ["ubuntu-latest", "macos-15", "windows-latest", '"22"', '"24"']) {
+    for (const value of [
+        "ubuntu-latest",
+        "macos-15",
+        "windows-latest",
+        '"22.5.0"',
+        '"22"',
+        '"24.0.0"',
+        '"24"',
+    ]) {
         assert.ok(ci.includes(value), `CI matrix entry missing: ${value}`);
     }
+    assert.match(ci, /node:\s*\["22\.5\.0", "22", "24\.0\.0", "24"\]/);
     assert.match(ci, /portable:[\s\S]*fail-fast: false/);
     assert.match(
         ci,
