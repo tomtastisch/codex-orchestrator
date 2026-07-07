@@ -6,18 +6,23 @@ import { join } from "node:path";
 import {
     coverageArguments,
     discoverTests,
-    extractCoverageSummary,
     formatCoverageMarkdown,
     writeCoverageEvidence,
 } from "../scripts/lib/coverage.mjs";
+import * as coverage from "../scripts/lib/coverage.mjs";
 
 test("coverage arguments scope metrics to production output and enforce floors", () => {
     assert.deepEqual(coverageArguments(["tests/a.test.mjs"]), [
-        "--experimental-test-coverage",
-        "--test-coverage-include=dist/**/*.js",
-        "--test-coverage-lines=75",
-        "--test-coverage-branches=70",
-        "--test-coverage-functions=75",
+        "--all",
+        "--include=dist/**/*.js",
+        "--check-coverage",
+        "--lines=75",
+        "--branches=70",
+        "--functions=75",
+        "--reporter=text",
+        "--reporter=json-summary",
+        "--reports-dir=coverage",
+        "node",
         "--test",
         "tests/a.test.mjs",
     ]);
@@ -36,14 +41,60 @@ test("test discovery returns only sorted top-level test modules", () => {
     }
 });
 
-test("coverage summary parser accepts Node's aggregate row", () => {
-    const summary = extractCoverageSummary("ℹ all files | 77.39 | 75.52 | 77.74 |\n");
-    assert.deepEqual(summary, { lines: 77.39, branches: 75.52, functions: 77.74 });
-    assert.match(formatCoverageMarkdown(summary), /77\.39 %/);
+test("coverage summary includes every compiled production module", () => {
+    assert.equal(typeof coverage.discoverProductionModules, "function");
+    assert.equal(typeof coverage.readCoverageSummary, "function");
+    const root = mkdtempSync(join(tmpdir(), "coverage-inventory-"));
+    try {
+        mkdirSync(join(root, "dist", "nested"), { recursive: true });
+        mkdirSync(join(root, "coverage"));
+        writeFileSync(join(root, "dist", "a.js"), "export {};\n");
+        writeFileSync(join(root, "dist", "nested", "b.js"), "export {};\n");
+        const summaryPath = join(root, "coverage", "coverage-summary.json");
+        const totals = {
+            lines: { pct: 77.39 },
+            branches: { pct: 75.52 },
+            functions: { pct: 77.74 },
+        };
+        writeFileSync(summaryPath, JSON.stringify({
+            total: totals,
+            [join(root, "dist", "a.js")]: totals,
+        }));
+
+        const modules = coverage.discoverProductionModules(root);
+        assert.deepEqual(modules, ["dist/a.js", "dist/nested/b.js"]);
+        assert.throws(
+            () => coverage.readCoverageSummary(root, modules),
+            /missing production modules.*dist\/nested\/b\.js/i,
+        );
+
+        writeFileSync(summaryPath, JSON.stringify({
+            total: totals,
+            [join(root, "dist", "a.js")]: totals,
+            [join(root, "dist", "nested", "b.js")]: totals,
+        }));
+        const summary = coverage.readCoverageSummary(root, modules);
+        assert.deepEqual(summary, { lines: 77.39, branches: 75.52, functions: 77.74 });
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
 });
 
-test("coverage summary parser fails closed on missing output", () => {
-    assert.throws(() => extractCoverageSummary("no coverage"), /aggregate coverage row/);
+test("coverage summary reader fails closed on malformed evidence", () => {
+    assert.equal(typeof coverage.readCoverageSummary, "function");
+    const root = mkdtempSync(join(tmpdir(), "coverage-malformed-"));
+    try {
+        mkdirSync(join(root, "coverage"));
+        writeFileSync(join(root, "coverage", "coverage-summary.json"), "{}", "utf8");
+        assert.throws(() => coverage.readCoverageSummary(root, []), /invalid coverage summary/i);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test("coverage Markdown formats c8 aggregate percentages", () => {
+    const summary = { lines: 77.39, branches: 75.52, functions: 77.74 };
+    assert.match(formatCoverageMarkdown(summary), /77\.39 %/);
 });
 
 test("coverage evidence is replaced atomically and appended to GitHub summary", () => {

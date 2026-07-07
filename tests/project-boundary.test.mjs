@@ -48,7 +48,7 @@ test("MCP validates each repository per request without installation configurati
     const orchHome = mkdtempSync(join(tmpdir(), "orch-boundary-server-home-"));
     const transport = new StdioClientTransport({
         command: process.execPath,
-        args: [join(process.cwd(), "bundle", "server.mjs")],
+        args: [join(process.cwd(), "dist", "server.js")],
         env: {
             ...process.env,
             ORCH_HOME: orchHome,

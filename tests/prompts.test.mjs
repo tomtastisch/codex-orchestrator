@@ -10,7 +10,7 @@ test("MCP exposes guided orchestration prompts independently of Claude Code", as
     const orchHome = mkdtempSync(join(tmpdir(), "orch-prompts-"));
     const transport = new StdioClientTransport({
         command: process.execPath,
-        args: [join(process.cwd(), "bundle", "server.mjs")],
+        args: [join(process.cwd(), "dist", "server.js")],
         env: { ...process.env, ORCH_HOME: orchHome },
         stderr: "pipe",
     });

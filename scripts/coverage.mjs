@@ -1,17 +1,23 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import {
     coverageArguments,
+    discoverProductionModules,
     discoverTests,
-    extractCoverageSummary,
+    readCoverageSummary,
     writeCoverageEvidence,
 } from "./lib/coverage.mjs";
 
 const root = process.cwd();
 const testFiles = discoverTests(root);
 if (testFiles.length === 0) throw new Error("No top-level tests/*.test.mjs files were found");
+const productionModules = discoverProductionModules(root);
+if (productionModules.length === 0) throw new Error("No compiled dist/**/*.js production modules were found");
+const require = createRequire(import.meta.url);
+const c8Entry = require.resolve("c8/bin/c8.js");
 
-const result = spawnSync(process.execPath, coverageArguments(testFiles), {
+const result = spawnSync(process.execPath, [c8Entry, ...coverageArguments(testFiles)], {
     cwd: root,
     encoding: "utf8",
     env: process.env,
@@ -25,7 +31,7 @@ if (result.error) throw result.error;
 if (result.status !== 0) {
     process.exitCode = result.status ?? 1;
 } else {
-    const summary = extractCoverageSummary(result.stdout);
+    const summary = readCoverageSummary(root, productionModules);
     const evidencePath = writeCoverageEvidence({
         root,
         summary,

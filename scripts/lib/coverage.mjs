@@ -1,23 +1,28 @@
-import { appendFileSync, mkdirSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 
 /** @typedef {{ lines: number, branches: number, functions: number }} CoverageSummary */
 
 export const COVERAGE_FLOORS = Object.freeze({ lines: 75, branches: 70, functions: 75 });
 
 /**
- * Build shell-free Node test-runner arguments for production coverage.
+ * Build shell-free c8 arguments for complete production coverage.
  *
  * @param {string[]} testFiles sorted repository-relative test paths
  * @returns {string[]} Node CLI arguments
  */
 export function coverageArguments(testFiles) {
     return [
-        "--experimental-test-coverage",
-        "--test-coverage-include=dist/**/*.js",
-        `--test-coverage-lines=${COVERAGE_FLOORS.lines}`,
-        `--test-coverage-branches=${COVERAGE_FLOORS.branches}`,
-        `--test-coverage-functions=${COVERAGE_FLOORS.functions}`,
+        "--all",
+        "--include=dist/**/*.js",
+        "--check-coverage",
+        `--lines=${COVERAGE_FLOORS.lines}`,
+        `--branches=${COVERAGE_FLOORS.branches}`,
+        `--functions=${COVERAGE_FLOORS.functions}`,
+        "--reporter=text",
+        "--reporter=json-summary",
+        "--reports-dir=coverage",
+        "node",
         "--test",
         ...testFiles,
     ];
@@ -37,18 +42,58 @@ export function discoverTests(root) {
 }
 
 /**
- * Parse Node's aggregate coverage row.
+ * Inventory every compiled production JavaScript module deterministically.
  *
- * @param {string} output complete Node test-runner stdout
+ * @param {string} root absolute repository root
+ * @returns {string[]} sorted repository-relative POSIX paths
+ */
+export function discoverProductionModules(root) {
+    const modules = [];
+    const visit = (directory) => {
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+            const path = join(directory, entry.name);
+            if (entry.isDirectory()) visit(path);
+            else if (entry.isFile() && entry.name.endsWith(".js")) {
+                modules.push(relative(root, path).split(sep).join("/"));
+            }
+        }
+    };
+    visit(join(root, "dist"));
+    return modules.sort();
+}
+
+/**
+ * Read c8 JSON evidence and reject incomplete or malformed production coverage.
+ *
+ * @param {string} root absolute repository root
+ * @param {string[]} productionModules repository-relative production module paths
  * @returns {CoverageSummary} numeric aggregate coverage
  */
-export function extractCoverageSummary(output) {
-    const match = output.match(/all files\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)/);
-    if (!match) throw new Error("Node test output is missing the aggregate coverage row");
+export function readCoverageSummary(root, productionModules) {
+    const path = join(root, "coverage", "coverage-summary.json");
+    let report;
+    try {
+        report = JSON.parse(readFileSync(path, "utf8"));
+    } catch (error) {
+        throw new Error(`Invalid coverage summary: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    const missing = productionModules.filter((module) => !(resolve(root, module) in report));
+    if (missing.length > 0) {
+        throw new Error(`Coverage summary is missing production modules: ${missing.join(", ")}`);
+    }
+
+    const percentage = (metric) => {
+        const value = report?.total?.[metric]?.pct;
+        if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) {
+            throw new Error(`Invalid coverage summary metric: ${metric}`);
+        }
+        return value;
+    };
     return {
-        lines: Number(match[1]),
-        branches: Number(match[2]),
-        functions: Number(match[3]),
+        lines: percentage("lines"),
+        branches: percentage("branches"),
+        functions: percentage("functions"),
     };
 }
 
