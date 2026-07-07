@@ -7379,7 +7379,7 @@ var require_cross_spawn = __commonJS({
       enoent.hookChildProcess(spawned, parsed);
       return spawned;
     }
-    function spawnSync4(command, args, options) {
+    function spawnSync3(command, args, options) {
       const parsed = parse4(command, args, options);
       const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
       result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
@@ -7387,7 +7387,7 @@ var require_cross_spawn = __commonJS({
     }
     module.exports = spawn3;
     module.exports.spawn = spawn3;
-    module.exports.sync = spawnSync4;
+    module.exports.sync = spawnSync3;
     module.exports._parse = parse4;
     module.exports._enoent = enoent;
   }
@@ -23856,15 +23856,15 @@ function centralAgentsMd() {
 }
 
 // src/updater.ts
-import { spawn as spawn2, spawnSync as spawnSync3 } from "node:child_process";
+var import_cross_spawn2 = __toESM(require_cross_spawn(), 1);
 function installedVersion(codexBin = "codex") {
-  const r = spawnSync3(codexBin, ["--version"], { encoding: "utf8" });
+  const r = import_cross_spawn2.default.sync(codexBin, ["--version"], { encoding: "utf8" });
   if (r.status !== 0) return null;
   const m = (r.stdout || "").match(/(\d+\.\d+\.\d+[^\s]*)/);
   return m ? m[1] : (r.stdout || "").trim() || null;
 }
 function latestVersion(channel) {
-  const r = spawnSync3("npm", ["view", `@openai/codex@${channel}`, "version"], { encoding: "utf8" });
+  const r = import_cross_spawn2.default.sync("npm", ["view", `@openai/codex@${channel}`, "version"], { encoding: "utf8" });
   if (r.status !== 0) return null;
   return (r.stdout || "").trim() || null;
 }
@@ -23889,7 +23889,7 @@ function checkForUpdate(channel, codexBin = "codex") {
 }
 function runUpdate(channel) {
   return new Promise((resolve6) => {
-    const child = spawn2("npm", ["install", "-g", `@openai/codex@${channel}`], { encoding: "utf8" });
+    const child = (0, import_cross_spawn2.default)("npm", ["install", "-g", `@openai/codex@${channel}`]);
     let out = "";
     child.stdout?.on("data", (d) => out += d.toString());
     child.stderr?.on("data", (d) => out += d.toString());

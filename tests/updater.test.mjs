@@ -1,5 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+
+test("updater owns the same shell-free cross-platform executable resolver", () => {
+    const source = readFileSync("src/updater.ts", "utf8");
+    assert.match(source, /from "cross-spawn"/);
+    assert.doesNotMatch(source, /from "node:child_process"/);
+    assert.doesNotMatch(source, /shell\s*:\s*true/);
+});
 
 test("Codex version parsing and semver ordering fail closed", async () => {
     const { installedVersion, isOlder } = await import("../dist/updater.js");
@@ -24,5 +34,44 @@ test("disabled startup updates perform no discovery or installation", async () =
     } finally {
         if (original === undefined) delete process.env.ORCH_AUTO_UPDATE;
         else process.env.ORCH_AUTO_UPDATE = original;
+    }
+});
+
+test("Windows updater resolves PATH-based codex.cmd and npm.cmd shims", {
+    skip: process.platform !== "win32",
+}, async () => {
+    const directory = mkdtempSync(join(tmpdir(), "orch-updater-shims-"));
+    const originalPath = process.env.PATH;
+    try {
+        writeFileSync(join(directory, "codex.cmd"), "@echo off\r\necho codex-cli 1.2.3\r\n", "utf8");
+        writeFileSync(join(directory, "npm.cmd"), [
+            "@echo off",
+            "if \"%1\"==\"view\" (",
+            "  echo 1.2.4",
+            "  exit /b 0",
+            ")",
+            "if \"%1\"==\"install\" (",
+            "  echo installed",
+            "  exit /b 0",
+            ")",
+            "exit /b 1",
+            "",
+        ].join("\r\n"), "utf8");
+        process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
+        const updater = await import("../dist/updater.js");
+
+        assert.equal(updater.installedVersion("codex"), "1.2.3");
+        assert.equal(updater.latestVersion("latest"), "1.2.4");
+        assert.deepEqual(updater.checkForUpdate("latest", "codex"), {
+            installed: "1.2.3",
+            latest: "1.2.4",
+            channel: "latest",
+            updateAvailable: true,
+        });
+        assert.deepEqual(await updater.runUpdate("latest"), { ok: true, output: "installed\r\n" });
+    } finally {
+        if (originalPath === undefined) delete process.env.PATH;
+        else process.env.PATH = originalPath;
+        rmSync(directory, { recursive: true, force: true });
     }
 });
