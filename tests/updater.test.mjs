@@ -46,15 +46,15 @@ test("Windows updater resolves PATH-based codex.cmd and npm.cmd shims", {
         writeFileSync(join(directory, "codex.cmd"), "@echo off\r\necho codex-cli 1.2.3\r\n", "utf8");
         writeFileSync(join(directory, "npm.cmd"), [
             "@echo off",
-            "if \"%1\"==\"view\" (",
-            "  echo 1.2.4",
-            "  exit /b 0",
-            ")",
-            "if \"%1\"==\"install\" (",
-            "  echo installed",
-            "  exit /b 0",
-            ")",
+            "if /I \"%~1\"==\"view\" goto view",
+            "if /I \"%~1\"==\"install\" goto install",
             "exit /b 1",
+            ":view",
+            "echo 1.2.4",
+            "exit /b 0",
+            ":install",
+            "echo installed",
+            "exit /b 0",
             "",
         ].join("\r\n"), "utf8");
         process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
