@@ -7,6 +7,9 @@ import { join, relative, resolve, sep } from "node:path";
 // the coverage runner, CI gate, README and tests never disagree on the floors.
 const limits = JSON.parse(readFileSync(new URL("../../ssot/limits.json", import.meta.url), "utf8"));
 
+// Source of truth: ssot/tests.json — the test-discovery schema (directory + suffix).
+const testSchema = JSON.parse(readFileSync(new URL("../../ssot/tests.json", import.meta.url), "utf8"));
+
 export const COVERAGE_FLOORS = Object.freeze({
     lines: limits.coverageLines,
     branches: limits.coverageBranches,
@@ -51,12 +54,12 @@ export function discoverTests(root) {
         for (const entry of readdirSync(directory, { withFileTypes: true })) {
             const path = join(directory, entry.name);
             if (entry.isDirectory()) visit(path);
-            else if (entry.isFile() && entry.name.endsWith(".test.mjs")) {
+            else if (entry.isFile() && entry.name.endsWith(testSchema.suffix)) {
                 tests.push(relative(root, path).split(sep).join("/"));
             }
         }
     };
-    visit(join(root, "tests"));
+    visit(join(root, testSchema.directory));
     return tests.sort();
 }
 

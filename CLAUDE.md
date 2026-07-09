@@ -86,11 +86,18 @@ Sparring is not implementation. You make the final decision.
    as `quota_exhausted`. The read-only independent review agent in step 3 then
    becomes mandatory and is the only permitted alternative review path for that
    pull request — it fully replaces Copilot rather than running in addition.
-3. Start a read-only independent review agent with clean context and no
-   implementation or chat history. The independent agent must author every
-   finding as a separate unresolved PR review thread. All unresolved PR review
-   threads remain open until evidence-backed processing. Chat-only findings do
-   not satisfy this gate.
+   The independent agent in step 3 is mandatory whenever Copilot cannot deliver
+   an exact-head review for any of these reasons:
+   - Copilot is **not installed or not configured** for the repository;
+   - the Copilot review **limit or quota is reached** (operator-attested, as above);
+   - Copilot is unreachable because **no connection** exists (network or API failure).
+   In every such case the independent Claude-internal QA agent runs with clean,
+   chat-free context and fully replaces Copilot for that pull request.
+3. Start a read-only independent review agent (the Claude-internal QA agent) with
+   clean context and no implementation or chat history. The independent agent must
+   author every finding as a separate unresolved PR review thread. All unresolved
+   PR review threads remain open until evidence-backed processing. Chat-only
+   findings do not satisfy this gate.
 4. The implementation executor evaluates each thread, fixes confirmed findings
    test-first, posts an in-thread reply with commit, test and CI evidence, and
    may resolve the thread only after that evidence exists. Evidence-backed

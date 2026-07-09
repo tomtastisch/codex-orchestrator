@@ -57,12 +57,20 @@ Hypothesen. Lieber nachfragen (`blocker`) als raten.
    Schritt 3 ist dann verpflichtend und der einzige zulässige alternative
    Review-Pfad für diesen Pull Request — er ersetzt Copilot vollständig und
    wird nicht zusätzlich zu ihm ausgeführt.
+   Der unabhängige Agent aus Schritt 3 ist immer dann verpflichtend, wenn
+   Copilot kein Exact-Head-Review liefern kann — aus einem dieser Gründe:
+   - Copilot ist **nicht installiert oder nicht konfiguriert** für das Repository;
+   - das Copilot-Review-**Limit bzw. die Quote ist erreicht** (Operator-bestätigt, siehe oben);
+   - Copilot ist nicht erreichbar, weil **keine Verbindung** besteht (Netzwerk- oder API-Fehler).
+   In jedem dieser Fälle läuft der unabhängige Claude-interne QA-Agent mit
+   sauberem, chatfreiem Kontext und ersetzt Copilot für diesen Pull Request
+   vollständig.
 3. Als verpflichtender Fallback arbeitet ein schreibgeschützter unabhängiger
-   Review-Agent mit neuem, kontextfreiem Auftrag (`clean context`) und ohne
-   Implementierungs- oder Chatverlauf. Der unabhängige Agent erstellt jedes
-   Finding selbst als separaten ungelösten PR-Review-Thread. Alle ungelösten
-   PR-Review-Threads bleiben bis zur evidenzbasierten Bearbeitung offen. Ein
-   Finding nur im Chat oder in einer Zusammenfassung genügt nicht.
+   Review-Agent (der Claude-interne QA-Agent) mit neuem, kontextfreiem Auftrag
+   (`clean context`) und ohne Implementierungs- oder Chatverlauf. Der unabhängige
+   Agent erstellt jedes Finding selbst als separaten ungelösten PR-Review-Thread.
+   Alle ungelösten PR-Review-Threads bleiben bis zur evidenzbasierten Bearbeitung
+   offen. Ein Finding nur im Chat oder in einer Zusammenfassung genügt nicht.
 4. Der Implementierungs-Executor prüft jeden Thread technisch, behebt bestätigte
    Findings einzeln testgetrieben, antwortet im Thread mit Commit-, Test- und
    CI-Nachweis und darf ihn erst danach auflösen (`reply` → `resolve`). Widerspruch wird

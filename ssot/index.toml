@@ -40,3 +40,12 @@ consumers = [
   "README.md (coverage floors)",
 ]
 contract_test = "tests/coverage-runner.test.mjs, tests/readme-contract.test.mjs"
+
+[tests]
+file = "ssot/tests.json"
+owns = ["directory", "suffix", "allowedTags"]
+consumers = [
+  "scripts/lib/coverage.mjs (discoverTests: directory + suffix)",
+  "package.json (scripts.test glob)",
+]
+contract_test = "tests/quality-policy.test.mjs"

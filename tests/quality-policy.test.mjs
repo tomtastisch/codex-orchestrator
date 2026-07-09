@@ -8,6 +8,14 @@ const ci = readFileSync(".github/workflows/ci.yml", "utf8").replaceAll("\r\n", "
 const release = readFileSync(".github/workflows/release.yml", "utf8").replaceAll("\r\n", "\n");
 const version = JSON.parse(readFileSync("ssot/version.json", "utf8"));
 const bundle = JSON.parse(readFileSync("ssot/bundle.json", "utf8"));
+const tests = JSON.parse(readFileSync("ssot/tests.json", "utf8"));
+
+test("ssot/tests.json governs the test-discovery schema and allowed tags", () => {
+    assert.ok(pkg.scripts.test.includes(`${tests.directory}/`), "npm test must scan the SSOT test directory");
+    assert.ok(pkg.scripts.test.includes(tests.suffix), "npm test must use the SSOT test suffix");
+    assert.ok(Array.isArray(tests.allowedTags) && tests.allowedTags.length > 0, "allowedTags must be a non-empty list");
+    assert.equal(new Set(tests.allowedTags).size, tests.allowedTags.length, "allowedTags must be unique");
+});
 
 test("ssot/ files are the single source of truth for every version consumer", () => {
     // Internal consistency of the source of truth itself.
