@@ -49,39 +49,69 @@ export interface EventRow {
 export interface HypothesisHeaderRow {
     id: string; plan_id: string | null; cluster_id: string | null; task_id: string | null;
 }
-
-// ---- raw SQL gateway (transitional escape hatch — NOT technology-agnostic) ----
-//
-// This is a raw prepared-statement surface whose callers embed SQL-dialect
-// strings. It is deliberately *not* part of the technology-agnostic contract:
-// it exists only so the one remaining in-repo DAO (`HypothesisRepo` in
-// `src/hypotheses.ts`) can issue its statements without importing `node:sqlite`
-// directly. It is structurally satisfied by node:sqlite's DatabaseSync/
-// StatementSync so the SQLite adapter exposes its handle without a wrapper.
-// Slated for removal once `HypothesisRepo` is migrated to explicit typed
-// `PersistenceStore` methods (follow-up cluster of #32). Do not add new callers.
-
-export interface SqlStatement {
-    get(...params: unknown[]): unknown;
-    all(...params: unknown[]): unknown[];
-    run(...params: unknown[]): { lastInsertRowid: number | bigint; changes: number | bigint };
+/** A hypothesis header row (`SELECT *` from `hypotheses`, incl. migration columns). */
+export interface HypothesisRow {
+    id: string; plan_id: string; text: string; status: string;
+    evidence: string | null; updated_at: string;
+    task_id: string | null; cluster_id: string | null; result: string | null;
+    latest_version: number; created_at: string | null;
 }
-export interface SqlDatabase {
-    prepare(sql: string): SqlStatement;
-    exec(sql: string): void;
+export interface ReviewRow {
+    id: string; cluster_id: string; ts: string; status: string;
+    findings_json: string | null; fixes_json: string | null; impact_json: string | null;
+}
+export interface CheckRow {
+    id: string; cluster_id: string; cmd: string;
+    exit_code: number | null; summary: string | null; ts: string;
+}
+export interface DecisionRow {
+    id: string; plan_id: string | null; cluster_id: string | null; topic: string;
+    question: string | null; decision: string; remember: number; created_at: string;
+}
+export interface AgentJobRow {
+    id: string; task_id: string | null; cluster_id: string | null; hypothesis_id: string | null;
+    model: string | null; effort: string | null; sandbox: string | null;
+    status: string; started_at: string; ended_at: string | null; summary: string | null;
+}
+export interface HypothesisReviewRow {
+    id: string; hypothesis_id: string | null; cluster_id: string | null; reviewer: string | null;
+    status: string; findings_json: string | null; synthesis: string | null; created_at: string;
+}
+export interface ArtifactRow {
+    id: string; plan_id: string | null; kind: string; path: string;
+    schema_version: number | null; artifact_version: number | null;
+    checksum: string | null; created_at: string;
+}
+export interface AuditEventRow {
+    id: string; ts: string; actor: string | null; action: string;
+    resource: string | null; detail_json: string | null; redacted: number;
+}
+
+/** Row for `insertHypothesisHeader` — the mutable header of a versioned hypothesis. */
+export interface HypothesisHeaderInsert {
+    id: string; planId: string; taskId: string | null; clusterId: string | null;
+    text: string; status: string; result: string; latestVersion: number;
+    createdAt: string; updatedAt: string;
+}
+/** Patch for `updateHypothesisHeader` — advances the header to a new version. */
+export interface HypothesisHeaderUpdate {
+    status: string; result: string; latestVersion: number; updatedAt: string;
+    taskId: string | null; clusterId: string | null; evidenceJson: string | null;
+}
+/** Row for `insertHypothesisVersion` — an append-only serialized snapshot. */
+export interface HypothesisVersionInsert {
+    id: string; hypothesisId: string; version: number; snapshotJson: string; createdAt: string;
 }
 
 // ---- the port ----
+//
+// The port exposes intention-revealing methods only — no raw SQL handle. The
+// concrete SQLite adapter (`src/db.ts`) owns every statement; callers depend on
+// this technology-agnostic surface. `tests/architecture-boundary.test.mjs`
+// forbids any consumer from reaching a raw `.db` gateway.
 
 /** Durable state abstraction the domain/application layers depend on. */
 export interface PersistenceStore {
-    /**
-     * Transitional raw SQL gateway — see the `SqlDatabase` note above. Used only
-     * by the co-located `HypothesisRepo` DAO; every other caller depends on the
-     * typed methods below. Not technology-agnostic; do not add new callers.
-     */
-    readonly db: SqlDatabase;
-
     getSchemaVersion(): number;
     setSchemaVersion(v: number): void;
     tx<T>(fn: () => T): T;
@@ -120,27 +150,42 @@ export interface PersistenceStore {
     // hypotheses
     addHypothesis(planId: string, text: string, evidence: string | null): string;
     setHypothesis(id: string, status: HypothesisStatus, evidence: string | null): void;
-    listHypotheses(planId: string): any[];
+    listHypotheses(planId: string): HypothesisRow[];
     /** Identity columns of every hypothesis header, ordered by creation. */
     listHypothesisHeaders(): HypothesisHeaderRow[];
 
+    // hypothesis versioning (append-only snapshots) — used by HypothesisRepo
+    insertHypothesisHeader(h: HypothesisHeaderInsert): void;
+    updateHypothesisHeader(id: string, h: HypothesisHeaderUpdate): void;
+    insertHypothesisVersion(v: HypothesisVersionInsert): void;
+    /** Serialized snapshot of a hypothesis' latest version, if any. */
+    latestHypothesisSnapshot(id: string): string | undefined;
+    /** Serialized snapshot of a specific version, if present. */
+    hypothesisSnapshotAt(id: string, version: number): string | undefined;
+    /** Every serialized snapshot of a hypothesis, ascending by version. */
+    hypothesisSnapshots(id: string): string[];
+    /** Hypothesis ids whose header matches a scope column, ordered by creation. */
+    hypothesisIdsByColumn(column: "task_id" | "cluster_id" | "plan_id", value: string): string[];
+    /** Rebind a hypothesis header to a task/cluster (provenance, no new version). */
+    bindHypothesisToTask(id: string, taskId: string, clusterId: string | null): void;
+
     // reviews / retros / checks
     addReview(clusterId: string, status: string, findings: unknown, fixes: unknown, impact: unknown): string;
-    latestReview(clusterId: string): any | undefined;
+    latestReview(clusterId: string): ReviewRow | undefined;
     addRetro(clusterId: string, content: string): string;
     /** Number of retrospectives recorded for a cluster (cluster-gate predicate). */
     countRetros(clusterId: string): number;
     addCheck(clusterId: string, cmd: string, exitCode: number | null, summary: string): string;
-    checksForCluster(clusterId: string): any[];
+    checksForCluster(clusterId: string): CheckRow[];
 
     // user_decisions
     recordDecision(d: {
         planId: string | null; clusterId: string | null; topic: string;
         question: string | null; decision: string; remember: boolean;
     }): string;
-    latestDecision(clusterId: string, topic: string): any | undefined;
-    standingPreference(planId: string | null, topic: string): any | undefined;
-    listDecisions(filter?: { clusterId?: string; planId?: string }): any[];
+    latestDecision(clusterId: string, topic: string): DecisionRow | undefined;
+    standingPreference(planId: string | null, topic: string): DecisionRow | undefined;
+    listDecisions(filter?: { clusterId?: string; planId?: string }): DecisionRow[];
 
     // agent_jobs
     recordAgentJob(j: {
@@ -148,21 +193,21 @@ export interface PersistenceStore {
         model: string; effort: string; sandbox: string; status: string;
     }): string;
     finishAgentJobByTask(taskId: string, status: string, summary: string | null): void;
-    listAgentJobs(filter?: { clusterId?: string; taskId?: string }): any[];
+    listAgentJobs(filter?: { clusterId?: string; taskId?: string }): AgentJobRow[];
 
     // hypothesis_reviews
     addHypothesisReview(r: {
         hypothesisId: string | null; clusterId: string | null; reviewer: string;
         status: string; findings: unknown; synthesis: string | null;
     }): string;
-    listHypothesisReviews(filter?: { hypothesisId?: string; clusterId?: string }): any[];
+    listHypothesisReviews(filter?: { hypothesisId?: string; clusterId?: string }): HypothesisReviewRow[];
 
     // artifacts
     addArtifact(a: {
         planId: string | null; kind: string; path: string;
         schemaVersion: number | null; artifactVersion: number | null; checksum: string | null;
     }): string;
-    listArtifacts(planId?: string): any[];
+    listArtifacts(planId?: string): ArtifactRow[];
     latestArtifactVersion(planId: string | null, kind: string): number;
 
     // audit_events
@@ -170,5 +215,5 @@ export interface PersistenceStore {
         actor: string | null; action: string; resource: string | null;
         detail: unknown; redacted?: boolean;
     }): string;
-    listAuditEvents(limit?: number): any[];
+    listAuditEvents(limit?: number): AuditEventRow[];
 }

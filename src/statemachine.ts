@@ -1,4 +1,4 @@
-import type { ClusterRow, PersistenceStore } from "./ports/persistence.js";
+import type { ClusterRow, DecisionRow, PersistenceStore } from "./ports/persistence.js";
 import type { ClusterStatus } from "./types.js";
 
 export type TransitionAction =
@@ -97,7 +97,7 @@ export class ClusterStateMachine {
     const hasFindings = Array.isArray(findings) && findings.length > 0;
     if (!hasFindings) return { ok: true };
     // Auffälligkeiten -> es braucht eine explizite Nutzerentscheidung (oder stehende Präferenz).
-    const accepts = (d: any) => d && (d.decision === "accept" || d.decision === "proceed");
+    const accepts = (d: DecisionRow | undefined) => d != null && (d.decision === "accept" || d.decision === "proceed");
     const pref = this.store.standingPreference(cluster.plan_id, "cluster_findings");
     if (accepts(pref)) return { ok: true };
     const decision = this.store.latestDecision(cluster.id, "cluster_findings");

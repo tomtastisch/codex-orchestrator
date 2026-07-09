@@ -33,9 +33,9 @@ export function buildPlanSnapshot(store: PersistenceStore, planId: string): any 
       const r = store.latestReview(c.id);
       return r ? { status: r.status, ts: r.ts } : null;
     })(),
-    checks: store.checksForCluster(c.id).map((k: any) => ({ cmd: k.cmd, exit_code: k.exit_code, ts: k.ts })),
+    checks: store.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code, ts: k.ts })),
   }));
-  const hypotheses = store.listHypotheses(planId).map((h: any) => ({
+  const hypotheses = store.listHypotheses(planId).map((h) => ({
     id: h.id, status: h.status, text: h.text, evidence: h.evidence, updated_at: h.updated_at,
   }));
   return {

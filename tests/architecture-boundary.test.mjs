@@ -95,20 +95,28 @@ test("domain-pure modules have no I/O imports at all", () => {
     }
 });
 
-test("domain-pure modules never reach through the raw SQL gateway either", () => {
+test("no persistence consumer reaches through a raw SQL gateway", () => {
     // Import purity is necessary but not sufficient: a module can be import-clean
-    // yet still execute SQL through the injected `store.db` escape hatch. A truly
-    // pure module touches neither. This guards the honesty of the `domainPure`
-    // claim against exactly the leak that would otherwise slip past an
-    // import-only scan (e.g. `store.db.prepare(...)`).
-    for (const pure of manifest.domainPure) {
-        const source = readFileSync(pure, "utf8");
+    // yet still execute SQL through a raw `store.db` handle. The port exposes no
+    // such handle (see the next test), so every consumer must go through typed
+    // methods. This scan is belt-and-suspenders against a `store.db.prepare(...)`
+    // ever reappearing outside the adapter.
+    for (const consumer of manifest.persistenceConsumers) {
+        const source = readFileSync(consumer, "utf8");
         assert.doesNotMatch(
             source,
             /\.db\s*\.\s*(?:prepare|exec)\b/,
-            `${pure} claims to be domain-pure but issues raw SQL via the .db gateway`,
+            `${consumer} must use typed PersistenceStore methods, not a raw .db gateway`,
         );
     }
+});
+
+test("the persistence port exposes no raw SQL gateway", () => {
+    // The port must stay technology-agnostic: no `readonly db`, no SqlDatabase/
+    // SqlStatement escape hatch that would couple consumers to the SQL engine.
+    const source = readFileSync(manifest.ports.persistence, "utf8");
+    assert.doesNotMatch(source, /\breadonly\s+db\b/, "the port must not expose a raw db handle");
+    assert.doesNotMatch(source, /\bSql(?:Database|Statement)\b/, "the port must not define a raw SQL gateway type");
 });
 
 test("the import scanner catches every re-introduction form (regression guard for the guard)", () => {

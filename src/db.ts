@@ -12,11 +12,22 @@ import { redactDeep, redactText } from "./redact.js";
 import { newId, nowIso } from "./system-clock.js";
 import {
   SCHEMA_VERSION,
+  type AgentJobRow,
+  type ArtifactRow,
+  type AuditEventRow,
+  type CheckRow,
   type ClusterRow,
+  type DecisionRow,
   type EventRow,
+  type HypothesisHeaderInsert,
   type HypothesisHeaderRow,
+  type HypothesisHeaderUpdate,
+  type HypothesisReviewRow,
+  type HypothesisRow,
+  type HypothesisVersionInsert,
   type PersistenceStore,
   type PlanRow,
+  type ReviewRow,
   type TaskRow,
 } from "./ports/persistence.js";
 
@@ -372,13 +383,67 @@ export class Store implements PersistenceStore {
     this.db.prepare("UPDATE hypotheses SET status=?, evidence=COALESCE(?,evidence), updated_at=? WHERE id=?")
       .run(status, evidence, nowIso(), id);
   }
-  listHypotheses(planId: string): any[] {
-    return this.db.prepare("SELECT * FROM hypotheses WHERE plan_id=? ORDER BY updated_at").all(planId);
+  listHypotheses(planId: string): HypothesisRow[] {
+    return this.db.prepare("SELECT * FROM hypotheses WHERE plan_id=? ORDER BY updated_at").all(planId) as unknown as HypothesisRow[];
   }
   listHypothesisHeaders(): HypothesisHeaderRow[] {
     return this.db.prepare(
       "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
     ).all() as unknown as HypothesisHeaderRow[];
+  }
+
+  // ---- hypothesis versioning (append-only snapshots; owns HypothesisRepo's SQL) ----
+  insertHypothesisHeader(h: HypothesisHeaderInsert): void {
+    this.db.prepare(
+      `INSERT INTO hypotheses
+         (id, plan_id, task_id, cluster_id, text, status, evidence,
+          result, latest_version, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(h.id, h.planId, h.taskId, h.clusterId, h.text, h.status, null,
+      h.result, h.latestVersion, h.createdAt, h.updatedAt);
+  }
+  updateHypothesisHeader(id: string, h: HypothesisHeaderUpdate): void {
+    this.db.prepare(
+      `UPDATE hypotheses
+         SET status=?, result=?, latest_version=?, updated_at=?,
+             task_id=?, cluster_id=?, evidence=?
+       WHERE id=?`
+    ).run(h.status, h.result, h.latestVersion, h.updatedAt, h.taskId, h.clusterId, h.evidenceJson, id);
+  }
+  insertHypothesisVersion(v: HypothesisVersionInsert): void {
+    this.db.prepare(
+      `INSERT INTO hypothesis_versions (id, hypothesis_id, version, snapshot_json, created_at)
+       VALUES (?,?,?,?,?)`
+    ).run(v.id, v.hypothesisId, v.version, v.snapshotJson, v.createdAt);
+  }
+  latestHypothesisSnapshot(id: string): string | undefined {
+    const row = this.db.prepare(
+      "SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version DESC LIMIT 1"
+    ).get(id) as unknown as { snapshot_json: string } | undefined;
+    return row?.snapshot_json;
+  }
+  hypothesisSnapshotAt(id: string, version: number): string | undefined {
+    const row = this.db.prepare(
+      "SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? AND version=?"
+    ).get(id, version) as unknown as { snapshot_json: string } | undefined;
+    return row?.snapshot_json;
+  }
+  hypothesisSnapshots(id: string): string[] {
+    const rows = this.db.prepare(
+      "SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version"
+    ).all(id) as unknown as { snapshot_json: string }[];
+    return rows.map((r) => r.snapshot_json);
+  }
+  hypothesisIdsByColumn(column: "task_id" | "cluster_id" | "plan_id", value: string): string[] {
+    // `column` is a closed union (not caller input), so the interpolation is safe.
+    const rows = this.db.prepare(
+      `SELECT id FROM hypotheses WHERE ${column}=? ORDER BY created_at`
+    ).all(value) as unknown as { id: string }[];
+    return rows.map((r) => r.id);
+  }
+  bindHypothesisToTask(id: string, taskId: string, clusterId: string | null): void {
+    this.db.prepare("UPDATE hypotheses SET task_id=?, cluster_id=COALESCE(?, cluster_id) WHERE id=?")
+      .run(taskId, clusterId, id);
   }
 
   // ---- reviews / retros / checks ----
@@ -390,8 +455,8 @@ export class Store implements PersistenceStore {
       JSON.stringify(fixes ?? null), JSON.stringify(impact ?? null));
     return id;
   }
-  latestReview(clusterId: string): any | undefined {
-    return this.db.prepare("SELECT * FROM reviews WHERE cluster_id=? ORDER BY ts DESC LIMIT 1").get(clusterId);
+  latestReview(clusterId: string): ReviewRow | undefined {
+    return this.db.prepare("SELECT * FROM reviews WHERE cluster_id=? ORDER BY ts DESC LIMIT 1").get(clusterId) as unknown as ReviewRow | undefined;
   }
   addRetro(clusterId: string, content: string): string {
     const id = newId("RT");
@@ -411,8 +476,8 @@ export class Store implements PersistenceStore {
     ).run(id, clusterId, cmd, exitCode, summary, nowIso());
     return id;
   }
-  checksForCluster(clusterId: string): any[] {
-    return this.db.prepare("SELECT * FROM checks WHERE cluster_id=? ORDER BY ts").all(clusterId);
+  checksForCluster(clusterId: string): CheckRow[] {
+    return this.db.prepare("SELECT * FROM checks WHERE cluster_id=? ORDER BY ts").all(clusterId) as unknown as CheckRow[];
   }
 
   // ---- user_decisions (Cluster 4: Nachkontrolle-Gate + Präferenzen) ----
@@ -427,25 +492,25 @@ export class Store implements PersistenceStore {
     return id;
   }
   /** Neueste Entscheidung zu einem Thema für einen Cluster. */
-  latestDecision(clusterId: string, topic: string): any | undefined {
+  latestDecision(clusterId: string, topic: string): DecisionRow | undefined {
     return this.db.prepare(
       "SELECT * FROM user_decisions WHERE cluster_id=? AND topic=? ORDER BY created_at DESC LIMIT 1"
-    ).get(clusterId, topic);
+    ).get(clusterId, topic) as unknown as DecisionRow | undefined;
   }
   /** Stehende Präferenz (remember=1) für einen Plan/ein Thema — plan-weit gültig. */
-  standingPreference(planId: string | null, topic: string): any | undefined {
+  standingPreference(planId: string | null, topic: string): DecisionRow | undefined {
     return this.db.prepare(
       "SELECT * FROM user_decisions WHERE topic=? AND remember=1 AND (plan_id IS ? OR plan_id=?) ORDER BY created_at DESC LIMIT 1"
-    ).get(topic, planId, planId);
+    ).get(topic, planId, planId) as unknown as DecisionRow | undefined;
   }
-  listDecisions(filter?: { clusterId?: string; planId?: string }): any[] {
+  listDecisions(filter?: { clusterId?: string; planId?: string }): DecisionRow[] {
     if (filter?.clusterId) {
-      return this.db.prepare("SELECT * FROM user_decisions WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
+      return this.db.prepare("SELECT * FROM user_decisions WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId) as unknown as DecisionRow[];
     }
     if (filter?.planId) {
-      return this.db.prepare("SELECT * FROM user_decisions WHERE plan_id=? ORDER BY created_at").all(filter.planId);
+      return this.db.prepare("SELECT * FROM user_decisions WHERE plan_id=? ORDER BY created_at").all(filter.planId) as unknown as DecisionRow[];
     }
-    return this.db.prepare("SELECT * FROM user_decisions ORDER BY created_at").all();
+    return this.db.prepare("SELECT * FROM user_decisions ORDER BY created_at").all() as unknown as DecisionRow[];
   }
 
   // ---- agent_jobs (Cluster 5: auditierbare Codex-Job-Historie) ----
@@ -469,10 +534,10 @@ export class Store implements PersistenceStore {
     this.db.prepare("UPDATE agent_jobs SET status=?, summary=COALESCE(?,summary), ended_at=? WHERE id=?")
       .run(status, summary, nowIso(), row.id);
   }
-  listAgentJobs(filter?: { clusterId?: string; taskId?: string }): any[] {
-    if (filter?.taskId) return this.db.prepare("SELECT * FROM agent_jobs WHERE task_id=? ORDER BY started_at").all(filter.taskId);
-    if (filter?.clusterId) return this.db.prepare("SELECT * FROM agent_jobs WHERE cluster_id=? ORDER BY started_at").all(filter.clusterId);
-    return this.db.prepare("SELECT * FROM agent_jobs ORDER BY started_at").all();
+  listAgentJobs(filter?: { clusterId?: string; taskId?: string }): AgentJobRow[] {
+    if (filter?.taskId) return this.db.prepare("SELECT * FROM agent_jobs WHERE task_id=? ORDER BY started_at").all(filter.taskId) as unknown as AgentJobRow[];
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM agent_jobs WHERE cluster_id=? ORDER BY started_at").all(filter.clusterId) as unknown as AgentJobRow[];
+    return this.db.prepare("SELECT * FROM agent_jobs ORDER BY started_at").all() as unknown as AgentJobRow[];
   }
 
   // ---- hypothesis_reviews (Cluster 5: lokale Nachkontrolle je Hypothese) ----
@@ -488,10 +553,10 @@ export class Store implements PersistenceStore {
       JSON.stringify(r.findings ?? null), r.synthesis, nowIso());
     return id;
   }
-  listHypothesisReviews(filter?: { hypothesisId?: string; clusterId?: string }): any[] {
-    if (filter?.hypothesisId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE hypothesis_id=? ORDER BY created_at").all(filter.hypothesisId);
-    if (filter?.clusterId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
-    return this.db.prepare("SELECT * FROM hypothesis_reviews ORDER BY created_at").all();
+  listHypothesisReviews(filter?: { hypothesisId?: string; clusterId?: string }): HypothesisReviewRow[] {
+    if (filter?.hypothesisId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE hypothesis_id=? ORDER BY created_at").all(filter.hypothesisId) as unknown as HypothesisReviewRow[];
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId) as unknown as HypothesisReviewRow[];
+    return this.db.prepare("SELECT * FROM hypothesis_reviews ORDER BY created_at").all() as unknown as HypothesisReviewRow[];
   }
 
   // ---- artifacts (Cluster 5/6: versionierte Ergebnisartefakte) ----
@@ -506,9 +571,9 @@ export class Store implements PersistenceStore {
     ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, nowIso());
     return id;
   }
-  listArtifacts(planId?: string): any[] {
-    if (planId) return this.db.prepare("SELECT * FROM artifacts WHERE plan_id=? ORDER BY created_at").all(planId);
-    return this.db.prepare("SELECT * FROM artifacts ORDER BY created_at").all();
+  listArtifacts(planId?: string): ArtifactRow[] {
+    if (planId) return this.db.prepare("SELECT * FROM artifacts WHERE plan_id=? ORDER BY created_at").all(planId) as unknown as ArtifactRow[];
+    return this.db.prepare("SELECT * FROM artifacts ORDER BY created_at").all() as unknown as ArtifactRow[];
   }
   latestArtifactVersion(planId: string | null, kind: string): number {
     const r = this.db.prepare(
@@ -532,7 +597,7 @@ export class Store implements PersistenceStore {
       JSON.stringify(safeDetail), 1);
     return id;
   }
-  listAuditEvents(limit = 500): any[] {
-    return this.db.prepare("SELECT * FROM audit_events ORDER BY ts DESC LIMIT ?").all(limit);
+  listAuditEvents(limit = 500): AuditEventRow[] {
+    return this.db.prepare("SELECT * FROM audit_events ORDER BY ts DESC LIMIT ?").all(limit) as unknown as AuditEventRow[];
   }
 }

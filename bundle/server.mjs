@@ -22274,6 +22274,68 @@ var Store = class {
       "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
     ).all();
   }
+  // ---- hypothesis versioning (append-only snapshots; owns HypothesisRepo's SQL) ----
+  insertHypothesisHeader(h) {
+    this.db.prepare(
+      `INSERT INTO hypotheses
+         (id, plan_id, task_id, cluster_id, text, status, evidence,
+          result, latest_version, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(
+      h.id,
+      h.planId,
+      h.taskId,
+      h.clusterId,
+      h.text,
+      h.status,
+      null,
+      h.result,
+      h.latestVersion,
+      h.createdAt,
+      h.updatedAt
+    );
+  }
+  updateHypothesisHeader(id, h) {
+    this.db.prepare(
+      `UPDATE hypotheses
+         SET status=?, result=?, latest_version=?, updated_at=?,
+             task_id=?, cluster_id=?, evidence=?
+       WHERE id=?`
+    ).run(h.status, h.result, h.latestVersion, h.updatedAt, h.taskId, h.clusterId, h.evidenceJson, id);
+  }
+  insertHypothesisVersion(v) {
+    this.db.prepare(
+      `INSERT INTO hypothesis_versions (id, hypothesis_id, version, snapshot_json, created_at)
+       VALUES (?,?,?,?,?)`
+    ).run(v.id, v.hypothesisId, v.version, v.snapshotJson, v.createdAt);
+  }
+  latestHypothesisSnapshot(id) {
+    const row = this.db.prepare(
+      "SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version DESC LIMIT 1"
+    ).get(id);
+    return row?.snapshot_json;
+  }
+  hypothesisSnapshotAt(id, version2) {
+    const row = this.db.prepare(
+      "SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? AND version=?"
+    ).get(id, version2);
+    return row?.snapshot_json;
+  }
+  hypothesisSnapshots(id) {
+    const rows = this.db.prepare(
+      "SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version"
+    ).all(id);
+    return rows.map((r) => r.snapshot_json);
+  }
+  hypothesisIdsByColumn(column, value) {
+    const rows = this.db.prepare(
+      `SELECT id FROM hypotheses WHERE ${column}=? ORDER BY created_at`
+    ).all(value);
+    return rows.map((r) => r.id);
+  }
+  bindHypothesisToTask(id, taskId, clusterId) {
+    this.db.prepare("UPDATE hypotheses SET task_id=?, cluster_id=COALESCE(?, cluster_id) WHERE id=?").run(taskId, clusterId, id);
+  }
   // ---- reviews / retros / checks ----
   addReview(clusterId, status, findings, fixes, impact) {
     const id = newId("R");
@@ -23537,7 +23599,7 @@ var ClusterStateMachine = class {
     }
     const hasFindings = Array.isArray(findings) && findings.length > 0;
     if (!hasFindings) return { ok: true };
-    const accepts = (d) => d && (d.decision === "accept" || d.decision === "proceed");
+    const accepts = (d) => d != null && (d.decision === "accept" || d.decision === "proceed");
     const pref = this.store.standingPreference(cluster.plan_id, "cluster_findings");
     if (accepts(pref)) return { ok: true };
     const decision = this.store.latestDecision(cluster.id, "cluster_findings");
@@ -24445,9 +24507,6 @@ var HypothesisRepo = class _HypothesisRepo {
     this.store = store2;
   }
   store;
-  get db() {
-    return this.store.db;
-  }
   /** Serialisiert eine Hypothese in ein stabiles, maschinenlesbares Objekt. */
   static serialize(h) {
     return {
@@ -24526,34 +24585,31 @@ var HypothesisRepo = class _HypothesisRepo {
       updatedAt: ts
     };
     return this.store.tx(() => {
-      this.db.prepare(
-        `INSERT INTO hypotheses
-             (id, plan_id, task_id, cluster_id, text, status, evidence,
-              result, latest_version, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-      ).run(
-        h.id,
-        h.planId ?? "",
+      this.store.insertHypothesisHeader({
+        id: h.id,
+        planId: h.planId ?? "",
         // Header-Spalte ist NOT NULL (Legacy); Snapshot behält echtes null.
-        h.taskId,
-        h.clusterId,
-        h.initialAssumption,
-        h.status,
-        null,
-        h.result,
-        h.version,
-        h.createdAt,
-        h.updatedAt
-      );
+        taskId: h.taskId,
+        clusterId: h.clusterId,
+        text: h.initialAssumption,
+        status: h.status,
+        result: h.result,
+        latestVersion: h.version,
+        createdAt: h.createdAt,
+        updatedAt: h.updatedAt
+      });
       this.writeVersion(h);
       return h;
     });
   }
   writeVersion(h) {
-    this.db.prepare(
-      `INSERT INTO hypothesis_versions (id, hypothesis_id, version, snapshot_json, created_at)
-         VALUES (?,?,?,?,?)`
-    ).run(newId("HV"), h.id, h.version, JSON.stringify(_HypothesisRepo.serialize(h)), h.updatedAt);
+    this.store.insertHypothesisVersion({
+      id: newId("HV"),
+      hypothesisId: h.id,
+      version: h.version,
+      snapshotJson: JSON.stringify(_HypothesisRepo.serialize(h)),
+      createdAt: h.updatedAt
+    });
   }
   /**
    * Aktualisiert eine Hypothese: erzeugt append-only eine neue Version aus der
@@ -24589,52 +24645,37 @@ var HypothesisRepo = class _HypothesisRepo {
         clusterId: patch.clusterId !== void 0 ? patch.clusterId : current.clusterId,
         updatedAt: ts
       };
-      this.db.prepare(
-        `UPDATE hypotheses
-             SET status=?, result=?, latest_version=?, updated_at=?,
-                 task_id=?, cluster_id=?, evidence=?
-           WHERE id=?`
-      ).run(
-        next.status,
-        next.result,
-        next.version,
-        next.updatedAt,
-        next.taskId,
-        next.clusterId,
-        next.evidence.length ? JSON.stringify(next.evidence) : null,
-        id
-      );
+      this.store.updateHypothesisHeader(id, {
+        status: next.status,
+        result: next.result,
+        latestVersion: next.version,
+        updatedAt: next.updatedAt,
+        taskId: next.taskId,
+        clusterId: next.clusterId,
+        evidenceJson: next.evidence.length ? JSON.stringify(next.evidence) : null
+      });
       this.writeVersion(next);
       return next;
     });
   }
   /** Lädt die neueste Version einer Hypothese. */
   get(id) {
-    const row = this.db.prepare(
-      `SELECT snapshot_json FROM hypothesis_versions
-         WHERE hypothesis_id=? ORDER BY version DESC LIMIT 1`
-    ).get(id);
-    if (!row) return void 0;
-    return _HypothesisRepo.deserialize(JSON.parse(row.snapshot_json));
+    const snapshot = this.store.latestHypothesisSnapshot(id);
+    if (snapshot === void 0) return void 0;
+    return _HypothesisRepo.deserialize(JSON.parse(snapshot));
   }
   /** Lädt eine konkrete Version. */
   getVersion(id, version2) {
-    const row = this.db.prepare(
-      `SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? AND version=?`
-    ).get(id, version2);
-    if (!row) return void 0;
-    return _HypothesisRepo.deserialize(JSON.parse(row.snapshot_json));
+    const snapshot = this.store.hypothesisSnapshotAt(id, version2);
+    if (snapshot === void 0) return void 0;
+    return _HypothesisRepo.deserialize(JSON.parse(snapshot));
   }
   /** Alle Versionen einer Hypothese (aufsteigend) — vollständige Historie. */
   listVersions(id) {
-    const rows = this.db.prepare(
-      `SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version`
-    ).all(id);
-    return rows.map((r) => _HypothesisRepo.deserialize(JSON.parse(r.snapshot_json)));
+    return this.store.hypothesisSnapshots(id).map((snapshot) => _HypothesisRepo.deserialize(JSON.parse(snapshot)));
   }
   listByColumn(column, value) {
-    const ids = this.db.prepare(`SELECT id FROM hypotheses WHERE ${column}=? ORDER BY created_at`).all(value);
-    return ids.map((r) => this.get(r.id)).filter((h) => !!h);
+    return this.store.hypothesisIdsByColumn(column, value).map((hid) => this.get(hid)).filter((h) => !!h);
   }
   listByTask(taskId) {
     return this.listByColumn("task_id", taskId);
@@ -24652,7 +24693,7 @@ var HypothesisRepo = class _HypothesisRepo {
    * inhaltliche Revision, erzeugt daher keine neue Version.
    */
   bindToTask(id, taskId, clusterId) {
-    this.db.prepare("UPDATE hypotheses SET task_id=?, cluster_id=COALESCE(?, cluster_id) WHERE id=?").run(taskId, clusterId, id);
+    this.store.bindHypothesisToTask(id, taskId, clusterId);
   }
   /** Neueste (rich) Hypothese, die an einen Task gebunden ist — für das Gate. */
   latestForTask(taskId) {

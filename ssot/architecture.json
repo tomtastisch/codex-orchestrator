@@ -20,7 +20,7 @@
     "src/statemachine.ts"
   ],
   "forbiddenPersistenceImports": ["node:sqlite", "sqlite"],
-  "$domainPureNote": "Modules proven free of BOTH I/O imports AND raw store.db access, enforced by tests/architecture-boundary.test.mjs. hypotheses.ts is intentionally excluded: HypothesisRepo is a DAO that issues raw SQL via the transitional db gateway, so it is a persistence consumer, not domain-pure.",
+  "$domainPureNote": "Modules proven free of BOTH I/O imports AND raw store.db access, enforced by tests/architecture-boundary.test.mjs. hypotheses.ts is intentionally excluded: HypothesisRepo is the hypothesis repository (DAO). It now orchestrates persistence exclusively through typed PersistenceStore methods (no raw SQL), but is classified a persistence consumer rather than domain-pure to reflect its repository role. The port exposes no raw SQL gateway; no consumer touches store.db.",
   "domainPure": ["src/statemachine.ts", "src/prompts.ts", "src/resolve.ts"],
   "forbiddenDomainImports": [
     "node:sqlite",

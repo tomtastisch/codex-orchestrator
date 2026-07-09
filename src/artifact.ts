@@ -81,7 +81,7 @@ export function buildResultArtifact(store: PersistenceStore, planId: string, opt
     id: c.id, ordinal: c.ordinal, name: c.name, status: c.status, goal: c.goal,
     acceptance: parseJson(c.acceptance_json), review_strategy: parseJson(c.review_strategy_json),
     latest_review: (() => { const r = store.latestReview(c.id); return r ? { status: r.status, ts: r.ts } : null; })(),
-    checks: store.checksForCluster(c.id).map((k: any) => ({ cmd: k.cmd, exit_code: k.exit_code })),
+    checks: store.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code })),
   }));
 
   // Alles strikt auf DIESEN Plan begrenzen (ein Store kann mehrere Pläne halten) —
@@ -151,7 +151,7 @@ export function buildResultArtifact(store: PersistenceStore, planId: string, opt
   if (nameOnly) filesChanged = nameOnly.split("\n").filter(Boolean);
 
   const testsRun = clusters.flatMap((c) =>
-    store.checksForCluster(c.id).map((k: any) => ({ cluster_id: c.id, cmd: k.cmd, exit_code: k.exit_code })),
+    store.checksForCluster(c.id).map((k) => ({ cluster_id: c.id, cmd: k.cmd, exit_code: k.exit_code })),
   );
 
   const findings = reviews.flatMap((r: any) =>
