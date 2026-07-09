@@ -14,14 +14,14 @@ compaction, session switches and server restarts.
 ![Node 22.13–22.x or 24.x](https://img.shields.io/badge/node-22.13%E2%80%9322.x%20%7C%2024.x-brightgreen)
 ![Status: stable](https://img.shields.io/badge/status-stable-green)
 
-Current version: 1.5.2
+Current version: 1.6.0
 
 ## Platform support
 
 | Runtime | Status | Distribution |
 |---|---|---|
 | Claude Code CLI | Production ready | First-party GitHub marketplace |
-| Claude Desktop MCPB | Released; technical verification passed | Latest GitHub release, version 1.5.2 |
+| Claude Desktop MCPB | Released; technical verification passed | Latest GitHub release, version 1.6.0 |
 | claude.ai Remote MCP | In development | Planned for release 1.6.0 |
 
 The repository ships a production-ready Claude Code plugin and the released
@@ -241,9 +241,9 @@ schemas, then applies independent adoption, quality and editorial criteria.
 The first-party commands in this README remain valid independently of those
 external listings.
 
-### Claude Desktop MCPB (released in 1.5.2)
+### Claude Desktop MCPB (released in 1.6.0)
 
-Claude Desktop does not install Claude Code plugins. Release 1.5.2 provides a
+Claude Desktop does not install Claude Code plugins. Release 1.6.0 provides a
 dedicated MCP Bundle (`.mcpb`, formerly `.dxt`) for local installation. It uses
 stdio and runs only on the local machine. It does not request, copy or bundle
 `auth.json`, OAuth tokens or API keys; the child Codex CLI uses the existing
@@ -255,12 +255,12 @@ installation can orchestrate multiple repositories.
 #### 1. Download and verify the release artifact
 
 Open the [latest release](https://github.com/tomtastisch/codex-orchestrator/releases/latest)
-and download both `codex-orchestrator-1.5.2.mcpb` and
-`codex-orchestrator-1.5.2.mcpb.sha256` into the same directory. On macOS or
+and download both `codex-orchestrator-1.6.0.mcpb` and
+`codex-orchestrator-1.6.0.mcpb.sha256` into the same directory. On macOS or
 Linux, verify the download before opening it:
 
 ```bash
-shasum -a 256 -c codex-orchestrator-1.5.2.mcpb.sha256
+shasum -a 256 -c codex-orchestrator-1.6.0.mcpb.sha256
 ```
 
 #### 2. Install in Claude Desktop
@@ -293,7 +293,7 @@ In a new Claude Desktop conversation:
 3. Select `orchestrator_status` to inspect an existing plan. These are MCP
    prompts; Claude Desktop controls their final visual prefix and menu
    presentation.
-4. Ask Claude to call `orchestrator_doctor`. Require `ok: true`, version `1.5.2`,
+4. Ask Claude to call `orchestrator_doctor`. Require `ok: true`, version `1.6.0`,
    `project_mode: "per-request-git-root"` and an authenticated local execution
    target before starting work.
 

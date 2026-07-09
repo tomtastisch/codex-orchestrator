@@ -1,6 +1,6 @@
 {
   "name": "codex-orchestrator",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "MCP server that lets Claude orchestrate OpenAI Codex as a supervised implementation executor — checkpoint slices, server-enforced quality gates, persistent state.",
   "type": "module",
   "license": "MIT",

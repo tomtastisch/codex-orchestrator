@@ -22927,7 +22927,7 @@ function isProcessAlive(pid) {
 }
 
 // src/version.ts
-var ORCHESTRATOR_VERSION = "1.5.2";
+var ORCHESTRATOR_VERSION = "1.6.0";
 
 // src/db.ts
 import { DatabaseSync } from "node:sqlite";
@@ -23384,9 +23384,12 @@ var Store = class {
     return rows.map((r) => r.snapshot_json);
   }
   hypothesisIdsByColumn(column, value) {
-    const rows = this.db.prepare(
-      `SELECT id FROM hypotheses WHERE ${column}=? ORDER BY created_at`
-    ).all(value);
+    const SQL = {
+      task_id: "SELECT id FROM hypotheses WHERE task_id=? ORDER BY created_at",
+      cluster_id: "SELECT id FROM hypotheses WHERE cluster_id=? ORDER BY created_at",
+      plan_id: "SELECT id FROM hypotheses WHERE plan_id=? ORDER BY created_at"
+    };
+    const rows = this.db.prepare(SQL[column]).all(value);
     return rows.map((r) => r.id);
   }
   bindHypothesisToTask(id, taskId, clusterId) {

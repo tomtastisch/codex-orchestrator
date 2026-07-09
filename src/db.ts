@@ -435,10 +435,14 @@ export class Store implements PersistenceStore {
     return rows.map((r) => r.snapshot_json);
   }
   hypothesisIdsByColumn(column: "task_id" | "cluster_id" | "plan_id", value: string): string[] {
-    // `column` is a closed union (not caller input), so the interpolation is safe.
-    const rows = this.db.prepare(
-      `SELECT id FROM hypotheses WHERE ${column}=? ORDER BY created_at`
-    ).all(value) as unknown as { id: string }[];
+    // Fixed, fully-literal SQL per scope column — no string interpolation into
+    // the statement, so there is no SQL-injection surface even in principle.
+    const SQL = {
+      task_id: "SELECT id FROM hypotheses WHERE task_id=? ORDER BY created_at",
+      cluster_id: "SELECT id FROM hypotheses WHERE cluster_id=? ORDER BY created_at",
+      plan_id: "SELECT id FROM hypotheses WHERE plan_id=? ORDER BY created_at",
+    } as const;
+    const rows = this.db.prepare(SQL[column]).all(value) as unknown as { id: string }[];
     return rows.map((r) => r.id);
   }
   bindHypothesisToTask(id: string, taskId: string, clusterId: string | null): void {
