@@ -21829,6 +21829,8 @@ function nowIso() {
 function newId(prefix) {
   return `${prefix}_${randomUUID().slice(0, 12)}`;
 }
+var systemClock = { now: nowIso };
+var systemIdGenerator = { newId };
 
 // src/events.ts
 function normalizeCommand(command) {
@@ -22491,13 +22493,15 @@ var SessionManager = class {
   constructor(store, targetFor = (() => {
     const local = new LocalExecutionTarget();
     return () => local;
-  })()) {
+  })(), ids = systemIdGenerator) {
     this.store = store;
     this.targetFor = targetFor;
+    this.ids = ids;
     this.emitter.setMaxListeners(0);
   }
   store;
   targetFor;
+  ids;
   controls = /* @__PURE__ */ new Map();
   emitter = new EventEmitter();
   active = 0;
@@ -22567,7 +22571,7 @@ var SessionManager = class {
     if (next) next();
   }
   createTask(args) {
-    const id = newId("T");
+    const id = this.ids.newId("T");
     return this.store.createTask({
       id,
       cluster_id: args.clusterId,
@@ -23070,8 +23074,9 @@ CREATE TABLE IF NOT EXISTS checks (
 );
 `;
 var Store = class {
-  db;
-  constructor(dbPath) {
+  constructor(dbPath, clock = systemClock, ids = systemIdGenerator) {
+    this.clock = clock;
+    this.ids = ids;
     const directory = dirname(dbPath);
     mkdirSync(directory, { recursive: true });
     if (process.platform !== "win32") chmodSync(directory, 448);
@@ -23084,6 +23089,9 @@ var Store = class {
     runMigrations(this.db);
     this.runMigrations();
   }
+  clock;
+  ids;
+  db;
   columns(table) {
     const rows = this.db.prepare(`PRAGMA table_info(${table})`).all();
     return new Set(rows.map((r) => r.name));
@@ -23153,10 +23161,10 @@ var Store = class {
   }
   // ---- plans ----
   createPlan(goal, constraints, repoPath) {
-    const id = newId("P");
+    const id = this.ids.newId("P");
     this.db.prepare(
       "INSERT INTO plans(id,goal,constraints,repo_path,created_at,status) VALUES(?,?,?,?,?,?)"
-    ).run(id, goal, constraints, repoPath, nowIso(), "active");
+    ).run(id, goal, constraints, repoPath, this.clock.now(), "active");
     return this.getPlan(id);
   }
   getPlan(id) {
@@ -23271,9 +23279,9 @@ var Store = class {
   addEvent(taskId, kind, payload) {
     const info = this.db.prepare(
       "INSERT INTO events(task_id,ts,kind,payload_json) VALUES(?,?,?,?)"
-    ).run(taskId, nowIso(), kind, JSON.stringify(payload ?? {}));
+    ).run(taskId, this.clock.now(), kind, JSON.stringify(payload ?? {}));
     const seq = Number(info.lastInsertRowid);
-    return { seq, task_id: taskId, ts: nowIso(), kind, payload_json: JSON.stringify(payload ?? {}) };
+    return { seq, task_id: taskId, ts: this.clock.now(), kind, payload_json: JSON.stringify(payload ?? {}) };
   }
   eventsAfter(taskId, cursor, kinds, limit = 200) {
     let rows;
@@ -23296,10 +23304,10 @@ var Store = class {
   }
   // ---- injections ----
   addInjection(taskId, message, priority) {
-    const id = newId("I");
+    const id = this.ids.newId("I");
     this.db.prepare(
       "INSERT INTO injections(id,task_id,ts,priority,message,delivered_at) VALUES(?,?,?,?,?,NULL)"
-    ).run(id, taskId, nowIso(), priority, message);
+    ).run(id, taskId, this.clock.now(), priority, message);
     return id;
   }
   pendingInjections(taskId) {
@@ -23309,18 +23317,18 @@ var Store = class {
   }
   markInjectionsDelivered(ids) {
     const stmt = this.db.prepare("UPDATE injections SET delivered_at=? WHERE id=?");
-    for (const id of ids) stmt.run(nowIso(), id);
+    for (const id of ids) stmt.run(this.clock.now(), id);
   }
   // ---- hypotheses ----
   addHypothesis(planId, text, evidence) {
-    const id = newId("H");
+    const id = this.ids.newId("H");
     this.db.prepare(
       "INSERT INTO hypotheses(id,plan_id,text,status,evidence,updated_at) VALUES(?,?,?,?,?,?)"
-    ).run(id, planId, text, "open", evidence, nowIso());
+    ).run(id, planId, text, "open", evidence, this.clock.now());
     return id;
   }
   setHypothesis(id, status, evidence) {
-    this.db.prepare("UPDATE hypotheses SET status=?, evidence=COALESCE(?,evidence), updated_at=? WHERE id=?").run(status, evidence, nowIso(), id);
+    this.db.prepare("UPDATE hypotheses SET status=?, evidence=COALESCE(?,evidence), updated_at=? WHERE id=?").run(status, evidence, this.clock.now(), id);
   }
   listHypotheses(planId) {
     return this.db.prepare("SELECT * FROM hypotheses WHERE plan_id=? ORDER BY updated_at").all(planId);
@@ -23397,13 +23405,13 @@ var Store = class {
   }
   // ---- reviews / retros / checks ----
   addReview(clusterId, status, findings, fixes, impact) {
-    const id = newId("R");
+    const id = this.ids.newId("R");
     this.db.prepare(
       "INSERT INTO reviews(id,cluster_id,ts,status,findings_json,fixes_json,impact_json) VALUES(?,?,?,?,?,?,?)"
     ).run(
       id,
       clusterId,
-      nowIso(),
+      this.clock.now(),
       status,
       JSON.stringify(findings ?? null),
       JSON.stringify(fixes ?? null),
@@ -23415,8 +23423,8 @@ var Store = class {
     return this.db.prepare("SELECT * FROM reviews WHERE cluster_id=? ORDER BY ts DESC LIMIT 1").get(clusterId);
   }
   addRetro(clusterId, content) {
-    const id = newId("RT");
-    this.db.prepare("INSERT INTO retros(id,cluster_id,ts,content) VALUES(?,?,?,?)").run(id, clusterId, nowIso(), content);
+    const id = this.ids.newId("RT");
+    this.db.prepare("INSERT INTO retros(id,cluster_id,ts,content) VALUES(?,?,?,?)").run(id, clusterId, this.clock.now(), content);
     return id;
   }
   countRetros(clusterId) {
@@ -23424,10 +23432,10 @@ var Store = class {
     return r?.n ?? 0;
   }
   addCheck(clusterId, cmd, exitCode, summary) {
-    const id = newId("CK");
+    const id = this.ids.newId("CK");
     this.db.prepare(
       "INSERT INTO checks(id,cluster_id,cmd,exit_code,summary,ts) VALUES(?,?,?,?,?,?)"
-    ).run(id, clusterId, cmd, exitCode, summary, nowIso());
+    ).run(id, clusterId, cmd, exitCode, summary, this.clock.now());
     return id;
   }
   checksForCluster(clusterId) {
@@ -23435,10 +23443,10 @@ var Store = class {
   }
   // ---- user_decisions (Cluster 4: Nachkontrolle-Gate + Präferenzen) ----
   recordDecision(d) {
-    const id = newId("UD");
+    const id = this.ids.newId("UD");
     this.db.prepare(
       "INSERT INTO user_decisions(id,plan_id,cluster_id,topic,question,decision,remember,created_at) VALUES(?,?,?,?,?,?,?,?)"
-    ).run(id, d.planId, d.clusterId, d.topic, d.question, d.decision, d.remember ? 1 : 0, nowIso());
+    ).run(id, d.planId, d.clusterId, d.topic, d.question, d.decision, d.remember ? 1 : 0, this.clock.now());
     return id;
   }
   /** Neueste Entscheidung zu einem Thema für einen Cluster. */
@@ -23464,11 +23472,11 @@ var Store = class {
   }
   // ---- agent_jobs (Cluster 5: auditierbare Codex-Job-Historie) ----
   recordAgentJob(j) {
-    const id = newId("AJ");
+    const id = this.ids.newId("AJ");
     this.db.prepare(
       `INSERT INTO agent_jobs(id,task_id,cluster_id,hypothesis_id,model,effort,sandbox,status,started_at)
        VALUES(?,?,?,?,?,?,?,?,?)`
-    ).run(id, j.taskId, j.clusterId, j.hypothesisId, j.model, j.effort, j.sandbox, j.status, nowIso());
+    ).run(id, j.taskId, j.clusterId, j.hypothesisId, j.model, j.effort, j.sandbox, j.status, this.clock.now());
     return id;
   }
   /** Schließt den letzten offenen Job eines Tasks ab (Status + Zusammenfassung). */
@@ -23477,7 +23485,7 @@ var Store = class {
       "SELECT id FROM agent_jobs WHERE task_id=? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1"
     ).get(taskId);
     if (!row) return;
-    this.db.prepare("UPDATE agent_jobs SET status=?, summary=COALESCE(?,summary), ended_at=? WHERE id=?").run(status, summary, nowIso(), row.id);
+    this.db.prepare("UPDATE agent_jobs SET status=?, summary=COALESCE(?,summary), ended_at=? WHERE id=?").run(status, summary, this.clock.now(), row.id);
   }
   listAgentJobs(filter) {
     if (filter?.taskId) return this.db.prepare("SELECT * FROM agent_jobs WHERE task_id=? ORDER BY started_at").all(filter.taskId);
@@ -23486,7 +23494,7 @@ var Store = class {
   }
   // ---- hypothesis_reviews (Cluster 5: lokale Nachkontrolle je Hypothese) ----
   addHypothesisReview(r) {
-    const id = newId("HR");
+    const id = this.ids.newId("HR");
     this.db.prepare(
       `INSERT INTO hypothesis_reviews(id,hypothesis_id,cluster_id,reviewer,status,findings_json,synthesis,created_at)
        VALUES(?,?,?,?,?,?,?,?)`
@@ -23498,7 +23506,7 @@ var Store = class {
       r.status,
       JSON.stringify(r.findings ?? null),
       r.synthesis,
-      nowIso()
+      this.clock.now()
     );
     return id;
   }
@@ -23509,11 +23517,11 @@ var Store = class {
   }
   // ---- artifacts (Cluster 5/6: versionierte Ergebnisartefakte) ----
   addArtifact(a) {
-    const id = newId("AF");
+    const id = this.ids.newId("AF");
     this.db.prepare(
       `INSERT INTO artifacts(id,plan_id,kind,path,schema_version,artifact_version,checksum,created_at)
        VALUES(?,?,?,?,?,?,?,?)`
-    ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, nowIso());
+    ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, this.clock.now());
     return id;
   }
   listArtifacts(planId) {
@@ -23528,14 +23536,14 @@ var Store = class {
   }
   // ---- audit_events (Cluster 5/7: sicherheitsrelevanter Audit-Trail) ----
   addAuditEvent(e) {
-    const id = newId("AU");
+    const id = this.ids.newId("AU");
     const safeDetail = redactDeep(e.detail ?? null);
     this.db.prepare(
       `INSERT INTO audit_events(id,ts,actor,action,resource,detail_json,redacted)
        VALUES(?,?,?,?,?,?,?)`
     ).run(
       id,
-      nowIso(),
+      this.clock.now(),
       e.actor,
       e.action,
       redactText(e.resource ?? "") || null,
@@ -23833,17 +23841,21 @@ function normFalsification(fs) {
     }
   );
 }
-function normEvidence(es) {
+function normEvidence(es, clock) {
   if (!es) return [];
   return es.map(
-    (e) => typeof e === "string" ? { source: "note", observation: e, ts: nowIso() } : { source: e.source, observation: e.observation, ts: e.ts ?? nowIso() }
+    (e) => typeof e === "string" ? { source: "note", observation: e, ts: clock.now() } : { source: e.source, observation: e.observation, ts: e.ts ?? clock.now() }
   );
 }
 var HypothesisRepo = class _HypothesisRepo {
-  constructor(store) {
+  constructor(store, clock = systemClock, ids = systemIdGenerator) {
     this.store = store;
+    this.clock = clock;
+    this.ids = ids;
   }
   store;
+  clock;
+  ids;
   /** Serialisiert eine Hypothese in ein stabiles, maschinenlesbares Objekt. */
   static serialize(h) {
     return {
@@ -23898,8 +23910,8 @@ var HypothesisRepo = class _HypothesisRepo {
       throw new Error("initialAssumption ist erforderlich");
     }
     const confidenceBefore = clampConfidence(input.confidenceBefore, "confidenceBefore");
-    const id = newId("H");
-    const ts = nowIso();
+    const id = this.ids.newId("H");
+    const ts = this.clock.now();
     const h = {
       id,
       planId: input.planId ?? null,
@@ -23941,7 +23953,7 @@ var HypothesisRepo = class _HypothesisRepo {
   }
   writeVersion(h) {
     this.store.insertHypothesisVersion({
-      id: newId("HV"),
+      id: this.ids.newId("HV"),
       hypothesisId: h.id,
       version: h.version,
       snapshotJson: JSON.stringify(_HypothesisRepo.serialize(h)),
@@ -23957,7 +23969,7 @@ var HypothesisRepo = class _HypothesisRepo {
     return this.store.tx(() => {
       const current = this.get(id);
       if (!current) throw new Error(`Hypothese ${id} nicht gefunden`);
-      const ts = nowIso();
+      const ts = this.clock.now();
       const result = patch.result ?? current.result;
       const followUpQuestions = patch.followUpQuestions !== void 0 ? patch.followUpQuestions : current.followUpQuestions;
       if (needsFollowUp(result) && followUpQuestions.length === 0) {
@@ -23977,7 +23989,7 @@ var HypothesisRepo = class _HypothesisRepo {
         updatedAssumption: patch.updatedAssumption !== void 0 ? patch.updatedAssumption : current.updatedAssumption,
         criticalQuestions: patch.criticalQuestions ? normQuestions(patch.criticalQuestions) : current.criticalQuestions,
         falsificationPlan: patch.falsificationPlan ? normFalsification(patch.falsificationPlan) : current.falsificationPlan,
-        evidence: patch.addEvidence ? [...current.evidence, ...normEvidence(patch.addEvidence)] : current.evidence,
+        evidence: patch.addEvidence ? [...current.evidence, ...normEvidence(patch.addEvidence, this.clock)] : current.evidence,
         taskId: patch.taskId !== void 0 ? patch.taskId : current.taskId,
         clusterId: patch.clusterId !== void 0 ? patch.clusterId : current.clusterId,
         updatedAt: ts
@@ -24776,10 +24788,10 @@ function createExecutionRuntime(configuration) {
 
 // src/app/context.ts
 function createAppContext() {
-  const store = new Store(config2.dbPath);
+  const store = new Store(config2.dbPath, systemClock, systemIdGenerator);
   const execution = createExecutionRuntime(config2);
-  const sessions = new SessionManager(store, (id) => execution.registry.get(id));
-  const hypRepo = new HypothesisRepo(store);
+  const sessions = new SessionManager(store, (id) => execution.registry.get(id), systemIdGenerator);
+  const hypRepo = new HypothesisRepo(store, systemClock, systemIdGenerator);
   const machine = new ClusterStateMachine(store);
   const worktrees = new WorktreeManager();
   const ok = (obj) => ({

@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import { config } from "./config.js";
 import type { PersistenceStore, TaskRow } from "./ports/persistence.js";
-import { newId } from "./system-clock.js";
+import type { IdGenerator } from "./ports/clock.js";
+import { systemIdGenerator } from "./system-clock.js";
 import { LocalExecutionTarget } from "./execution/local-target.js";
 import type { ExecutionTarget } from "./execution/types.js";
 import { buildFirstSlicePrompt, buildResumeSlicePrompt } from "./prompts.js";
@@ -53,6 +54,7 @@ export class SessionManager {
       const local = new LocalExecutionTarget();
       return () => local;
     })(),
+    private readonly ids: IdGenerator = systemIdGenerator,
   ) {
     this.emitter.setMaxListeners(0);
   }
@@ -123,7 +125,7 @@ export class SessionManager {
   }
 
   createTask(args: StartArgs): TaskRow {
-    const id = newId("T");
+    const id = this.ids.newId("T");
     return this.store.createTask({
       id,
       cluster_id: args.clusterId,

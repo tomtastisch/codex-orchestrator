@@ -9,7 +9,8 @@ import type {
 } from "./types.js";
 import { runMigrations } from "./db/migrations.js";
 import { redactDeep, redactText } from "./redact.js";
-import { newId, nowIso } from "./system-clock.js";
+import { systemClock, systemIdGenerator } from "./system-clock.js";
+import type { Clock, IdGenerator } from "./ports/clock.js";
 import {
   SCHEMA_VERSION,
   type AgentJobRow,
@@ -145,7 +146,11 @@ CREATE TABLE IF NOT EXISTS checks (
 export class Store implements PersistenceStore {
   readonly db: DatabaseSync;
 
-  constructor(dbPath: string) {
+  constructor(
+    dbPath: string,
+    private readonly clock: Clock = systemClock,
+    private readonly ids: IdGenerator = systemIdGenerator,
+  ) {
     const directory = dirname(dbPath);
     mkdirSync(directory, { recursive: true });
     if (process.platform !== "win32") chmodSync(directory, 0o700);
@@ -242,10 +247,10 @@ export class Store implements PersistenceStore {
 
   // ---- plans ----
   createPlan(goal: string, constraints: string | null, repoPath: string): PlanRow {
-    const id = newId("P");
+    const id = this.ids.newId("P");
     this.db.prepare(
       "INSERT INTO plans(id,goal,constraints,repo_path,created_at,status) VALUES(?,?,?,?,?,?)"
-    ).run(id, goal, constraints, repoPath, nowIso(), "active");
+    ).run(id, goal, constraints, repoPath, this.clock.now(), "active");
     return this.getPlan(id)!;
   }
   getPlan(id: string): PlanRow | undefined {
@@ -328,9 +333,9 @@ export class Store implements PersistenceStore {
   addEvent(taskId: string, kind: EventKind, payload: unknown): EventRow {
     const info = this.db.prepare(
       "INSERT INTO events(task_id,ts,kind,payload_json) VALUES(?,?,?,?)"
-    ).run(taskId, nowIso(), kind, JSON.stringify(payload ?? {}));
+    ).run(taskId, this.clock.now(), kind, JSON.stringify(payload ?? {}));
     const seq = Number(info.lastInsertRowid);
-    return { seq, task_id: taskId, ts: nowIso(), kind, payload_json: JSON.stringify(payload ?? {}) };
+    return { seq, task_id: taskId, ts: this.clock.now(), kind, payload_json: JSON.stringify(payload ?? {}) };
   }
   eventsAfter(taskId: string, cursor: number, kinds?: string[], limit = 200): EventRow[] {
     let rows: EventRow[];
@@ -355,10 +360,10 @@ export class Store implements PersistenceStore {
 
   // ---- injections ----
   addInjection(taskId: string, message: string, priority: string): string {
-    const id = newId("I");
+    const id = this.ids.newId("I");
     this.db.prepare(
       "INSERT INTO injections(id,task_id,ts,priority,message,delivered_at) VALUES(?,?,?,?,?,NULL)"
-    ).run(id, taskId, nowIso(), priority, message);
+    ).run(id, taskId, this.clock.now(), priority, message);
     return id;
   }
   pendingInjections(taskId: string): { id: string; message: string; priority: string }[] {
@@ -368,20 +373,20 @@ export class Store implements PersistenceStore {
   }
   markInjectionsDelivered(ids: string[]): void {
     const stmt = this.db.prepare("UPDATE injections SET delivered_at=? WHERE id=?");
-    for (const id of ids) stmt.run(nowIso(), id);
+    for (const id of ids) stmt.run(this.clock.now(), id);
   }
 
   // ---- hypotheses ----
   addHypothesis(planId: string, text: string, evidence: string | null): string {
-    const id = newId("H");
+    const id = this.ids.newId("H");
     this.db.prepare(
       "INSERT INTO hypotheses(id,plan_id,text,status,evidence,updated_at) VALUES(?,?,?,?,?,?)"
-    ).run(id, planId, text, "open", evidence, nowIso());
+    ).run(id, planId, text, "open", evidence, this.clock.now());
     return id;
   }
   setHypothesis(id: string, status: HypothesisStatus, evidence: string | null): void {
     this.db.prepare("UPDATE hypotheses SET status=?, evidence=COALESCE(?,evidence), updated_at=? WHERE id=?")
-      .run(status, evidence, nowIso(), id);
+      .run(status, evidence, this.clock.now(), id);
   }
   listHypotheses(planId: string): HypothesisRow[] {
     return this.db.prepare("SELECT * FROM hypotheses WHERE plan_id=? ORDER BY updated_at").all(planId) as unknown as HypothesisRow[];
@@ -452,10 +457,10 @@ export class Store implements PersistenceStore {
 
   // ---- reviews / retros / checks ----
   addReview(clusterId: string, status: string, findings: unknown, fixes: unknown, impact: unknown): string {
-    const id = newId("R");
+    const id = this.ids.newId("R");
     this.db.prepare(
       "INSERT INTO reviews(id,cluster_id,ts,status,findings_json,fixes_json,impact_json) VALUES(?,?,?,?,?,?,?)"
-    ).run(id, clusterId, nowIso(), status, JSON.stringify(findings ?? null),
+    ).run(id, clusterId, this.clock.now(), status, JSON.stringify(findings ?? null),
       JSON.stringify(fixes ?? null), JSON.stringify(impact ?? null));
     return id;
   }
@@ -463,9 +468,9 @@ export class Store implements PersistenceStore {
     return this.db.prepare("SELECT * FROM reviews WHERE cluster_id=? ORDER BY ts DESC LIMIT 1").get(clusterId) as unknown as ReviewRow | undefined;
   }
   addRetro(clusterId: string, content: string): string {
-    const id = newId("RT");
+    const id = this.ids.newId("RT");
     this.db.prepare("INSERT INTO retros(id,cluster_id,ts,content) VALUES(?,?,?,?)")
-      .run(id, clusterId, nowIso(), content);
+      .run(id, clusterId, this.clock.now(), content);
     return id;
   }
   countRetros(clusterId: string): number {
@@ -474,10 +479,10 @@ export class Store implements PersistenceStore {
     return r?.n ?? 0;
   }
   addCheck(clusterId: string, cmd: string, exitCode: number | null, summary: string): string {
-    const id = newId("CK");
+    const id = this.ids.newId("CK");
     this.db.prepare(
       "INSERT INTO checks(id,cluster_id,cmd,exit_code,summary,ts) VALUES(?,?,?,?,?,?)"
-    ).run(id, clusterId, cmd, exitCode, summary, nowIso());
+    ).run(id, clusterId, cmd, exitCode, summary, this.clock.now());
     return id;
   }
   checksForCluster(clusterId: string): CheckRow[] {
@@ -489,10 +494,10 @@ export class Store implements PersistenceStore {
     planId: string | null; clusterId: string | null; topic: string;
     question: string | null; decision: string; remember: boolean;
   }): string {
-    const id = newId("UD");
+    const id = this.ids.newId("UD");
     this.db.prepare(
       "INSERT INTO user_decisions(id,plan_id,cluster_id,topic,question,decision,remember,created_at) VALUES(?,?,?,?,?,?,?,?)"
-    ).run(id, d.planId, d.clusterId, d.topic, d.question, d.decision, d.remember ? 1 : 0, nowIso());
+    ).run(id, d.planId, d.clusterId, d.topic, d.question, d.decision, d.remember ? 1 : 0, this.clock.now());
     return id;
   }
   /** Neueste Entscheidung zu einem Thema für einen Cluster. */
@@ -522,11 +527,11 @@ export class Store implements PersistenceStore {
     taskId: string | null; clusterId: string | null; hypothesisId: string | null;
     model: string; effort: string; sandbox: string; status: string;
   }): string {
-    const id = newId("AJ");
+    const id = this.ids.newId("AJ");
     this.db.prepare(
       `INSERT INTO agent_jobs(id,task_id,cluster_id,hypothesis_id,model,effort,sandbox,status,started_at)
        VALUES(?,?,?,?,?,?,?,?,?)`
-    ).run(id, j.taskId, j.clusterId, j.hypothesisId, j.model, j.effort, j.sandbox, j.status, nowIso());
+    ).run(id, j.taskId, j.clusterId, j.hypothesisId, j.model, j.effort, j.sandbox, j.status, this.clock.now());
     return id;
   }
   /** Schließt den letzten offenen Job eines Tasks ab (Status + Zusammenfassung). */
@@ -536,7 +541,7 @@ export class Store implements PersistenceStore {
     ).get(taskId) as { id: string } | undefined;
     if (!row) return;
     this.db.prepare("UPDATE agent_jobs SET status=?, summary=COALESCE(?,summary), ended_at=? WHERE id=?")
-      .run(status, summary, nowIso(), row.id);
+      .run(status, summary, this.clock.now(), row.id);
   }
   listAgentJobs(filter?: { clusterId?: string; taskId?: string }): AgentJobRow[] {
     if (filter?.taskId) return this.db.prepare("SELECT * FROM agent_jobs WHERE task_id=? ORDER BY started_at").all(filter.taskId) as unknown as AgentJobRow[];
@@ -549,12 +554,12 @@ export class Store implements PersistenceStore {
     hypothesisId: string | null; clusterId: string | null; reviewer: string;
     status: string; findings: unknown; synthesis: string | null;
   }): string {
-    const id = newId("HR");
+    const id = this.ids.newId("HR");
     this.db.prepare(
       `INSERT INTO hypothesis_reviews(id,hypothesis_id,cluster_id,reviewer,status,findings_json,synthesis,created_at)
        VALUES(?,?,?,?,?,?,?,?)`
     ).run(id, r.hypothesisId, r.clusterId, r.reviewer, r.status,
-      JSON.stringify(r.findings ?? null), r.synthesis, nowIso());
+      JSON.stringify(r.findings ?? null), r.synthesis, this.clock.now());
     return id;
   }
   listHypothesisReviews(filter?: { hypothesisId?: string; clusterId?: string }): HypothesisReviewRow[] {
@@ -568,11 +573,11 @@ export class Store implements PersistenceStore {
     planId: string | null; kind: string; path: string;
     schemaVersion: number | null; artifactVersion: number | null; checksum: string | null;
   }): string {
-    const id = newId("AF");
+    const id = this.ids.newId("AF");
     this.db.prepare(
       `INSERT INTO artifacts(id,plan_id,kind,path,schema_version,artifact_version,checksum,created_at)
        VALUES(?,?,?,?,?,?,?,?)`
-    ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, nowIso());
+    ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, this.clock.now());
     return id;
   }
   listArtifacts(planId?: string): ArtifactRow[] {
@@ -591,13 +596,13 @@ export class Store implements PersistenceStore {
     actor: string | null; action: string; resource: string | null;
     detail: unknown; redacted?: boolean;
   }): string {
-    const id = newId("AU");
+    const id = this.ids.newId("AU");
     // Cluster 7: Detail immer durch die Redaction schicken — nie ungescrubbte Secrets im Audit-Log.
     const safeDetail = redactDeep(e.detail ?? null);
     this.db.prepare(
       `INSERT INTO audit_events(id,ts,actor,action,resource,detail_json,redacted)
        VALUES(?,?,?,?,?,?,?)`
-    ).run(id, nowIso(), e.actor, e.action, redactText(e.resource ?? "") || null,
+    ).run(id, this.clock.now(), e.actor, e.action, redactText(e.resource ?? "") || null,
       JSON.stringify(safeDetail), 1);
     return id;
   }

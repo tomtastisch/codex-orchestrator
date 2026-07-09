@@ -5,6 +5,7 @@ import { ClusterStateMachine } from "../statemachine.js";
 import { WorktreeManager } from "../worktree.js";
 import { HypothesisRepo } from "../hypotheses.js";
 import { createExecutionRuntime } from "../execution/registry.js";
+import { systemClock, systemIdGenerator } from "../system-clock.js";
 import type { PersistenceStore } from "../ports/persistence.js";
 import type { ExecutionTarget } from "../execution/types.js";
 
@@ -39,10 +40,14 @@ export interface AppContext {
 
 /** Composition root: build the singleton graph and the response helpers. */
 export function createAppContext(): AppContext {
-    const store = new Store(config.dbPath);
+    // The Clock/IdGenerator ports are injected here (the only wiring site) so
+    // the Store, HypothesisRepo and SessionManager depend on the abstractions,
+    // not on ambient wall-clock/RNG reads. Tests can substitute deterministic
+    // implementations by constructing these adapters directly.
+    const store = new Store(config.dbPath, systemClock, systemIdGenerator);
     const execution = createExecutionRuntime(config);
-    const sessions = new SessionManager(store, (id) => execution.registry.get(id));
-    const hypRepo = new HypothesisRepo(store);
+    const sessions = new SessionManager(store, (id) => execution.registry.get(id), systemIdGenerator);
+    const hypRepo = new HypothesisRepo(store, systemClock, systemIdGenerator);
     const machine = new ClusterStateMachine(store);
     const worktrees = new WorktreeManager();
 

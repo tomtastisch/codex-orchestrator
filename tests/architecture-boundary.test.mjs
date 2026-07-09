@@ -172,6 +172,26 @@ test("the clock port stays technology-agnostic and its adapter implements it", (
     assert.ok(adapter.some((spec) => spec.includes("ports/clock")), "system-clock.ts must import the Clock/IdGenerator ports");
 });
 
+test("the clock/id port is actually consumed — no dead abstraction", () => {
+    // Mirrors the persistence-consumer test: the port must have real consumers,
+    // or it silently rots into decorative dead code. Each listed consumer must
+    // depend on the Clock/IdGenerator port (they receive it by injection and use
+    // it instead of ambient nowIso/newId).
+    assert.ok(manifest.clockConsumers.length >= 3, "expected the time/identity consumers");
+    for (const consumer of manifest.clockConsumers) {
+        const specs = importsOf(consumer);
+        assert.ok(
+            specs.some((spec) => spec.includes("ports/clock")),
+            `${consumer} must depend on the Clock/IdGenerator port, not ambient time/identity`,
+        );
+    }
+    // And the composition root must inject the concrete adapter.
+    assert.ok(
+        importsOf("src/app/context.ts").some((spec) => spec.includes("system-clock")),
+        "the composition root must inject systemClock/systemIdGenerator",
+    );
+});
+
 test("the default Clock and IdGenerator adapters satisfy their contracts", () => {
     const stamp = systemClock.now();
     assert.equal(typeof stamp, "string");

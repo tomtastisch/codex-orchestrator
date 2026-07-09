@@ -22,6 +22,8 @@
     "src/statemachine.ts"
   ],
   "forbiddenPersistenceImports": ["node:sqlite", "sqlite"],
+  "clockConsumers": ["src/db.ts", "src/hypotheses.ts", "src/session.ts"],
+  "$clockNote": "The Clock/IdGenerator ports (src/ports/clock.ts) are injected by the composition root (src/app/context.ts) into these consumers; each depends on the port, not on ambient nowIso/newId. Enforced by tests/architecture-boundary.test.mjs.",
   "$domainPureNote": "Modules proven free of BOTH I/O imports AND raw store.db access, enforced by tests/architecture-boundary.test.mjs. hypotheses.ts is intentionally excluded: HypothesisRepo is the hypothesis repository (DAO). It now orchestrates persistence exclusively through typed PersistenceStore methods (no raw SQL), but is classified a persistence consumer rather than domain-pure to reflect its repository role. The port exposes no raw SQL gateway; no consumer touches store.db.",
   "domainPure": ["src/statemachine.ts", "src/prompts.ts", "src/resolve.ts"],
   "forbiddenDomainImports": [
@@ -32,6 +34,7 @@
     "node:child_process",
     "child_process",
     "node:os",
-    "os"
+    "os",
+    "system-clock"
   ]
 }

@@ -11,7 +11,8 @@
  * `hypothesis_versions`-Tabelle hält jede Version als serialisierten Snapshot.
  * Damit ist jede Änderung lückenlos nachvollziehbar.
  */
-import { newId, nowIso } from "./system-clock.js";
+import { systemClock, systemIdGenerator } from "./system-clock.js";
+import type { Clock, IdGenerator } from "./ports/clock.js";
 import type { PersistenceStore } from "./ports/persistence.js";
 import type { HypothesisStatus } from "./types.js";
 
@@ -145,12 +146,12 @@ function normFalsification(fs?: (FalsificationStep | string)[]): FalsificationSt
   );
 }
 
-function normEvidence(es?: (EvidenceItem | string)[]): EvidenceItem[] {
+function normEvidence(es: (EvidenceItem | string)[] | undefined, clock: Clock): EvidenceItem[] {
   if (!es) return [];
   return es.map((e) =>
     typeof e === "string"
-      ? { source: "note", observation: e, ts: nowIso() }
-      : { source: e.source, observation: e.observation, ts: e.ts ?? nowIso() },
+      ? { source: "note", observation: e, ts: clock.now() }
+      : { source: e.source, observation: e.observation, ts: e.ts ?? clock.now() },
   );
 }
 
@@ -160,7 +161,11 @@ function normEvidence(es?: (EvidenceItem | string)[]): EvidenceItem[] {
  * Serialisierung. Statuswechsel/Versionierung laufen in Transaktionen.
  */
 export class HypothesisRepo {
-  constructor(private store: PersistenceStore) {}
+  constructor(
+    private store: PersistenceStore,
+    private readonly clock: Clock = systemClock,
+    private readonly ids: IdGenerator = systemIdGenerator,
+  ) {}
 
   /** Serialisiert eine Hypothese in ein stabiles, maschinenlesbares Objekt. */
   static serialize(h: Hypothesis): Record<string, unknown> {
@@ -218,8 +223,8 @@ export class HypothesisRepo {
       throw new Error("initialAssumption ist erforderlich");
     }
     const confidenceBefore = clampConfidence(input.confidenceBefore, "confidenceBefore");
-    const id = newId("H");
-    const ts = nowIso();
+    const id = this.ids.newId("H");
+    const ts = this.clock.now();
     const h: Hypothesis = {
       id,
       planId: input.planId ?? null,
@@ -261,7 +266,7 @@ export class HypothesisRepo {
 
   private writeVersion(h: Hypothesis): void {
     this.store.insertHypothesisVersion({
-      id: newId("HV"),
+      id: this.ids.newId("HV"),
       hypothesisId: h.id,
       version: h.version,
       snapshotJson: JSON.stringify(HypothesisRepo.serialize(h)),
@@ -278,7 +283,7 @@ export class HypothesisRepo {
     return this.store.tx(() => {
       const current = this.get(id);
       if (!current) throw new Error(`Hypothese ${id} nicht gefunden`);
-      const ts = nowIso();
+      const ts = this.clock.now();
       const result = patch.result ?? current.result;
       const followUpQuestions =
         patch.followUpQuestions !== undefined ? patch.followUpQuestions : current.followUpQuestions;
@@ -312,7 +317,7 @@ export class HypothesisRepo {
           ? normFalsification(patch.falsificationPlan)
           : current.falsificationPlan,
         evidence: patch.addEvidence
-          ? [...current.evidence, ...normEvidence(patch.addEvidence)]
+          ? [...current.evidence, ...normEvidence(patch.addEvidence, this.clock)]
           : current.evidence,
         taskId: patch.taskId !== undefined ? patch.taskId : current.taskId,
         clusterId: patch.clusterId !== undefined ? patch.clusterId : current.clusterId,
