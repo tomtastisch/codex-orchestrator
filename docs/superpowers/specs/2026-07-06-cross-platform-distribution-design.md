@@ -78,7 +78,8 @@ Die README beginnt nach der Produkteinführung mit:
 Für Claude Code werden verbindlich genannt:
 
 - macOS, Linux oder Windows in einer von Claude Code unterstützten Umgebung;
-- Node.js mindestens 22.5;
+- Node.js mindestens 22.13, weil `node:sqlite` erst ab 22.13 ohne zusätzliches
+  Startflag verfügbar ist;
 - Git;
 - installierte Codex CLI;
 - erfolgreicher `codex login status`;

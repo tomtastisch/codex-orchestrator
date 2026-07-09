@@ -107,3 +107,10 @@ test("README documents implemented environment controls without stale claims", (
     assert.doesNotMatch(readme, /no update runs implicitly at startup/i);
     assert.match(readme, /Codex CLI is updated only after an explicit `codex_update` call/i);
 });
+
+test("README documents the verified runtime and quality matrix", () => {
+    assert.match(readme, /Node\.js 22\.13–22\.x and Node\.js 24\.x/);
+    for (const platform of ["Ubuntu", "macOS", "Windows"]) assert.ok(readme.includes(platform));
+    assert.match(readme, /75 % lines, 70 % branches and 75 % functions/);
+    assert.match(readme, /CodeQL/);
+});

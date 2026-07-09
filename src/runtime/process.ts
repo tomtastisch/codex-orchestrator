@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import spawn from "cross-spawn";
 import { redact } from "./redaction.js";
 
 /** @typedef ManagedTermination */
@@ -35,6 +36,27 @@ export interface RunningManagedProcess {
     done: Promise<ManagedProcessResult>;
 }
 
+/** @typedef ManagedCommand */
+export interface ManagedCommand {
+    command: string;
+    args: string[];
+}
+
+/**
+ * Resolve JavaScript executables without relying on POSIX shebang handling.
+ * This keeps argv shell-free and makes bundled/test launchers portable to Windows.
+ */
+export function resolveManagedCommand(
+    command: string,
+    args: string[],
+    platform: NodeJS.Platform = process.platform,
+): ManagedCommand {
+    if (platform === "win32" && /\.(?:c|m)?js$/i.test(command)) {
+        return { command: process.execPath, args: [command, ...args] };
+    }
+    return { command, args };
+}
+
 function appendBounded(current: string, chunk: Buffer, maximum: number): { value: string; exceeded: boolean } {
     const next = current + chunk.toString();
     if (Buffer.byteLength(next) <= maximum) return { value: next, exceeded: false };
@@ -43,7 +65,8 @@ function appendBounded(current: string, chunk: Buffer, maximum: number): { value
 
 /** Starts a child with deterministic timeout, abort and output-limit handling. */
 export function startManagedProcess(options: ManagedProcessOptions): RunningManagedProcess {
-    const child = spawn(options.command, options.args, {
+    const resolved = resolveManagedCommand(options.command, options.args);
+    const child = spawn(resolved.command, resolved.args, {
         cwd: options.cwd,
         env: options.env,
         stdio: ["pipe", "pipe", "pipe"],

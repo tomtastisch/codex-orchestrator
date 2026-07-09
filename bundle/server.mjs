@@ -6,7 +6,13 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __commonJS = (cb, mod) => function __require() {
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+var __commonJS = (cb, mod) => function __require2() {
   try {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
   } catch (e) {
@@ -6887,6 +6893,503 @@ var require_dist = __commonJS({
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.default = formatsPlugin;
+  }
+});
+
+// node_modules/isexe/windows.js
+var require_windows = __commonJS({
+  "node_modules/isexe/windows.js"(exports, module) {
+    module.exports = isexe;
+    isexe.sync = sync;
+    var fs = __require("fs");
+    function checkPathExt(path, options) {
+      var pathext = options.pathExt !== void 0 ? options.pathExt : process.env.PATHEXT;
+      if (!pathext) {
+        return true;
+      }
+      pathext = pathext.split(";");
+      if (pathext.indexOf("") !== -1) {
+        return true;
+      }
+      for (var i = 0; i < pathext.length; i++) {
+        var p = pathext[i].toLowerCase();
+        if (p && path.substr(-p.length).toLowerCase() === p) {
+          return true;
+        }
+      }
+      return false;
+    }
+    function checkStat(stat, path, options) {
+      if (!stat.isSymbolicLink() && !stat.isFile()) {
+        return false;
+      }
+      return checkPathExt(path, options);
+    }
+    function isexe(path, options, cb) {
+      fs.stat(path, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, path, options));
+      });
+    }
+    function sync(path, options) {
+      return checkStat(fs.statSync(path), path, options);
+    }
+  }
+});
+
+// node_modules/isexe/mode.js
+var require_mode = __commonJS({
+  "node_modules/isexe/mode.js"(exports, module) {
+    module.exports = isexe;
+    isexe.sync = sync;
+    var fs = __require("fs");
+    function isexe(path, options, cb) {
+      fs.stat(path, function(er, stat) {
+        cb(er, er ? false : checkStat(stat, options));
+      });
+    }
+    function sync(path, options) {
+      return checkStat(fs.statSync(path), options);
+    }
+    function checkStat(stat, options) {
+      return stat.isFile() && checkMode(stat, options);
+    }
+    function checkMode(stat, options) {
+      var mod = stat.mode;
+      var uid = stat.uid;
+      var gid = stat.gid;
+      var myUid = options.uid !== void 0 ? options.uid : process.getuid && process.getuid();
+      var myGid = options.gid !== void 0 ? options.gid : process.getgid && process.getgid();
+      var u = parseInt("100", 8);
+      var g = parseInt("010", 8);
+      var o = parseInt("001", 8);
+      var ug = u | g;
+      var ret = mod & o || mod & g && gid === myGid || mod & u && uid === myUid || mod & ug && myUid === 0;
+      return ret;
+    }
+  }
+});
+
+// node_modules/isexe/index.js
+var require_isexe = __commonJS({
+  "node_modules/isexe/index.js"(exports, module) {
+    var fs = __require("fs");
+    var core;
+    if (process.platform === "win32" || global.TESTING_WINDOWS) {
+      core = require_windows();
+    } else {
+      core = require_mode();
+    }
+    module.exports = isexe;
+    isexe.sync = sync;
+    function isexe(path, options, cb) {
+      if (typeof options === "function") {
+        cb = options;
+        options = {};
+      }
+      if (!cb) {
+        if (typeof Promise !== "function") {
+          throw new TypeError("callback not provided");
+        }
+        return new Promise(function(resolve6, reject) {
+          isexe(path, options || {}, function(er, is) {
+            if (er) {
+              reject(er);
+            } else {
+              resolve6(is);
+            }
+          });
+        });
+      }
+      core(path, options || {}, function(er, is) {
+        if (er) {
+          if (er.code === "EACCES" || options && options.ignoreErrors) {
+            er = null;
+            is = false;
+          }
+        }
+        cb(er, is);
+      });
+    }
+    function sync(path, options) {
+      try {
+        return core.sync(path, options || {});
+      } catch (er) {
+        if (options && options.ignoreErrors || er.code === "EACCES") {
+          return false;
+        } else {
+          throw er;
+        }
+      }
+    }
+  }
+});
+
+// node_modules/which/which.js
+var require_which = __commonJS({
+  "node_modules/which/which.js"(exports, module) {
+    var isWindows = process.platform === "win32" || process.env.OSTYPE === "cygwin" || process.env.OSTYPE === "msys";
+    var path = __require("path");
+    var COLON = isWindows ? ";" : ":";
+    var isexe = require_isexe();
+    var getNotFoundError = (cmd) => Object.assign(new Error(`not found: ${cmd}`), { code: "ENOENT" });
+    var getPathInfo = (cmd, opt) => {
+      const colon = opt.colon || COLON;
+      const pathEnv = cmd.match(/\//) || isWindows && cmd.match(/\\/) ? [""] : [
+        // windows always checks the cwd first
+        ...isWindows ? [process.cwd()] : [],
+        ...(opt.path || process.env.PATH || /* istanbul ignore next: very unusual */
+        "").split(colon)
+      ];
+      const pathExtExe = isWindows ? opt.pathExt || process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM" : "";
+      const pathExt = isWindows ? pathExtExe.split(colon) : [""];
+      if (isWindows) {
+        if (cmd.indexOf(".") !== -1 && pathExt[0] !== "")
+          pathExt.unshift("");
+      }
+      return {
+        pathEnv,
+        pathExt,
+        pathExtExe
+      };
+    };
+    var which = (cmd, opt, cb) => {
+      if (typeof opt === "function") {
+        cb = opt;
+        opt = {};
+      }
+      if (!opt)
+        opt = {};
+      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+      const found = [];
+      const step = (i) => new Promise((resolve6, reject) => {
+        if (i === pathEnv.length)
+          return opt.all && found.length ? resolve6(found) : reject(getNotFoundError(cmd));
+        const ppRaw = pathEnv[i];
+        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+        const pCmd = path.join(pathPart, cmd);
+        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+        resolve6(subStep(p, i, 0));
+      });
+      const subStep = (p, i, ii) => new Promise((resolve6, reject) => {
+        if (ii === pathExt.length)
+          return resolve6(step(i + 1));
+        const ext = pathExt[ii];
+        isexe(p + ext, { pathExt: pathExtExe }, (er, is) => {
+          if (!er && is) {
+            if (opt.all)
+              found.push(p + ext);
+            else
+              return resolve6(p + ext);
+          }
+          return resolve6(subStep(p, i, ii + 1));
+        });
+      });
+      return cb ? step(0).then((res) => cb(null, res), cb) : step(0);
+    };
+    var whichSync = (cmd, opt) => {
+      opt = opt || {};
+      const { pathEnv, pathExt, pathExtExe } = getPathInfo(cmd, opt);
+      const found = [];
+      for (let i = 0; i < pathEnv.length; i++) {
+        const ppRaw = pathEnv[i];
+        const pathPart = /^".*"$/.test(ppRaw) ? ppRaw.slice(1, -1) : ppRaw;
+        const pCmd = path.join(pathPart, cmd);
+        const p = !pathPart && /^\.[\\\/]/.test(cmd) ? cmd.slice(0, 2) + pCmd : pCmd;
+        for (let j = 0; j < pathExt.length; j++) {
+          const cur = p + pathExt[j];
+          try {
+            const is = isexe.sync(cur, { pathExt: pathExtExe });
+            if (is) {
+              if (opt.all)
+                found.push(cur);
+              else
+                return cur;
+            }
+          } catch (ex) {
+          }
+        }
+      }
+      if (opt.all && found.length)
+        return found;
+      if (opt.nothrow)
+        return null;
+      throw getNotFoundError(cmd);
+    };
+    module.exports = which;
+    which.sync = whichSync;
+  }
+});
+
+// node_modules/path-key/index.js
+var require_path_key = __commonJS({
+  "node_modules/path-key/index.js"(exports, module) {
+    "use strict";
+    var pathKey = (options = {}) => {
+      const environment = options.env || process.env;
+      const platform = options.platform || process.platform;
+      if (platform !== "win32") {
+        return "PATH";
+      }
+      return Object.keys(environment).reverse().find((key) => key.toUpperCase() === "PATH") || "Path";
+    };
+    module.exports = pathKey;
+    module.exports.default = pathKey;
+  }
+});
+
+// node_modules/cross-spawn/lib/util/resolveCommand.js
+var require_resolveCommand = __commonJS({
+  "node_modules/cross-spawn/lib/util/resolveCommand.js"(exports, module) {
+    "use strict";
+    var path = __require("path");
+    var which = require_which();
+    var getPathKey = require_path_key();
+    function resolveCommandAttempt(parsed, withoutPathExt) {
+      const env = parsed.options.env || process.env;
+      const cwd = process.cwd();
+      const hasCustomCwd = parsed.options.cwd != null;
+      const shouldSwitchCwd = hasCustomCwd && process.chdir !== void 0 && !process.chdir.disabled;
+      if (shouldSwitchCwd) {
+        try {
+          process.chdir(parsed.options.cwd);
+        } catch (err2) {
+        }
+      }
+      let resolved;
+      try {
+        resolved = which.sync(parsed.command, {
+          path: env[getPathKey({ env })],
+          pathExt: withoutPathExt ? path.delimiter : void 0
+        });
+      } catch (e) {
+      } finally {
+        if (shouldSwitchCwd) {
+          process.chdir(cwd);
+        }
+      }
+      if (resolved) {
+        resolved = path.resolve(hasCustomCwd ? parsed.options.cwd : "", resolved);
+      }
+      return resolved;
+    }
+    function resolveCommand(parsed) {
+      return resolveCommandAttempt(parsed) || resolveCommandAttempt(parsed, true);
+    }
+    module.exports = resolveCommand;
+  }
+});
+
+// node_modules/cross-spawn/lib/util/escape.js
+var require_escape = __commonJS({
+  "node_modules/cross-spawn/lib/util/escape.js"(exports, module) {
+    "use strict";
+    var metaCharsRegExp = /([()\][%!^"`<>&|;, *?])/g;
+    function escapeCommand(arg) {
+      arg = arg.replace(metaCharsRegExp, "^$1");
+      return arg;
+    }
+    function escapeArgument(arg, doubleEscapeMetaChars) {
+      arg = `${arg}`;
+      arg = arg.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+      arg = arg.replace(/(?=(\\+?)?)\1$/, "$1$1");
+      arg = `"${arg}"`;
+      arg = arg.replace(metaCharsRegExp, "^$1");
+      if (doubleEscapeMetaChars) {
+        arg = arg.replace(metaCharsRegExp, "^$1");
+      }
+      return arg;
+    }
+    module.exports.command = escapeCommand;
+    module.exports.argument = escapeArgument;
+  }
+});
+
+// node_modules/shebang-regex/index.js
+var require_shebang_regex = __commonJS({
+  "node_modules/shebang-regex/index.js"(exports, module) {
+    "use strict";
+    module.exports = /^#!(.*)/;
+  }
+});
+
+// node_modules/shebang-command/index.js
+var require_shebang_command = __commonJS({
+  "node_modules/shebang-command/index.js"(exports, module) {
+    "use strict";
+    var shebangRegex = require_shebang_regex();
+    module.exports = (string3 = "") => {
+      const match = string3.match(shebangRegex);
+      if (!match) {
+        return null;
+      }
+      const [path, argument] = match[0].replace(/#! ?/, "").split(" ");
+      const binary = path.split("/").pop();
+      if (binary === "env") {
+        return argument;
+      }
+      return argument ? `${binary} ${argument}` : binary;
+    };
+  }
+});
+
+// node_modules/cross-spawn/lib/util/readShebang.js
+var require_readShebang = __commonJS({
+  "node_modules/cross-spawn/lib/util/readShebang.js"(exports, module) {
+    "use strict";
+    var fs = __require("fs");
+    var shebangCommand = require_shebang_command();
+    function readShebang(command) {
+      const size = 150;
+      const buffer = Buffer.alloc(size);
+      let fd;
+      try {
+        fd = fs.openSync(command, "r");
+        fs.readSync(fd, buffer, 0, size, 0);
+        fs.closeSync(fd);
+      } catch (e) {
+      }
+      return shebangCommand(buffer.toString());
+    }
+    module.exports = readShebang;
+  }
+});
+
+// node_modules/cross-spawn/lib/parse.js
+var require_parse = __commonJS({
+  "node_modules/cross-spawn/lib/parse.js"(exports, module) {
+    "use strict";
+    var path = __require("path");
+    var resolveCommand = require_resolveCommand();
+    var escape2 = require_escape();
+    var readShebang = require_readShebang();
+    var isWin = process.platform === "win32";
+    var isExecutableRegExp = /\.(?:com|exe)$/i;
+    var isCmdShimRegExp = /node_modules[\\/].bin[\\/][^\\/]+\.cmd$/i;
+    function detectShebang(parsed) {
+      parsed.file = resolveCommand(parsed);
+      const shebang = parsed.file && readShebang(parsed.file);
+      if (shebang) {
+        parsed.args.unshift(parsed.file);
+        parsed.command = shebang;
+        return resolveCommand(parsed);
+      }
+      return parsed.file;
+    }
+    function parseNonShell(parsed) {
+      if (!isWin) {
+        return parsed;
+      }
+      const commandFile = detectShebang(parsed);
+      const needsShell = !isExecutableRegExp.test(commandFile);
+      if (parsed.options.forceShell || needsShell) {
+        const needsDoubleEscapeMetaChars = isCmdShimRegExp.test(commandFile);
+        parsed.command = path.normalize(parsed.command);
+        parsed.command = escape2.command(parsed.command);
+        parsed.args = parsed.args.map((arg) => escape2.argument(arg, needsDoubleEscapeMetaChars));
+        const shellCommand = [parsed.command].concat(parsed.args).join(" ");
+        parsed.args = ["/d", "/s", "/c", `"${shellCommand}"`];
+        parsed.command = process.env.comspec || "cmd.exe";
+        parsed.options.windowsVerbatimArguments = true;
+      }
+      return parsed;
+    }
+    function parse4(command, args, options) {
+      if (args && !Array.isArray(args)) {
+        options = args;
+        args = null;
+      }
+      args = args ? args.slice(0) : [];
+      options = Object.assign({}, options);
+      const parsed = {
+        command,
+        args,
+        options,
+        file: void 0,
+        original: {
+          command,
+          args
+        }
+      };
+      return options.shell ? parsed : parseNonShell(parsed);
+    }
+    module.exports = parse4;
+  }
+});
+
+// node_modules/cross-spawn/lib/enoent.js
+var require_enoent = __commonJS({
+  "node_modules/cross-spawn/lib/enoent.js"(exports, module) {
+    "use strict";
+    var isWin = process.platform === "win32";
+    function notFoundError(original, syscall) {
+      return Object.assign(new Error(`${syscall} ${original.command} ENOENT`), {
+        code: "ENOENT",
+        errno: "ENOENT",
+        syscall: `${syscall} ${original.command}`,
+        path: original.command,
+        spawnargs: original.args
+      });
+    }
+    function hookChildProcess(cp, parsed) {
+      if (!isWin) {
+        return;
+      }
+      const originalEmit = cp.emit;
+      cp.emit = function(name, arg1) {
+        if (name === "exit") {
+          const err2 = verifyENOENT(arg1, parsed);
+          if (err2) {
+            return originalEmit.call(cp, "error", err2);
+          }
+        }
+        return originalEmit.apply(cp, arguments);
+      };
+    }
+    function verifyENOENT(status, parsed) {
+      if (isWin && status === 1 && !parsed.file) {
+        return notFoundError(parsed.original, "spawn");
+      }
+      return null;
+    }
+    function verifyENOENTSync(status, parsed) {
+      if (isWin && status === 1 && !parsed.file) {
+        return notFoundError(parsed.original, "spawnSync");
+      }
+      return null;
+    }
+    module.exports = {
+      hookChildProcess,
+      verifyENOENT,
+      verifyENOENTSync,
+      notFoundError
+    };
+  }
+});
+
+// node_modules/cross-spawn/index.js
+var require_cross_spawn = __commonJS({
+  "node_modules/cross-spawn/index.js"(exports, module) {
+    "use strict";
+    var cp = __require("child_process");
+    var parse4 = require_parse();
+    var enoent = require_enoent();
+    function spawn3(command, args, options) {
+      const parsed = parse4(command, args, options);
+      const spawned = cp.spawn(parsed.command, parsed.args, parsed.options);
+      enoent.hookChildProcess(spawned, parsed);
+      return spawned;
+    }
+    function spawnSync3(command, args, options) {
+      const parsed = parse4(command, args, options);
+      const result = cp.spawnSync(parsed.command, parsed.args, parsed.options);
+      result.error = result.error || enoent.verifyENOENTSync(result.status, parsed);
+      return result;
+    }
+    module.exports = spawn3;
+    module.exports.spawn = spawn3;
+    module.exports.sync = spawnSync3;
+    module.exports._parse = parse4;
+    module.exports._enoent = enoent;
   }
 });
 
@@ -22137,7 +22640,7 @@ function buildChildEnvironment(source, purpose) {
 }
 
 // src/runtime/process.ts
-import { spawn } from "node:child_process";
+var import_cross_spawn = __toESM(require_cross_spawn(), 1);
 
 // src/runtime/redaction.ts
 function redact(value) {
@@ -22145,13 +22648,20 @@ function redact(value) {
 }
 
 // src/runtime/process.ts
+function resolveManagedCommand(command, args, platform = process.platform) {
+  if (platform === "win32" && /\.(?:c|m)?js$/i.test(command)) {
+    return { command: process.execPath, args: [command, ...args] };
+  }
+  return { command, args };
+}
 function appendBounded(current, chunk, maximum) {
   const next = current + chunk.toString();
   if (Buffer.byteLength(next) <= maximum) return { value: next, exceeded: false };
   return { value: next.slice(-maximum), exceeded: true };
 }
 function startManagedProcess(options) {
-  const child = spawn(options.command, options.args, {
+  const resolved = resolveManagedCommand(options.command, options.args);
+  const child = (0, import_cross_spawn.default)(resolved.command, resolved.args, {
     cwd: options.cwd,
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"]
@@ -23284,15 +23794,15 @@ function canonicalDirectory(path, variable) {
 }
 function assertGitRepositoryRoot(candidate) {
   const project = canonicalDirectory(candidate, "repo_path");
-  const git3 = spawnSync2("git", ["-C", project, "rev-parse", "--show-toplevel"], {
+  const git3 = spawnSync2("git", ["-C", project, "rev-parse", "--is-inside-work-tree", "--show-prefix"], {
     encoding: "utf8",
     shell: false
   });
   if (git3.status !== 0) {
     throw new Error("repo_path must be a Git repository root");
   }
-  const gitRoot = canonicalDirectory(git3.stdout.trim(), "Git repository root");
-  if (gitRoot !== project) {
+  const [insideWorktree, ...prefixLines] = git3.stdout.split(/\r?\n/);
+  if (insideWorktree !== "true" || prefixLines.join("\n").trim() !== "") {
     throw new Error("repo_path must be a Git repository root");
   }
   return project;
@@ -23346,15 +23856,15 @@ function centralAgentsMd() {
 }
 
 // src/updater.ts
-import { spawn as spawn2, spawnSync as spawnSync3 } from "node:child_process";
+var import_cross_spawn2 = __toESM(require_cross_spawn(), 1);
 function installedVersion(codexBin = "codex") {
-  const r = spawnSync3(codexBin, ["--version"], { encoding: "utf8" });
+  const r = import_cross_spawn2.default.sync(codexBin, ["--version"], { encoding: "utf8" });
   if (r.status !== 0) return null;
   const m = (r.stdout || "").match(/(\d+\.\d+\.\d+[^\s]*)/);
   return m ? m[1] : (r.stdout || "").trim() || null;
 }
 function latestVersion(channel) {
-  const r = spawnSync3("npm", ["view", `@openai/codex@${channel}`, "version"], { encoding: "utf8" });
+  const r = import_cross_spawn2.default.sync("npm", ["view", `@openai/codex@${channel}`, "version"], { encoding: "utf8" });
   if (r.status !== 0) return null;
   return (r.stdout || "").trim() || null;
 }
@@ -23379,7 +23889,7 @@ function checkForUpdate(channel, codexBin = "codex") {
 }
 function runUpdate(channel) {
   return new Promise((resolve6) => {
-    const child = spawn2("npm", ["install", "-g", `@openai/codex@${channel}`], { encoding: "utf8" });
+    const child = (0, import_cross_spawn2.default)("npm", ["install", "-g", `@openai/codex@${channel}`]);
     let out = "";
     child.stdout?.on("data", (d) => out += d.toString());
     child.stderr?.on("data", (d) => out += d.toString());
@@ -24617,7 +25127,7 @@ var ExecutionTargetRouter = class {
 // src/execution/ssh/target.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { existsSync as existsSync6 } from "node:fs";
-import { dirname as dirname3, isAbsolute as isAbsolute2, relative, resolve as resolve5, sep as sep2 } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute3, relative, resolve as resolve5, sep as sep2 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // src/execution/ssh/client.ts
@@ -24743,7 +25253,7 @@ var WorkerDeployer = class {
 };
 
 // src/execution/ssh/protocol.ts
-import { resolve as resolve4, sep } from "node:path";
+import { isAbsolute as isAbsolute2, resolve as resolve4, sep } from "node:path";
 var WORKER_PROTOCOL_VERSION = 1;
 var RequestBase = {
   requestId: external_exports.string().uuid(),
@@ -24795,10 +25305,23 @@ var CheckNameSchema = external_exports.enum([
   "lint",
   "typecheck"
 ]);
-var CodexHomeSchema = external_exports.string().regex(
-  /^(?:~\/|\/)[A-Za-z0-9._/-]+$/,
-  "codexHome must be absolute or start with ~/ and contain no shell characters"
-).refine((value) => !value.split("/").includes(".."), "codexHome must not contain traversal");
+var CodexHomeSchema = external_exports.string().superRefine((value, context) => {
+  if (!value.startsWith("~/") && !isAbsolute2(value)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "codexHome must be absolute or start with ~/"
+    });
+  }
+  if (/[\0\r\n`$;&|<>"']/.test(value)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "codexHome contains unsupported control or shell characters"
+    });
+  }
+  if (value.split(/[\\/]/).includes("..")) {
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "codexHome must not contain traversal" });
+  }
+});
 var WorkerRequestSchema = external_exports.union([
   external_exports.object({ ...RequestBase, operation: external_exports.literal("handshake") }).strict(),
   external_exports.object({
@@ -24891,7 +25414,7 @@ var SshExecutionTarget = class {
     const localRoot = resolve5(this.options.localRoot);
     const candidate = resolve5(localPath);
     const suffix = relative(localRoot, candidate);
-    if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute2(suffix)) {
+    if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute3(suffix)) {
       throw new TargetError("TARGET_REPOSITORY", "Repository-Pfad liegt au\xDFerhalb des lokalen Mappings", this.id);
     }
     return resolve5(this.options.remoteRoot, suffix);

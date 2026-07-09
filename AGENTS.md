@@ -43,3 +43,41 @@ Next planned step:
 Wenn eine Annahme deine Umsetzung trägt, benenne sie explizit unter
 „Open items" und markiere Unsicherheit — der Orchestrator führt daraus
 Hypothesen. Lieber nachfragen (`blocker`) als raten.
+
+## Verbindliches Pull-Request-Review-Gate
+1. Ein Review wird erst nach grüner CI für den Exact-Head-Commit des Pull
+   Requests angefordert. Ein Review eines älteren Heads ist keine Merge-Evidenz.
+2. Ist Copilot nicht verfügbar, wird der Zustand fail-closed als
+   `unavailable/unknown` dokumentiert. Eine erschöpfte Quote (`quota_exhausted`)
+   darf nur anhand expliziter Provider- oder Operator-Evidenz klassifiziert
+   werden; ein fehlendes Review oder API-Schweigen ist kein Quotennachweis.
+   Bestätigt der Operator, dass das Copilot-Review-Limit bzw. die Quote erreicht
+   ist, gilt diese Bestätigung als die explizite Operator-Evidenz für
+   `quota_exhausted`. Der schreibgeschützte unabhängige Review-Agent aus
+   Schritt 3 ist dann verpflichtend und der einzige zulässige alternative
+   Review-Pfad für diesen Pull Request — er ersetzt Copilot vollständig und
+   wird nicht zusätzlich zu ihm ausgeführt.
+   Der unabhängige Agent aus Schritt 3 ist immer dann verpflichtend, wenn
+   Copilot kein Exact-Head-Review liefern kann — aus einem dieser Gründe:
+   - Copilot ist **nicht installiert oder nicht konfiguriert** für das Repository;
+   - das Copilot-Review-**Limit bzw. die Quote ist erreicht** (Operator-bestätigt, siehe oben);
+   - Copilot ist nicht erreichbar, weil **keine Verbindung** besteht (Netzwerk- oder API-Fehler).
+   In jedem dieser Fälle läuft der unabhängige Claude-interne QA-Agent mit
+   sauberem, chatfreiem Kontext und ersetzt Copilot für diesen Pull Request
+   vollständig.
+3. Als verpflichtender Fallback arbeitet ein schreibgeschützter unabhängiger
+   Review-Agent (der Claude-interne QA-Agent) mit neuem, kontextfreiem Auftrag
+   (`clean context`) und ohne Implementierungs- oder Chatverlauf. Der unabhängige
+   Agent erstellt jedes Finding selbst als separaten ungelösten PR-Review-Thread.
+   Alle ungelösten PR-Review-Threads bleiben bis zur evidenzbasierten Bearbeitung
+   offen. Ein Finding nur im Chat oder in einer Zusammenfassung genügt nicht.
+4. Der Implementierungs-Executor prüft jeden Thread technisch, behebt bestätigte
+   Findings einzeln testgetrieben, antwortet im Thread mit Commit-, Test- und
+   CI-Nachweis und darf ihn erst danach auflösen (`reply` → `resolve`). Widerspruch wird
+   ebenfalls im Thread mit reproduzierbarer Evidenz begründet.
+5. Nach jeder Korrekturrunde folgt ein neuer Exact-Head-Review. Dieser Zyklus
+   wird bis zur expliziten Merge-Freigabe durch den unabhängigen Reviewer
+   wiederholt.
+6. Ein Merge ist nur zulässig, wenn der Reviewer den Exact Head freigibt,
+   alle Checks grün sind und keine ungelösten Review-Threads vorliegen. Der
+   Executor muss die Thread-Anzahl unmittelbar vor dem Merge erneut auslesen.

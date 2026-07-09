@@ -11,7 +11,7 @@ green. All process state is persisted in SQLite — it survives context
 compaction, session switches and server restarts.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Node >= 22.5](https://img.shields.io/badge/node-%3E%3D22.5-brightgreen)
+![Node 22.13–22.x or 24.x](https://img.shields.io/badge/node-22.13%E2%80%9322.x%20%7C%2024.x-brightgreen)
 ![Status: stable](https://img.shields.io/badge/status-stable-green)
 
 Current version: 1.5.2
@@ -32,6 +32,21 @@ The remaining conversation-level slash-prompt run is an operator acceptance
 check, not an unreleased implementation item. claude.ai cannot start this local
 stdio server; its separate HTTP/OAuth connector therefore remains in
 development for 1.6.0.
+
+The externally installed server runtime is continuously verified with
+Node.js 22.13–22.x and Node.js 24.x on Ubuntu, macOS and Windows. Claude Desktop's
+built-in Node.js runtime is independent of this external-runtime matrix. The
+22.13 minimum is required because the built-in `node:sqlite` module is available
+without the `--experimental-sqlite` start flag only from Node.js 22.13 onward.
+Every runtime version and coverage floor is defined once under `ssot/` (indexed by
+`ssot/index.toml`) and bound to each consumer by contract tests. The portable matrix
+exercises one representative per supported LTS line at its floor (22.13.0 and 24.0.0)
+across all three operating systems; development and the quality gate run on Node 24
+(`.nvmrc`), while release artifacts are built on the 22.13 floor so a published bundle
+runs on the oldest supported runtime.
+The canonical quality gate enforces these production-code coverage floors:
+75 % lines, 70 % branches and 75 % functions. CodeQL scans both
+JavaScript/TypeScript and GitHub Actions workflow code.
 
 ---
 
@@ -124,8 +139,8 @@ Required software and state:
 - One supported Claude runtime:
   - [Claude Code CLI](https://code.claude.com/docs/en/overview), installed
     locally and authenticated. `claude --version` must succeed before installing
-    the Claude Code plugin. Its local plugin server requires Node.js ≥ 22.5;
-    verify it with `node --version`.
+    the Claude Code plugin. Its local plugin server requires Node.js 22.13–22.x
+    or Node.js 24.x; verify it with `node --version`.
   - [Claude Desktop](https://claude.com/download), installed locally and
     authenticated before installing the MCPB. Desktop runs the MCPB with its
     built-in Node.js runtime; a separate project installation path and a
@@ -564,8 +579,13 @@ version tag. The latest supported artifact is always available through
 Historical changes remain auditable in `CHANGELOG.md` and Git history instead
 of being presented as parallel installable versions.
 
-After a version change reaches `main`, the release workflow waits for the test
-and remote-acceptance jobs, rebuilds and verifies the release artifacts,
+Every pull request's `quality` job publishes its verified MCPB, SHA-256 checksum
+and `coverage/summary.txt` as one commit-addressed GitHub Actions artifact with
+a seven-day retention period. These review artifacts are not releases and do
+not change the one-stable-release invariant.
+
+After a version change reaches `main`, the release workflow waits for the
+portable, quality and remote-acceptance jobs, rebuilds and verifies the release artifacts,
 publishes the new version, removes superseded releases and semantic-version
 tags, marks the new release as latest, and checks the one-release/one-tag
 invariant.
@@ -582,6 +602,7 @@ unknown file configuration fields fail validation.
 npm ci
 npm run build        # TypeScript → dist/
 npm test             # unit tests (parser, state machine, isolation) — no API calls
+npm run test:coverage # production-only coverage; enforce 75/70/75 floors
 npm run bundle       # single-file bundle → bundle/server.mjs
 npm run verify:bundle # reproducibly rebuild and compare both release bundles
 npm run benchmark    # 7 MCP starts; enforce size and p95 latency budgets
@@ -593,8 +614,10 @@ node scripts/e2e-mcp.mjs       # end-to-end with a real Codex slice (uses your C
 node scripts/e2e-m1m3.mjs      # worktree, pause/inject/resume, merge (uses your Codex account)
 ```
 
-The unit suite includes protocol and fake-SSH coverage. `npm run test:remote`
-adds a real OpenSSH transport: it creates ephemeral host and user keys, deploys
+The portable CI matrix runs the type, unit and reproducible-bundle checks on
+Ubuntu, macOS and Windows with both supported Node.js LTS lines. The unit suite
+includes protocol and fake-SSH coverage. `npm run test:remote` adds a real
+OpenSSH transport: it creates ephemeral host and user keys, deploys
 the actual worker bundle, bootstraps a synthetic credential, executes one fake
 Codex slice, creates a fresh target instance and confirms that authentication
 still works after the local source credential has been removed. CI runs this

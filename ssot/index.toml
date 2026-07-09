@@ -1,0 +1,51 @@
+# Single Source of Truth — master index for codex-orchestrator.
+#
+# All central configuration values live in the per-concern JSON files in this
+# folder. This master file documents which concern owns which file, which keys
+# it defines, and every consumer that a contract test binds back to it.
+#
+# To change a value, edit ONLY its owning JSON file below. The listed contract
+# test fails if any consumer drifts out of sync with the source of truth.
+#
+# Leaf files are JSON so every tool (npm, node, tests) reads them without a
+# TOML parser; this index is TOML for human readability.
+
+[node-runtime]
+file = "ssot/version.json"
+owns = ["default", "floor", "matrix", "engines", "releaseNodeVersion"]
+consumers = [
+  ".nvmrc",
+  "package.json (engines.node)",
+  ".github/workflows/ci.yml (portable matrix + quality/remote node-version)",
+  ".github/workflows/release.yml (publish node-version)",
+  "packaging/mcpb/manifest.json (compatibility.runtimes.node = >= floor)",
+]
+contract_test = "tests/quality-policy.test.mjs"
+
+[bundle]
+file = "ssot/bundle.json"
+owns = ["target"]
+consumers = [
+  "package.json (scripts.bundle:server)",
+  "package.json (scripts.bundle:worker)",
+]
+contract_test = "tests/quality-policy.test.mjs"
+
+[limits]
+file = "ssot/limits.json"
+owns = ["coverageLines", "coverageBranches", "coverageFunctions"]
+consumers = [
+  "scripts/lib/coverage.mjs (COVERAGE_FLOORS)",
+  ".github/workflows/ci.yml (quality gate)",
+  "README.md (coverage floors)",
+]
+contract_test = "tests/coverage-runner.test.mjs, tests/readme-contract.test.mjs"
+
+[tests]
+file = "ssot/tests.json"
+owns = ["directory", "suffix", "allowedTags"]
+consumers = [
+  "scripts/lib/coverage.mjs (discoverTests: directory + suffix)",
+  "package.json (scripts.test glob)",
+]
+contract_test = "tests/quality-policy.test.mjs"

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
@@ -33,14 +34,18 @@ test("Reaper killt tote/legacy Tasks, verschont lebende Nachbar-Instanz", () => 
   const { store, mgr } = freshMgr();
   const deadTask = makeRunningTask(store, 2147480000); // toter Prozess
   const legacyTask = makeRunningTask(store, null);      // ohne owner_pid (alt)
-  const siblingTask = makeRunningTask(store, 1);        // PID 1 (launchd) lebt, ist nicht wir
+  const sibling = spawn(process.execPath, ["-e", "setInterval(() => {}, 10000)"], { stdio: "ignore" });
+  try {
+    const siblingTask = makeRunningTask(store, sibling.pid);
+    const n = mgr.reapOnStartup();
 
-  const n = mgr.reapOnStartup();
-
-  assert.equal(store.getTask(deadTask).status, "failed", "toter Task -> failed");
-  assert.equal(store.getTask(legacyTask).status, "failed", "legacy Task -> failed");
-  assert.equal(store.getTask(siblingTask).status, "running", "lebender Nachbar bleibt running");
-  assert.equal(n, 2);
+    assert.equal(store.getTask(deadTask).status, "failed", "toter Task -> failed");
+    assert.equal(store.getTask(legacyTask).status, "failed", "legacy Task -> failed");
+    assert.equal(store.getTask(siblingTask).status, "running", "lebender Nachbar bleibt running");
+    assert.equal(n, 2);
+  } finally {
+    sibling.kill();
+  }
 });
 
 test("verschiedene Stores mischen keine Daten", () => {

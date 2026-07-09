@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 test("worker protocol accepts a strict handshake and rejects unknown operations", async () => {
     const protocol = await import("../dist/execution/ssh/protocol.js").catch(() => null);
@@ -78,4 +80,7 @@ test("worker protocol requires an explicit Codex home for Codex operations", asy
     };
     assert.throws(() => parseWorkerRequest(base), /codexHome/);
     assert.equal(parseWorkerRequest({ ...base, codexHome: "~/.codex" }).codexHome, "~/.codex");
+    const nativeHome = join(tmpdir(), "codex-home");
+    assert.equal(parseWorkerRequest({ ...base, codexHome: nativeHome }).codexHome, nativeHome);
+    assert.throws(() => parseWorkerRequest({ ...base, codexHome: `${nativeHome}/../escape` }), /traversal/);
 });

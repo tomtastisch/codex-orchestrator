@@ -23,15 +23,15 @@ function canonicalDirectory(path: string, variable: string): string {
 /** Resolves and validates one repository path supplied for an orchestration request. */
 export function assertGitRepositoryRoot(candidate: string): string {
     const project = canonicalDirectory(candidate, "repo_path");
-    const git = spawnSync("git", ["-C", project, "rev-parse", "--show-toplevel"], {
+    const git = spawnSync("git", ["-C", project, "rev-parse", "--is-inside-work-tree", "--show-prefix"], {
         encoding: "utf8",
         shell: false,
     });
     if (git.status !== 0) {
         throw new Error("repo_path must be a Git repository root");
     }
-    const gitRoot = canonicalDirectory(git.stdout.trim(), "Git repository root");
-    if (gitRoot !== project) {
+    const [insideWorktree, ...prefixLines] = git.stdout.split(/\r?\n/);
+    if (insideWorktree !== "true" || prefixLines.join("\n").trim() !== "") {
         throw new Error("repo_path must be a Git repository root");
     }
     return project;

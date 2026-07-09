@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { buildCodexArgs, isBlockedConfigKey } from "../dist/codex.js";
 import { Store } from "../dist/db.js";
 import { buildPlanSnapshot } from "../dist/snapshot.js";
-import { buildFirstSlicePrompt } from "../dist/prompts.js";
+import { buildFirstSlicePrompt, buildResumeSlicePrompt } from "../dist/prompts.js";
 import { encode as toonEncode } from "@toon-format/toon";
 
 test("buildCodexArgs setzt Sandbox/Modell/Effort/Netzwerk deterministisch", () => {
@@ -79,6 +79,25 @@ test("read-only executor instructions stay in the prompt and do not mutate AGENT
   assert.match(prompt, /Do NOT modify files/);
   assert.match(prompt, /SLICE_RESULT/);
   assert.equal(readFileSync(agentsPath, "utf8"), original);
+});
+
+test("resume prompt preserves injections, acceptance criteria and slice contract", () => {
+  const task = { cluster_id: "C1", max_minutes: 7 };
+  const prompt = buildResumeSlicePrompt(
+    task,
+    [
+      { priority: "high", message: "Behebe Finding P1." },
+      { priority: "normal", message: "Führe den Regressionstest aus." },
+    ],
+    ["Windows-Shim startet", "Alle Tests sind grün"],
+  );
+
+  assert.match(prompt, /highest priority/);
+  assert.match(prompt, /\[high\] Behebe Finding P1/);
+  assert.match(prompt, /\[normal\] Führe den Regressionstest aus/);
+  assert.match(prompt, /about 7 minutes/);
+  assert.match(prompt, /Windows-Shim startet/);
+  assert.match(prompt, /SLICE_RESULT/);
 });
 
 test("Hypothesen-Lebenszyklus + Provenienz", () => {

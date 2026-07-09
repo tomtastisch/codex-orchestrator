@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import spawn from "cross-spawn";
 
 /**
  * Codex-Auto-Update (Plan-Ergänzung). Codex wird per npm-global verteilt
@@ -8,14 +8,14 @@ import { spawn, spawnSync } from "node:child_process";
 export type Channel = "latest" | "alpha" | "beta";
 
 export function installedVersion(codexBin = "codex"): string | null {
-  const r = spawnSync(codexBin, ["--version"], { encoding: "utf8" });
+  const r = spawn.sync(codexBin, ["--version"], { encoding: "utf8" });
   if (r.status !== 0) return null;
   const m = (r.stdout || "").match(/(\d+\.\d+\.\d+[^\s]*)/);
   return m ? m[1] : (r.stdout || "").trim() || null;
 }
 
 export function latestVersion(channel: Channel): string | null {
-  const r = spawnSync("npm", ["view", `@openai/codex@${channel}`, "version"], { encoding: "utf8" });
+  const r = spawn.sync("npm", ["view", `@openai/codex@${channel}`, "version"], { encoding: "utf8" });
   if (r.status !== 0) return null;
   return (r.stdout || "").trim() || null;
 }
@@ -52,7 +52,7 @@ export function checkForUpdate(channel: Channel, codexBin = "codex"): UpdateChec
 /** Führt `npm install -g @openai/codex@<channel>` aus. Non-blocking-Wrapper. */
 export function runUpdate(channel: Channel): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolve) => {
-    const child = spawn("npm", ["install", "-g", `@openai/codex@${channel}`], { encoding: "utf8" } as any);
+    const child = spawn("npm", ["install", "-g", `@openai/codex@${channel}`]);
     let out = "";
     child.stdout?.on("data", (d) => (out += d.toString()));
     child.stderr?.on("data", (d) => (out += d.toString()));

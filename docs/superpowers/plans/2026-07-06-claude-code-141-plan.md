@@ -80,7 +80,7 @@ Replace `## Prerequisites` with checked commands and explicit login requirements
 ```markdown
 ## Prerequisites
 
-- Node.js ≥ 22.5: `node --version`
+- Node.js ≥ 22.13: `node --version`
 - Git: `git --version`
 - Codex CLI: `codex --version`
 - Active Codex login: `codex login status`

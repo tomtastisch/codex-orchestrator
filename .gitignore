@@ -6,3 +6,4 @@ dist/
 .orchestrator/
 .DS_Store
 release/
+coverage/
