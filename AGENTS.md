@@ -51,6 +51,12 @@ Hypothesen. Lieber nachfragen (`blocker`) als raten.
    `unavailable/unknown` dokumentiert. Eine erschöpfte Quote (`quota_exhausted`)
    darf nur anhand expliziter Provider- oder Operator-Evidenz klassifiziert
    werden; ein fehlendes Review oder API-Schweigen ist kein Quotennachweis.
+   Bestätigt der Operator, dass das Copilot-Review-Limit bzw. die Quote erreicht
+   ist, gilt diese Bestätigung als die explizite Operator-Evidenz für
+   `quota_exhausted`. Der schreibgeschützte unabhängige Review-Agent aus
+   Schritt 3 ist dann verpflichtend und der einzige zulässige alternative
+   Review-Pfad für diesen Pull Request — er ersetzt Copilot vollständig und
+   wird nicht zusätzlich zu ihm ausgeführt.
 3. Als verpflichtender Fallback arbeitet ein schreibgeschützter unabhängiger
    Review-Agent mit neuem, kontextfreiem Auftrag (`clean context`) und ohne
    Implementierungs- oder Chatverlauf. Der unabhängige Agent erstellt jedes

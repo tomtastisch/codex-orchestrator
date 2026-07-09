@@ -11,6 +11,15 @@ import {
 } from "../scripts/lib/coverage.mjs";
 import * as coverage from "../scripts/lib/coverage.mjs";
 
+test("coverage floors are sourced from ssot/limits.json", () => {
+    const limits = JSON.parse(readFileSync("ssot/limits.json", "utf8"));
+    assert.deepEqual(coverage.COVERAGE_FLOORS, {
+        lines: limits.coverageLines,
+        branches: limits.coverageBranches,
+        functions: limits.coverageFunctions,
+    });
+});
+
 test("coverage arguments scope metrics to production output and enforce floors", () => {
     assert.deepEqual(coverageArguments(["tests/a.test.mjs"]), [
         "--all",
@@ -28,14 +37,45 @@ test("coverage arguments scope metrics to production output and enforce floors",
     ]);
 });
 
-test("test discovery returns only sorted top-level test modules", () => {
+test("test discovery returns sorted test modules recursively", () => {
     const root = mkdtempSync(join(tmpdir(), "coverage-tests-"));
     try {
-        mkdirSync(join(root, "tests"));
+        mkdirSync(join(root, "tests", "unit"), { recursive: true });
         writeFileSync(join(root, "tests", "z.test.mjs"), "");
         writeFileSync(join(root, "tests", "a.test.mjs"), "");
         writeFileSync(join(root, "tests", "fixture.mjs"), "");
-        assert.deepEqual(discoverTests(root), ["tests/a.test.mjs", "tests/z.test.mjs"]);
+        writeFileSync(join(root, "tests", "unit", "nested.test.mjs"), "");
+        assert.deepEqual(discoverTests(root), [
+            "tests/a.test.mjs",
+            "tests/unit/nested.test.mjs",
+            "tests/z.test.mjs",
+        ]);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test("coverage summary tolerates platform-divergent report path separators", () => {
+    const root = mkdtempSync(join(tmpdir(), "coverage-sep-"));
+    try {
+        mkdirSync(join(root, "dist"), { recursive: true });
+        mkdirSync(join(root, "coverage"));
+        writeFileSync(join(root, "dist", "a.js"), "export {};\n");
+        const totals = { lines: { pct: 80 }, branches: { pct: 80 }, functions: { pct: 80 } };
+        // Simulate a report whose key uses the opposite separator style from the
+        // host's path.resolve output (the Windows-on-POSIX mismatch the reviewer flagged).
+        const foreignKey = `${root}/dist/a.js`.split("/").join("\\");
+        writeFileSync(
+            join(root, "coverage", "coverage-summary.json"),
+            JSON.stringify({ total: totals, [foreignKey]: totals }),
+        );
+        const modules = coverage.discoverProductionModules(root);
+        assert.deepEqual(modules, ["dist/a.js"]);
+        assert.deepEqual(coverage.readCoverageSummary(root, modules), {
+            lines: 80,
+            branches: 80,
+            functions: 80,
+        });
     } finally {
         rmSync(root, { recursive: true, force: true });
     }

@@ -38,6 +38,11 @@ Node.js 22.13–22.x and Node.js 24.x on Ubuntu, macOS and Windows. Claude Deskt
 built-in Node.js runtime is independent of this external-runtime matrix. The
 22.13 minimum is required because the built-in `node:sqlite` module is available
 without the `--experimental-sqlite` start flag only from Node.js 22.13 onward.
+Every runtime version and coverage floor is defined once under `ssot/` (indexed by
+`ssot/index.toml`) and bound to each consumer by contract tests. The portable matrix
+exercises both LTS lines at their floor and current patch; development and the quality
+gate run on Node 24 (`.nvmrc`), while release artifacts are built on the 22.13 floor so
+a published bundle runs on the oldest supported runtime.
 The canonical quality gate enforces these production-code coverage floors:
 75 % lines, 70 % branches and 75 % functions. CodeQL scans both
 JavaScript/TypeScript and GitHub Actions workflow code.

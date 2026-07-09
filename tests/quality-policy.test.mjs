@@ -5,27 +5,44 @@ import { existsSync, readFileSync } from "node:fs";
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 const mcpb = JSON.parse(readFileSync("packaging/mcpb/manifest.json", "utf8"));
 const ci = readFileSync(".github/workflows/ci.yml", "utf8").replaceAll("\r\n", "\n");
+const release = readFileSync(".github/workflows/release.yml", "utf8").replaceAll("\r\n", "\n");
+const version = JSON.parse(readFileSync("ssot/version.json", "utf8"));
+const bundle = JSON.parse(readFileSync("ssot/bundle.json", "utf8"));
 
-test("package supports only the verified Node LTS lines", () => {
-    assert.equal(pkg.engines.node, ">=22.13.0 <23 || >=24 <25");
-    assert.equal(mcpb.compatibility.runtimes.node, ">=22.13.0");
-    assert.equal(readFileSync(".nvmrc", "utf8").trim(), "24");
+test("ssot/ files are the single source of truth for every version consumer", () => {
+    // Internal consistency of the source of truth itself.
+    assert.ok(version.matrix.includes(version.floor), "matrix must cover the declared floor");
+    assert.ok(
+        version.matrix.some((v) => v === version.default || v.startsWith(`${version.default}.`)),
+        "matrix must cover the declared default line",
+    );
+
+    // Every scattered consumer is bound back to the source of truth.
+    assert.equal(readFileSync(".nvmrc", "utf8").trim(), version.default);
+    assert.equal(pkg.engines.node, version.engines);
+    // The shipped runtime requirement is the floor expressed as a semver range.
+    assert.equal(mcpb.compatibility.runtimes.node, `>=${version.floor}`);
+    assert.ok(pkg.scripts["bundle:server"].includes(`--target=${bundle.target}`));
+    assert.ok(pkg.scripts["bundle:worker"].includes(`--target=${bundle.target}`));
+    assert.ok(
+        release.includes(`node-version: "${version.releaseNodeVersion}"`),
+        "release build must pin the floor line",
+    );
 });
 
 test("CI requires the complete Node and operating-system matrix", () => {
     assert.match(ci, /^permissions:\n  contents: read$/m);
-    for (const value of [
-        "ubuntu-latest",
-        "macos-15",
-        "windows-latest",
-        '"22.13.0"',
-        '"22"',
-        '"24.0.0"',
-        '"24"',
-    ]) {
+    for (const value of ["ubuntu-latest", "macos-15", "windows-latest"]) {
         assert.ok(ci.includes(value), `CI matrix entry missing: ${value}`);
     }
-    assert.match(ci, /node:\s*\["22\.13\.0", "22", "24\.0\.0", "24"\]/);
+    // Portable matrix literal is derived from the source of truth.
+    const matrixLiteral = `node: [${version.matrix.map((v) => `"${v}"`).join(", ")}]`;
+    assert.ok(ci.includes(matrixLiteral), `portable matrix must equal ssot/version.json: ${matrixLiteral}`);
+    // Single-version gates (quality, remote-acceptance) run on the SSOT default line.
+    assert.ok(
+        ci.includes(`node-version: "${version.default}"`),
+        "quality and remote-acceptance gates must use the SSOT default Node version",
+    );
     assert.match(ci, /portable:[\s\S]*fail-fast: false/);
     assert.match(
         ci,

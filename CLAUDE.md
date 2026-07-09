@@ -81,6 +81,11 @@ Sparring is not implementation. You make the final decision.
 2. If Copilot is unavailable, record the fail-closed state as
    `unavailable/unknown`. Classify quota exhaustion only from explicit provider
    or operator evidence; API silence or an absent review is not quota evidence.
+   When the operator attests that the Copilot review limit or quota is reached,
+   that attestation is the explicit operator evidence that classifies the state
+   as `quota_exhausted`. The read-only independent review agent in step 3 then
+   becomes mandatory and is the only permitted alternative review path for that
+   pull request — it fully replaces Copilot rather than running in addition.
 3. Start a read-only independent review agent with clean context and no
    implementation or chat history. The independent agent must author every
    finding as a separate unresolved PR review thread. All unresolved PR review
