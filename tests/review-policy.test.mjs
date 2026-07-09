@@ -19,6 +19,11 @@ test("repository policy requires an exact-head independent review fallback", () 
             /unavailable\/unknown/i,
             /(?:quota exhaustion.*explicit\s+(?:provider\s+or\s+operator\s+)?evidence|quota_exhausted.*expliziter Provider- oder Operator-Evidenz)/is,
             /(?:repeat.*explicit merge approval|bis zur expliziten Merge-Freigabe.*wiederholt)/is,
+            // The three explicit triggers that each mandate the independent QA agent.
+            /(?:not installed or not configured|nicht installiert oder nicht konfiguriert)/i,
+            /(?:limit or quota is reached|Limit bzw\. die Quote ist erreicht)/i,
+            /(?:no connection|keine Verbindung)/i,
+            /Claude-intern\w*\s+QA[- ]?[Aa]gent/i,
         ]) {
             assert.match(policy, pattern, `${path} is missing ${pattern}`);
         }
