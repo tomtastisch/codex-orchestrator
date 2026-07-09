@@ -1,14 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 const readme = readFileSync("README.md", "utf8");
 const submission = readFileSync("docs/distribution/anthropic-plugin-submission.md", "utf8");
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-const server = readFileSync("src/server.ts", "utf8");
+
+// server.ts is the composition root and holds no registrations; the tool/prompt
+// registrations live in the application layer (src/app/prompts.ts + tools/*.ts).
+const registrationSources = [
+    "src/app/prompts.ts",
+    ...readdirSync("src/app/tools")
+        .filter((f) => f.endsWith(".ts"))
+        .sort()
+        .map((f) => `src/app/tools/${f}`),
+].map((path) => readFileSync(path, "utf8")).join("\n");
 
 function registeredNames(kind) {
-    return [...server.matchAll(new RegExp(`server\\.register${kind}\\(\\s*"([^"]+)"`, "g"))]
+    return [...registrationSources.matchAll(new RegExp(`server\\.register${kind}\\(\\s*"([^"]+)"`, "g"))]
         .map((match) => match[1]);
 }
 

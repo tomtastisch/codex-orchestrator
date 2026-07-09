@@ -1309,21 +1309,21 @@ var require_errors = __commonJS({
     function extendErrors({ gen, keyword, schemaValue, data, errsCount, it }) {
       if (errsCount === void 0)
         throw new Error("ajv implementation error");
-      const err2 = gen.name("err");
+      const err = gen.name("err");
       gen.forRange("i", errsCount, names_1.default.errors, (i) => {
-        gen.const(err2, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
-        gen.if((0, codegen_1._)`${err2}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err2}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
-        gen.assign((0, codegen_1._)`${err2}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
+        gen.const(err, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
+        gen.if((0, codegen_1._)`${err}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
+        gen.assign((0, codegen_1._)`${err}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
         if (it.opts.verbose) {
-          gen.assign((0, codegen_1._)`${err2}.schema`, schemaValue);
-          gen.assign((0, codegen_1._)`${err2}.data`, data);
+          gen.assign((0, codegen_1._)`${err}.schema`, schemaValue);
+          gen.assign((0, codegen_1._)`${err}.data`, data);
         }
       });
     }
     exports.extendErrors = extendErrors;
     function addError(gen, errObj) {
-      const err2 = gen.const("err", errObj);
-      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err2}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err2})`);
+      const err = gen.const("err", errObj);
+      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err})`);
       gen.code((0, codegen_1._)`${names_1.default.errors}++`);
     }
     function returnErrors(it, errs) {
@@ -7152,7 +7152,7 @@ var require_resolveCommand = __commonJS({
       if (shouldSwitchCwd) {
         try {
           process.chdir(parsed.options.cwd);
-        } catch (err2) {
+        } catch (err) {
         }
       }
       let resolved;
@@ -7337,9 +7337,9 @@ var require_enoent = __commonJS({
       const originalEmit = cp.emit;
       cp.emit = function(name, arg1) {
         if (name === "exit") {
-          const err2 = verifyENOENT(arg1, parsed);
-          if (err2) {
-            return originalEmit.call(cp, "error", err2);
+          const err = verifyENOENT(arg1, parsed);
+          if (err) {
+            return originalEmit.call(cp, "error", err);
           }
         }
         return originalEmit.apply(cp, arguments);
@@ -7896,16 +7896,16 @@ var makeIssue = (params) => {
   };
 };
 var EMPTY_PATH = [];
-function addIssueToContext(ctx, issueData) {
+function addIssueToContext(ctx2, issueData) {
   const overrideMap = getErrorMap();
   const issue2 = makeIssue({
     issueData,
-    data: ctx.data,
-    path: ctx.path,
+    data: ctx2.data,
+    path: ctx2.path,
     errorMaps: [
-      ctx.common.contextualErrorMap,
+      ctx2.common.contextualErrorMap,
       // contextual error map is first priority
-      ctx.schemaErrorMap,
+      ctx2.schemaErrorMap,
       // then schema-bound map if available
       overrideMap,
       // then global override map
@@ -7913,7 +7913,7 @@ function addIssueToContext(ctx, issueData) {
       // then global default map
     ].filter((x) => !!x)
   });
-  ctx.common.issues.push(issue2);
+  ctx2.common.issues.push(issue2);
 }
 var ParseStatus = class _ParseStatus {
   constructor() {
@@ -8006,11 +8006,11 @@ var ParseInputLazyPath = class {
     return this._cachedPath;
   }
 };
-var handleResult = (ctx, result) => {
+var handleResult = (ctx2, result) => {
   if (isValid(result)) {
     return { success: true, data: result.value };
   } else {
-    if (!ctx.common.issues.length) {
+    if (!ctx2.common.issues.length) {
       throw new Error("Validation failed but no issues detected.");
     }
     return {
@@ -8018,7 +8018,7 @@ var handleResult = (ctx, result) => {
       get error() {
         if (this._error)
           return this._error;
-        const error2 = new ZodError(ctx.common.issues);
+        const error2 = new ZodError(ctx2.common.issues);
         this._error = error2;
         return this._error;
       }
@@ -8034,17 +8034,17 @@ function processCreateParams(params) {
   }
   if (errorMap2)
     return { errorMap: errorMap2, description };
-  const customMap = (iss, ctx) => {
+  const customMap = (iss, ctx2) => {
     const { message } = params;
     if (iss.code === "invalid_enum_value") {
-      return { message: message ?? ctx.defaultError };
+      return { message: message ?? ctx2.defaultError };
     }
-    if (typeof ctx.data === "undefined") {
-      return { message: message ?? required_error ?? ctx.defaultError };
+    if (typeof ctx2.data === "undefined") {
+      return { message: message ?? required_error ?? ctx2.defaultError };
     }
     if (iss.code !== "invalid_type")
-      return { message: ctx.defaultError };
-    return { message: message ?? invalid_type_error ?? ctx.defaultError };
+      return { message: ctx2.defaultError };
+    return { message: message ?? invalid_type_error ?? ctx2.defaultError };
   };
   return { errorMap: customMap, description };
 }
@@ -8055,8 +8055,8 @@ var ZodType = class {
   _getType(input) {
     return getParsedType(input.data);
   }
-  _getOrReturnCtx(input, ctx) {
-    return ctx || {
+  _getOrReturnCtx(input, ctx2) {
+    return ctx2 || {
       common: input.parent.common,
       data: input.data,
       parsedType: getParsedType(input.data),
@@ -8096,7 +8096,7 @@ var ZodType = class {
     throw result.error;
   }
   safeParse(data, params) {
-    const ctx = {
+    const ctx2 = {
       common: {
         issues: [],
         async: params?.async ?? false,
@@ -8108,11 +8108,11 @@ var ZodType = class {
       data,
       parsedType: getParsedType(data)
     };
-    const result = this._parseSync({ data, path: ctx.path, parent: ctx });
-    return handleResult(ctx, result);
+    const result = this._parseSync({ data, path: ctx2.path, parent: ctx2 });
+    return handleResult(ctx2, result);
   }
   "~validate"(data) {
-    const ctx = {
+    const ctx2 = {
       common: {
         issues: [],
         async: !!this["~standard"].async
@@ -8125,26 +8125,26 @@ var ZodType = class {
     };
     if (!this["~standard"].async) {
       try {
-        const result = this._parseSync({ data, path: [], parent: ctx });
+        const result = this._parseSync({ data, path: [], parent: ctx2 });
         return isValid(result) ? {
           value: result.value
         } : {
-          issues: ctx.common.issues
+          issues: ctx2.common.issues
         };
-      } catch (err2) {
-        if (err2?.message?.toLowerCase()?.includes("encountered")) {
+      } catch (err) {
+        if (err?.message?.toLowerCase()?.includes("encountered")) {
           this["~standard"].async = true;
         }
-        ctx.common = {
+        ctx2.common = {
           issues: [],
           async: true
         };
       }
     }
-    return this._parseAsync({ data, path: [], parent: ctx }).then((result) => isValid(result) ? {
+    return this._parseAsync({ data, path: [], parent: ctx2 }).then((result) => isValid(result) ? {
       value: result.value
     } : {
-      issues: ctx.common.issues
+      issues: ctx2.common.issues
     });
   }
   async parseAsync(data, params) {
@@ -8154,7 +8154,7 @@ var ZodType = class {
     throw result.error;
   }
   async safeParseAsync(data, params) {
-    const ctx = {
+    const ctx2 = {
       common: {
         issues: [],
         contextualErrorMap: params?.errorMap,
@@ -8166,9 +8166,9 @@ var ZodType = class {
       data,
       parsedType: getParsedType(data)
     };
-    const maybeAsyncResult = this._parse({ data, path: ctx.path, parent: ctx });
+    const maybeAsyncResult = this._parse({ data, path: ctx2.path, parent: ctx2 });
     const result = await (isAsync(maybeAsyncResult) ? maybeAsyncResult : Promise.resolve(maybeAsyncResult));
-    return handleResult(ctx, result);
+    return handleResult(ctx2, result);
   }
   refine(check2, message) {
     const getIssueProperties = (val) => {
@@ -8180,9 +8180,9 @@ var ZodType = class {
         return message;
       }
     };
-    return this._refinement((val, ctx) => {
+    return this._refinement((val, ctx2) => {
       const result = check2(val);
-      const setError = () => ctx.addIssue({
+      const setError = () => ctx2.addIssue({
         code: ZodIssueCode.custom,
         ...getIssueProperties(val)
       });
@@ -8205,9 +8205,9 @@ var ZodType = class {
     });
   }
   refinement(check2, refinementData) {
-    return this._refinement((val, ctx) => {
+    return this._refinement((val, ctx2) => {
       if (!check2(val)) {
-        ctx.addIssue(typeof refinementData === "function" ? refinementData(val, ctx) : refinementData);
+        ctx2.addIssue(typeof refinementData === "function" ? refinementData(val, ctx2) : refinementData);
         return false;
       } else {
         return true;
@@ -8418,21 +8418,21 @@ var ZodString = class _ZodString2 extends ZodType {
     }
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.string) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
+      const ctx3 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx3, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.string,
-        received: ctx2.parsedType
+        received: ctx3.parsedType
       });
       return INVALID;
     }
     const status = new ParseStatus();
-    let ctx = void 0;
+    let ctx2 = void 0;
     for (const check2 of this._def.checks) {
       if (check2.kind === "min") {
         if (input.data.length < check2.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.too_small,
             minimum: check2.value,
             type: "string",
@@ -8444,8 +8444,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "max") {
         if (input.data.length > check2.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.too_big,
             maximum: check2.value,
             type: "string",
@@ -8459,9 +8459,9 @@ var ZodString = class _ZodString2 extends ZodType {
         const tooBig = input.data.length > check2.value;
         const tooSmall = input.data.length < check2.value;
         if (tooBig || tooSmall) {
-          ctx = this._getOrReturnCtx(input, ctx);
+          ctx2 = this._getOrReturnCtx(input, ctx2);
           if (tooBig) {
-            addIssueToContext(ctx, {
+            addIssueToContext(ctx2, {
               code: ZodIssueCode.too_big,
               maximum: check2.value,
               type: "string",
@@ -8470,7 +8470,7 @@ var ZodString = class _ZodString2 extends ZodType {
               message: check2.message
             });
           } else if (tooSmall) {
-            addIssueToContext(ctx, {
+            addIssueToContext(ctx2, {
               code: ZodIssueCode.too_small,
               minimum: check2.value,
               type: "string",
@@ -8483,8 +8483,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "email") {
         if (!emailRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "email",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8496,8 +8496,8 @@ var ZodString = class _ZodString2 extends ZodType {
           emojiRegex = new RegExp(_emojiRegex, "u");
         }
         if (!emojiRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "emoji",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8506,8 +8506,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "uuid") {
         if (!uuidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "uuid",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8516,8 +8516,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "nanoid") {
         if (!nanoidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "nanoid",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8526,8 +8526,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "cuid") {
         if (!cuidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "cuid",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8536,8 +8536,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "cuid2") {
         if (!cuid2Regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "cuid2",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8546,8 +8546,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "ulid") {
         if (!ulidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "ulid",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8558,8 +8558,8 @@ var ZodString = class _ZodString2 extends ZodType {
         try {
           new URL(input.data);
         } catch {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "url",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8570,8 +8570,8 @@ var ZodString = class _ZodString2 extends ZodType {
         check2.regex.lastIndex = 0;
         const testResult = check2.regex.test(input.data);
         if (!testResult) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "regex",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8582,8 +8582,8 @@ var ZodString = class _ZodString2 extends ZodType {
         input.data = input.data.trim();
       } else if (check2.kind === "includes") {
         if (!input.data.includes(check2.value, check2.position)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.invalid_string,
             validation: { includes: check2.value, position: check2.position },
             message: check2.message
@@ -8596,8 +8596,8 @@ var ZodString = class _ZodString2 extends ZodType {
         input.data = input.data.toUpperCase();
       } else if (check2.kind === "startsWith") {
         if (!input.data.startsWith(check2.value)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.invalid_string,
             validation: { startsWith: check2.value },
             message: check2.message
@@ -8606,8 +8606,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "endsWith") {
         if (!input.data.endsWith(check2.value)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.invalid_string,
             validation: { endsWith: check2.value },
             message: check2.message
@@ -8617,8 +8617,8 @@ var ZodString = class _ZodString2 extends ZodType {
       } else if (check2.kind === "datetime") {
         const regex = datetimeRegex(check2);
         if (!regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.invalid_string,
             validation: "datetime",
             message: check2.message
@@ -8628,8 +8628,8 @@ var ZodString = class _ZodString2 extends ZodType {
       } else if (check2.kind === "date") {
         const regex = dateRegex;
         if (!regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.invalid_string,
             validation: "date",
             message: check2.message
@@ -8639,8 +8639,8 @@ var ZodString = class _ZodString2 extends ZodType {
       } else if (check2.kind === "time") {
         const regex = timeRegex(check2);
         if (!regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.invalid_string,
             validation: "time",
             message: check2.message
@@ -8649,8 +8649,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "duration") {
         if (!durationRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "duration",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8659,8 +8659,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "ip") {
         if (!isValidIP(input.data, check2.version)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "ip",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8669,8 +8669,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "jwt") {
         if (!isValidJWT(input.data, check2.alg)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "jwt",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8679,8 +8679,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "cidr") {
         if (!isValidCidr(input.data, check2.version)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "cidr",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8689,8 +8689,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "base64") {
         if (!base64Regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "base64",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8699,8 +8699,8 @@ var ZodString = class _ZodString2 extends ZodType {
         }
       } else if (check2.kind === "base64url") {
         if (!base64urlRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             validation: "base64url",
             code: ZodIssueCode.invalid_string,
             message: check2.message
@@ -8978,21 +8978,21 @@ var ZodNumber = class _ZodNumber extends ZodType {
     }
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.number) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
+      const ctx3 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx3, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.number,
-        received: ctx2.parsedType
+        received: ctx3.parsedType
       });
       return INVALID;
     }
-    let ctx = void 0;
+    let ctx2 = void 0;
     const status = new ParseStatus();
     for (const check2 of this._def.checks) {
       if (check2.kind === "int") {
         if (!util.isInteger(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.invalid_type,
             expected: "integer",
             received: "float",
@@ -9003,8 +9003,8 @@ var ZodNumber = class _ZodNumber extends ZodType {
       } else if (check2.kind === "min") {
         const tooSmall = check2.inclusive ? input.data < check2.value : input.data <= check2.value;
         if (tooSmall) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.too_small,
             minimum: check2.value,
             type: "number",
@@ -9017,8 +9017,8 @@ var ZodNumber = class _ZodNumber extends ZodType {
       } else if (check2.kind === "max") {
         const tooBig = check2.inclusive ? input.data > check2.value : input.data >= check2.value;
         if (tooBig) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.too_big,
             maximum: check2.value,
             type: "number",
@@ -9030,8 +9030,8 @@ var ZodNumber = class _ZodNumber extends ZodType {
         }
       } else if (check2.kind === "multipleOf") {
         if (floatSafeRemainder(input.data, check2.value) !== 0) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.not_multiple_of,
             multipleOf: check2.value,
             message: check2.message
@@ -9040,8 +9040,8 @@ var ZodNumber = class _ZodNumber extends ZodType {
         }
       } else if (check2.kind === "finite") {
         if (!Number.isFinite(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.not_finite,
             message: check2.message
           });
@@ -9215,14 +9215,14 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
     if (parsedType2 !== ZodParsedType.bigint) {
       return this._getInvalidInput(input);
     }
-    let ctx = void 0;
+    let ctx2 = void 0;
     const status = new ParseStatus();
     for (const check2 of this._def.checks) {
       if (check2.kind === "min") {
         const tooSmall = check2.inclusive ? input.data < check2.value : input.data <= check2.value;
         if (tooSmall) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.too_small,
             type: "bigint",
             minimum: check2.value,
@@ -9234,8 +9234,8 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
       } else if (check2.kind === "max") {
         const tooBig = check2.inclusive ? input.data > check2.value : input.data >= check2.value;
         if (tooBig) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.too_big,
             type: "bigint",
             maximum: check2.value,
@@ -9246,8 +9246,8 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
         }
       } else if (check2.kind === "multipleOf") {
         if (input.data % check2.value !== BigInt(0)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.not_multiple_of,
             multipleOf: check2.value,
             message: check2.message
@@ -9261,11 +9261,11 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
     return { status: status.value, value: input.data };
   }
   _getInvalidInput(input) {
-    const ctx = this._getOrReturnCtx(input);
-    addIssueToContext(ctx, {
+    const ctx2 = this._getOrReturnCtx(input);
+    addIssueToContext(ctx2, {
       code: ZodIssueCode.invalid_type,
       expected: ZodParsedType.bigint,
-      received: ctx.parsedType
+      received: ctx2.parsedType
     });
     return INVALID;
   }
@@ -9376,11 +9376,11 @@ var ZodBoolean = class extends ZodType {
     }
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.boolean) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.boolean,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
@@ -9401,28 +9401,28 @@ var ZodDate = class _ZodDate extends ZodType {
     }
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.date) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
+      const ctx3 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx3, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.date,
-        received: ctx2.parsedType
+        received: ctx3.parsedType
       });
       return INVALID;
     }
     if (Number.isNaN(input.data.getTime())) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
+      const ctx3 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx3, {
         code: ZodIssueCode.invalid_date
       });
       return INVALID;
     }
     const status = new ParseStatus();
-    let ctx = void 0;
+    let ctx2 = void 0;
     for (const check2 of this._def.checks) {
       if (check2.kind === "min") {
         if (input.data.getTime() < check2.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.too_small,
             message: check2.message,
             inclusive: true,
@@ -9434,8 +9434,8 @@ var ZodDate = class _ZodDate extends ZodType {
         }
       } else if (check2.kind === "max") {
         if (input.data.getTime() > check2.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
+          ctx2 = this._getOrReturnCtx(input, ctx2);
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.too_big,
             message: check2.message,
             inclusive: true,
@@ -9507,11 +9507,11 @@ var ZodSymbol = class extends ZodType {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.symbol) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.symbol,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
@@ -9528,11 +9528,11 @@ var ZodUndefined = class extends ZodType {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.undefined) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.undefined,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
@@ -9549,11 +9549,11 @@ var ZodNull = class extends ZodType {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.null) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.null,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
@@ -9598,11 +9598,11 @@ ZodUnknown.create = (params) => {
 };
 var ZodNever = class extends ZodType {
   _parse(input) {
-    const ctx = this._getOrReturnCtx(input);
-    addIssueToContext(ctx, {
+    const ctx2 = this._getOrReturnCtx(input);
+    addIssueToContext(ctx2, {
       code: ZodIssueCode.invalid_type,
       expected: ZodParsedType.never,
-      received: ctx.parsedType
+      received: ctx2.parsedType
     });
     return INVALID;
   }
@@ -9617,11 +9617,11 @@ var ZodVoid = class extends ZodType {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.undefined) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.void,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
@@ -9636,21 +9636,21 @@ ZodVoid.create = (params) => {
 };
 var ZodArray = class _ZodArray extends ZodType {
   _parse(input) {
-    const { ctx, status } = this._processInputParams(input);
+    const { ctx: ctx2, status } = this._processInputParams(input);
     const def = this._def;
-    if (ctx.parsedType !== ZodParsedType.array) {
-      addIssueToContext(ctx, {
+    if (ctx2.parsedType !== ZodParsedType.array) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.array,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
     if (def.exactLength !== null) {
-      const tooBig = ctx.data.length > def.exactLength.value;
-      const tooSmall = ctx.data.length < def.exactLength.value;
+      const tooBig = ctx2.data.length > def.exactLength.value;
+      const tooSmall = ctx2.data.length < def.exactLength.value;
       if (tooBig || tooSmall) {
-        addIssueToContext(ctx, {
+        addIssueToContext(ctx2, {
           code: tooBig ? ZodIssueCode.too_big : ZodIssueCode.too_small,
           minimum: tooSmall ? def.exactLength.value : void 0,
           maximum: tooBig ? def.exactLength.value : void 0,
@@ -9663,8 +9663,8 @@ var ZodArray = class _ZodArray extends ZodType {
       }
     }
     if (def.minLength !== null) {
-      if (ctx.data.length < def.minLength.value) {
-        addIssueToContext(ctx, {
+      if (ctx2.data.length < def.minLength.value) {
+        addIssueToContext(ctx2, {
           code: ZodIssueCode.too_small,
           minimum: def.minLength.value,
           type: "array",
@@ -9676,8 +9676,8 @@ var ZodArray = class _ZodArray extends ZodType {
       }
     }
     if (def.maxLength !== null) {
-      if (ctx.data.length > def.maxLength.value) {
-        addIssueToContext(ctx, {
+      if (ctx2.data.length > def.maxLength.value) {
+        addIssueToContext(ctx2, {
           code: ZodIssueCode.too_big,
           maximum: def.maxLength.value,
           type: "array",
@@ -9688,15 +9688,15 @@ var ZodArray = class _ZodArray extends ZodType {
         status.dirty();
       }
     }
-    if (ctx.common.async) {
-      return Promise.all([...ctx.data].map((item, i) => {
-        return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+    if (ctx2.common.async) {
+      return Promise.all([...ctx2.data].map((item, i) => {
+        return def.type._parseAsync(new ParseInputLazyPath(ctx2, item, ctx2.path, i));
       })).then((result2) => {
         return ParseStatus.mergeArray(status, result2);
       });
     }
-    const result = [...ctx.data].map((item, i) => {
-      return def.type._parseSync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+    const result = [...ctx2.data].map((item, i) => {
+      return def.type._parseSync(new ParseInputLazyPath(ctx2, item, ctx2.path, i));
     });
     return ParseStatus.mergeArray(status, result);
   }
@@ -9779,19 +9779,19 @@ var ZodObject = class _ZodObject extends ZodType {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.object) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
+      const ctx3 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx3, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.object,
-        received: ctx2.parsedType
+        received: ctx3.parsedType
       });
       return INVALID;
     }
-    const { status, ctx } = this._processInputParams(input);
+    const { status, ctx: ctx2 } = this._processInputParams(input);
     const { shape, keys: shapeKeys } = this._getCached();
     const extraKeys = [];
     if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
-      for (const key in ctx.data) {
+      for (const key in ctx2.data) {
         if (!shapeKeys.includes(key)) {
           extraKeys.push(key);
         }
@@ -9800,11 +9800,11 @@ var ZodObject = class _ZodObject extends ZodType {
     const pairs = [];
     for (const key of shapeKeys) {
       const keyValidator = shape[key];
-      const value = ctx.data[key];
+      const value = ctx2.data[key];
       pairs.push({
         key: { status: "valid", value: key },
-        value: keyValidator._parse(new ParseInputLazyPath(ctx, value, ctx.path, key)),
-        alwaysSet: key in ctx.data
+        value: keyValidator._parse(new ParseInputLazyPath(ctx2, value, ctx2.path, key)),
+        alwaysSet: key in ctx2.data
       });
     }
     if (this._def.catchall instanceof ZodNever) {
@@ -9813,12 +9813,12 @@ var ZodObject = class _ZodObject extends ZodType {
         for (const key of extraKeys) {
           pairs.push({
             key: { status: "valid", value: key },
-            value: { status: "valid", value: ctx.data[key] }
+            value: { status: "valid", value: ctx2.data[key] }
           });
         }
       } else if (unknownKeys === "strict") {
         if (extraKeys.length > 0) {
-          addIssueToContext(ctx, {
+          addIssueToContext(ctx2, {
             code: ZodIssueCode.unrecognized_keys,
             keys: extraKeys
           });
@@ -9831,18 +9831,18 @@ var ZodObject = class _ZodObject extends ZodType {
     } else {
       const catchall = this._def.catchall;
       for (const key of extraKeys) {
-        const value = ctx.data[key];
+        const value = ctx2.data[key];
         pairs.push({
           key: { status: "valid", value: key },
           value: catchall._parse(
-            new ParseInputLazyPath(ctx, value, ctx.path, key)
+            new ParseInputLazyPath(ctx2, value, ctx2.path, key)
             //, ctx.child(key), value, getParsedType(value)
           ),
-          alwaysSet: key in ctx.data
+          alwaysSet: key in ctx2.data
         });
       }
     }
-    if (ctx.common.async) {
+    if (ctx2.common.async) {
       return Promise.resolve().then(async () => {
         const syncPairs = [];
         for (const pair of pairs) {
@@ -9871,8 +9871,8 @@ var ZodObject = class _ZodObject extends ZodType {
       ...this._def,
       unknownKeys: "strict",
       ...message !== void 0 ? {
-        errorMap: (issue2, ctx) => {
-          const defaultError = this._def.errorMap?.(issue2, ctx).message ?? ctx.defaultError;
+        errorMap: (issue2, ctx2) => {
+          const defaultError = this._def.errorMap?.(issue2, ctx2).message ?? ctx2.defaultError;
           if (issue2.code === "unrecognized_keys")
             return {
               message: errorUtil.errToObj(message).message ?? defaultError
@@ -10101,7 +10101,7 @@ ZodObject.lazycreate = (shape, params) => {
 };
 var ZodUnion = class extends ZodType {
   _parse(input) {
-    const { ctx } = this._processInputParams(input);
+    const { ctx: ctx2 } = this._processInputParams(input);
     const options = this._def.options;
     function handleResults(results) {
       for (const result of results) {
@@ -10111,31 +10111,31 @@ var ZodUnion = class extends ZodType {
       }
       for (const result of results) {
         if (result.result.status === "dirty") {
-          ctx.common.issues.push(...result.ctx.common.issues);
+          ctx2.common.issues.push(...result.ctx.common.issues);
           return result.result;
         }
       }
       const unionErrors = results.map((result) => new ZodError(result.ctx.common.issues));
-      addIssueToContext(ctx, {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_union,
         unionErrors
       });
       return INVALID;
     }
-    if (ctx.common.async) {
+    if (ctx2.common.async) {
       return Promise.all(options.map(async (option) => {
         const childCtx = {
-          ...ctx,
+          ...ctx2,
           common: {
-            ...ctx.common,
+            ...ctx2.common,
             issues: []
           },
           parent: null
         };
         return {
           result: await option._parseAsync({
-            data: ctx.data,
-            path: ctx.path,
+            data: ctx2.data,
+            path: ctx2.path,
             parent: childCtx
           }),
           ctx: childCtx
@@ -10146,16 +10146,16 @@ var ZodUnion = class extends ZodType {
       const issues = [];
       for (const option of options) {
         const childCtx = {
-          ...ctx,
+          ...ctx2,
           common: {
-            ...ctx.common,
+            ...ctx2.common,
             issues: []
           },
           parent: null
         };
         const result = option._parseSync({
-          data: ctx.data,
-          path: ctx.path,
+          data: ctx2.data,
+          path: ctx2.path,
           parent: childCtx
         });
         if (result.status === "valid") {
@@ -10168,11 +10168,11 @@ var ZodUnion = class extends ZodType {
         }
       }
       if (dirty) {
-        ctx.common.issues.push(...dirty.ctx.common.issues);
+        ctx2.common.issues.push(...dirty.ctx.common.issues);
         return dirty.result;
       }
       const unionErrors = issues.map((issues2) => new ZodError(issues2));
-      addIssueToContext(ctx, {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_union,
         unionErrors
       });
@@ -10223,37 +10223,37 @@ var getDiscriminator = (type) => {
 };
 var ZodDiscriminatedUnion = class _ZodDiscriminatedUnion extends ZodType {
   _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.object) {
-      addIssueToContext(ctx, {
+    const { ctx: ctx2 } = this._processInputParams(input);
+    if (ctx2.parsedType !== ZodParsedType.object) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.object,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
     const discriminator = this.discriminator;
-    const discriminatorValue = ctx.data[discriminator];
+    const discriminatorValue = ctx2.data[discriminator];
     const option = this.optionsMap.get(discriminatorValue);
     if (!option) {
-      addIssueToContext(ctx, {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_union_discriminator,
         options: Array.from(this.optionsMap.keys()),
         path: [discriminator]
       });
       return INVALID;
     }
-    if (ctx.common.async) {
+    if (ctx2.common.async) {
       return option._parseAsync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
+        data: ctx2.data,
+        path: ctx2.path,
+        parent: ctx2
       });
     } else {
       return option._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
+        data: ctx2.data,
+        path: ctx2.path,
+        parent: ctx2
       });
     }
   }
@@ -10337,14 +10337,14 @@ function mergeValues(a, b) {
 }
 var ZodIntersection = class extends ZodType {
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
+    const { status, ctx: ctx2 } = this._processInputParams(input);
     const handleParsed = (parsedLeft, parsedRight) => {
       if (isAborted(parsedLeft) || isAborted(parsedRight)) {
         return INVALID;
       }
       const merged = mergeValues(parsedLeft.value, parsedRight.value);
       if (!merged.valid) {
-        addIssueToContext(ctx, {
+        addIssueToContext(ctx2, {
           code: ZodIssueCode.invalid_intersection_types
         });
         return INVALID;
@@ -10354,28 +10354,28 @@ var ZodIntersection = class extends ZodType {
       }
       return { status: status.value, value: merged.data };
     };
-    if (ctx.common.async) {
+    if (ctx2.common.async) {
       return Promise.all([
         this._def.left._parseAsync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
+          data: ctx2.data,
+          path: ctx2.path,
+          parent: ctx2
         }),
         this._def.right._parseAsync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
+          data: ctx2.data,
+          path: ctx2.path,
+          parent: ctx2
         })
       ]).then(([left, right]) => handleParsed(left, right));
     } else {
       return handleParsed(this._def.left._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
+        data: ctx2.data,
+        path: ctx2.path,
+        parent: ctx2
       }), this._def.right._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
+        data: ctx2.data,
+        path: ctx2.path,
+        parent: ctx2
       }));
     }
   }
@@ -10390,17 +10390,17 @@ ZodIntersection.create = (left, right, params) => {
 };
 var ZodTuple = class _ZodTuple extends ZodType {
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.array) {
-      addIssueToContext(ctx, {
+    const { status, ctx: ctx2 } = this._processInputParams(input);
+    if (ctx2.parsedType !== ZodParsedType.array) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.array,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
-    if (ctx.data.length < this._def.items.length) {
-      addIssueToContext(ctx, {
+    if (ctx2.data.length < this._def.items.length) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.too_small,
         minimum: this._def.items.length,
         inclusive: true,
@@ -10410,8 +10410,8 @@ var ZodTuple = class _ZodTuple extends ZodType {
       return INVALID;
     }
     const rest = this._def.rest;
-    if (!rest && ctx.data.length > this._def.items.length) {
-      addIssueToContext(ctx, {
+    if (!rest && ctx2.data.length > this._def.items.length) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.too_big,
         maximum: this._def.items.length,
         inclusive: true,
@@ -10420,13 +10420,13 @@ var ZodTuple = class _ZodTuple extends ZodType {
       });
       status.dirty();
     }
-    const items = [...ctx.data].map((item, itemIndex) => {
+    const items = [...ctx2.data].map((item, itemIndex) => {
       const schema = this._def.items[itemIndex] || this._def.rest;
       if (!schema)
         return null;
-      return schema._parse(new ParseInputLazyPath(ctx, item, ctx.path, itemIndex));
+      return schema._parse(new ParseInputLazyPath(ctx2, item, ctx2.path, itemIndex));
     }).filter((x) => !!x);
-    if (ctx.common.async) {
+    if (ctx2.common.async) {
       return Promise.all(items).then((results) => {
         return ParseStatus.mergeArray(status, results);
       });
@@ -10463,26 +10463,26 @@ var ZodRecord = class _ZodRecord extends ZodType {
     return this._def.valueType;
   }
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.object) {
-      addIssueToContext(ctx, {
+    const { status, ctx: ctx2 } = this._processInputParams(input);
+    if (ctx2.parsedType !== ZodParsedType.object) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.object,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
     const pairs = [];
     const keyType = this._def.keyType;
     const valueType = this._def.valueType;
-    for (const key in ctx.data) {
+    for (const key in ctx2.data) {
       pairs.push({
-        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, key)),
-        value: valueType._parse(new ParseInputLazyPath(ctx, ctx.data[key], ctx.path, key)),
-        alwaysSet: key in ctx.data
+        key: keyType._parse(new ParseInputLazyPath(ctx2, key, ctx2.path, key)),
+        value: valueType._parse(new ParseInputLazyPath(ctx2, ctx2.data[key], ctx2.path, key)),
+        alwaysSet: key in ctx2.data
       });
     }
-    if (ctx.common.async) {
+    if (ctx2.common.async) {
       return ParseStatus.mergeObjectAsync(status, pairs);
     } else {
       return ParseStatus.mergeObjectSync(status, pairs);
@@ -10516,24 +10516,24 @@ var ZodMap = class extends ZodType {
     return this._def.valueType;
   }
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.map) {
-      addIssueToContext(ctx, {
+    const { status, ctx: ctx2 } = this._processInputParams(input);
+    if (ctx2.parsedType !== ZodParsedType.map) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.map,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
     const keyType = this._def.keyType;
     const valueType = this._def.valueType;
-    const pairs = [...ctx.data.entries()].map(([key, value], index) => {
+    const pairs = [...ctx2.data.entries()].map(([key, value], index) => {
       return {
-        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, [index, "key"])),
-        value: valueType._parse(new ParseInputLazyPath(ctx, value, ctx.path, [index, "value"]))
+        key: keyType._parse(new ParseInputLazyPath(ctx2, key, ctx2.path, [index, "key"])),
+        value: valueType._parse(new ParseInputLazyPath(ctx2, value, ctx2.path, [index, "value"]))
       };
     });
-    if (ctx.common.async) {
+    if (ctx2.common.async) {
       const finalMap = /* @__PURE__ */ new Map();
       return Promise.resolve().then(async () => {
         for (const pair of pairs) {
@@ -10576,19 +10576,19 @@ ZodMap.create = (keyType, valueType, params) => {
 };
 var ZodSet = class _ZodSet extends ZodType {
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.set) {
-      addIssueToContext(ctx, {
+    const { status, ctx: ctx2 } = this._processInputParams(input);
+    if (ctx2.parsedType !== ZodParsedType.set) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.set,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
     const def = this._def;
     if (def.minSize !== null) {
-      if (ctx.data.size < def.minSize.value) {
-        addIssueToContext(ctx, {
+      if (ctx2.data.size < def.minSize.value) {
+        addIssueToContext(ctx2, {
           code: ZodIssueCode.too_small,
           minimum: def.minSize.value,
           type: "set",
@@ -10600,8 +10600,8 @@ var ZodSet = class _ZodSet extends ZodType {
       }
     }
     if (def.maxSize !== null) {
-      if (ctx.data.size > def.maxSize.value) {
-        addIssueToContext(ctx, {
+      if (ctx2.data.size > def.maxSize.value) {
+        addIssueToContext(ctx2, {
           code: ZodIssueCode.too_big,
           maximum: def.maxSize.value,
           type: "set",
@@ -10624,8 +10624,8 @@ var ZodSet = class _ZodSet extends ZodType {
       }
       return { status: status.value, value: parsedSet };
     }
-    const elements = [...ctx.data.values()].map((item, i) => valueType._parse(new ParseInputLazyPath(ctx, item, ctx.path, i)));
-    if (ctx.common.async) {
+    const elements = [...ctx2.data.values()].map((item, i) => valueType._parse(new ParseInputLazyPath(ctx2, item, ctx2.path, i)));
+    if (ctx2.common.async) {
       return Promise.all(elements).then((elements2) => finalizeSet(elements2));
     } else {
       return finalizeSet(elements);
@@ -10665,20 +10665,20 @@ var ZodFunction = class _ZodFunction extends ZodType {
     this.validate = this.implement;
   }
   _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.function) {
-      addIssueToContext(ctx, {
+    const { ctx: ctx2 } = this._processInputParams(input);
+    if (ctx2.parsedType !== ZodParsedType.function) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.function,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
     function makeArgsIssue(args, error2) {
       return makeIssue({
         data: args,
-        path: ctx.path,
-        errorMaps: [ctx.common.contextualErrorMap, ctx.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
+        path: ctx2.path,
+        errorMaps: [ctx2.common.contextualErrorMap, ctx2.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
         issueData: {
           code: ZodIssueCode.invalid_arguments,
           argumentsError: error2
@@ -10688,16 +10688,16 @@ var ZodFunction = class _ZodFunction extends ZodType {
     function makeReturnsIssue(returns, error2) {
       return makeIssue({
         data: returns,
-        path: ctx.path,
-        errorMaps: [ctx.common.contextualErrorMap, ctx.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
+        path: ctx2.path,
+        errorMaps: [ctx2.common.contextualErrorMap, ctx2.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
         issueData: {
           code: ZodIssueCode.invalid_return_type,
           returnTypeError: error2
         }
       });
     }
-    const params = { errorMap: ctx.common.contextualErrorMap };
-    const fn = ctx.data;
+    const params = { errorMap: ctx2.common.contextualErrorMap };
+    const fn = ctx2.data;
     if (this._def.returns instanceof ZodPromise) {
       const me = this;
       return OK(async function(...args) {
@@ -10769,9 +10769,9 @@ var ZodLazy = class extends ZodType {
     return this._def.getter();
   }
   _parse(input) {
-    const { ctx } = this._processInputParams(input);
+    const { ctx: ctx2 } = this._processInputParams(input);
     const lazySchema = this._def.getter();
-    return lazySchema._parse({ data: ctx.data, path: ctx.path, parent: ctx });
+    return lazySchema._parse({ data: ctx2.data, path: ctx2.path, parent: ctx2 });
   }
 };
 ZodLazy.create = (getter, params) => {
@@ -10784,9 +10784,9 @@ ZodLazy.create = (getter, params) => {
 var ZodLiteral = class extends ZodType {
   _parse(input) {
     if (input.data !== this._def.value) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        received: ctx.data,
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
+        received: ctx2.data,
         code: ZodIssueCode.invalid_literal,
         expected: this._def.value
       });
@@ -10815,11 +10815,11 @@ function createZodEnum(values, params) {
 var ZodEnum = class _ZodEnum extends ZodType {
   _parse(input) {
     if (typeof input.data !== "string") {
-      const ctx = this._getOrReturnCtx(input);
+      const ctx2 = this._getOrReturnCtx(input);
       const expectedValues = this._def.values;
-      addIssueToContext(ctx, {
+      addIssueToContext(ctx2, {
         expected: util.joinValues(expectedValues),
-        received: ctx.parsedType,
+        received: ctx2.parsedType,
         code: ZodIssueCode.invalid_type
       });
       return INVALID;
@@ -10828,10 +10828,10 @@ var ZodEnum = class _ZodEnum extends ZodType {
       this._cache = new Set(this._def.values);
     }
     if (!this._cache.has(input.data)) {
-      const ctx = this._getOrReturnCtx(input);
+      const ctx2 = this._getOrReturnCtx(input);
       const expectedValues = this._def.values;
-      addIssueToContext(ctx, {
-        received: ctx.data,
+      addIssueToContext(ctx2, {
+        received: ctx2.data,
         code: ZodIssueCode.invalid_enum_value,
         options: expectedValues
       });
@@ -10880,12 +10880,12 @@ ZodEnum.create = createZodEnum;
 var ZodNativeEnum = class extends ZodType {
   _parse(input) {
     const nativeEnumValues = util.getValidEnumValues(this._def.values);
-    const ctx = this._getOrReturnCtx(input);
-    if (ctx.parsedType !== ZodParsedType.string && ctx.parsedType !== ZodParsedType.number) {
+    const ctx2 = this._getOrReturnCtx(input);
+    if (ctx2.parsedType !== ZodParsedType.string && ctx2.parsedType !== ZodParsedType.number) {
       const expectedValues = util.objectValues(nativeEnumValues);
-      addIssueToContext(ctx, {
+      addIssueToContext(ctx2, {
         expected: util.joinValues(expectedValues),
-        received: ctx.parsedType,
+        received: ctx2.parsedType,
         code: ZodIssueCode.invalid_type
       });
       return INVALID;
@@ -10895,8 +10895,8 @@ var ZodNativeEnum = class extends ZodType {
     }
     if (!this._cache.has(input.data)) {
       const expectedValues = util.objectValues(nativeEnumValues);
-      addIssueToContext(ctx, {
-        received: ctx.data,
+      addIssueToContext(ctx2, {
+        received: ctx2.data,
         code: ZodIssueCode.invalid_enum_value,
         options: expectedValues
       });
@@ -10920,20 +10920,20 @@ var ZodPromise = class extends ZodType {
     return this._def.type;
   }
   _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.promise && ctx.common.async === false) {
-      addIssueToContext(ctx, {
+    const { ctx: ctx2 } = this._processInputParams(input);
+    if (ctx2.parsedType !== ZodParsedType.promise && ctx2.common.async === false) {
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.promise,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
-    const promisified = ctx.parsedType === ZodParsedType.promise ? ctx.data : Promise.resolve(ctx.data);
+    const promisified = ctx2.parsedType === ZodParsedType.promise ? ctx2.data : Promise.resolve(ctx2.data);
     return OK(promisified.then((data) => {
       return this._def.type.parseAsync(data, {
-        path: ctx.path,
-        errorMap: ctx.common.contextualErrorMap
+        path: ctx2.path,
+        errorMap: ctx2.common.contextualErrorMap
       });
     }));
   }
@@ -10953,11 +10953,11 @@ var ZodEffects = class extends ZodType {
     return this._def.schema._def.typeName === ZodFirstPartyTypeKind.ZodEffects ? this._def.schema.sourceType() : this._def.schema;
   }
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
+    const { status, ctx: ctx2 } = this._processInputParams(input);
     const effect = this._def.effect || null;
     const checkCtx = {
       addIssue: (arg) => {
-        addIssueToContext(ctx, arg);
+        addIssueToContext(ctx2, arg);
         if (arg.fatal) {
           status.abort();
         } else {
@@ -10965,20 +10965,20 @@ var ZodEffects = class extends ZodType {
         }
       },
       get path() {
-        return ctx.path;
+        return ctx2.path;
       }
     };
     checkCtx.addIssue = checkCtx.addIssue.bind(checkCtx);
     if (effect.type === "preprocess") {
-      const processed = effect.transform(ctx.data, checkCtx);
-      if (ctx.common.async) {
+      const processed = effect.transform(ctx2.data, checkCtx);
+      if (ctx2.common.async) {
         return Promise.resolve(processed).then(async (processed2) => {
           if (status.value === "aborted")
             return INVALID;
           const result = await this._def.schema._parseAsync({
             data: processed2,
-            path: ctx.path,
-            parent: ctx
+            path: ctx2.path,
+            parent: ctx2
           });
           if (result.status === "aborted")
             return INVALID;
@@ -10993,8 +10993,8 @@ var ZodEffects = class extends ZodType {
           return INVALID;
         const result = this._def.schema._parseSync({
           data: processed,
-          path: ctx.path,
-          parent: ctx
+          path: ctx2.path,
+          parent: ctx2
         });
         if (result.status === "aborted")
           return INVALID;
@@ -11008,7 +11008,7 @@ var ZodEffects = class extends ZodType {
     if (effect.type === "refinement") {
       const executeRefinement = (acc) => {
         const result = effect.refinement(acc, checkCtx);
-        if (ctx.common.async) {
+        if (ctx2.common.async) {
           return Promise.resolve(result);
         }
         if (result instanceof Promise) {
@@ -11016,11 +11016,11 @@ var ZodEffects = class extends ZodType {
         }
         return acc;
       };
-      if (ctx.common.async === false) {
+      if (ctx2.common.async === false) {
         const inner = this._def.schema._parseSync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
+          data: ctx2.data,
+          path: ctx2.path,
+          parent: ctx2
         });
         if (inner.status === "aborted")
           return INVALID;
@@ -11029,7 +11029,7 @@ var ZodEffects = class extends ZodType {
         executeRefinement(inner.value);
         return { status: status.value, value: inner.value };
       } else {
-        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((inner) => {
+        return this._def.schema._parseAsync({ data: ctx2.data, path: ctx2.path, parent: ctx2 }).then((inner) => {
           if (inner.status === "aborted")
             return INVALID;
           if (inner.status === "dirty")
@@ -11041,11 +11041,11 @@ var ZodEffects = class extends ZodType {
       }
     }
     if (effect.type === "transform") {
-      if (ctx.common.async === false) {
+      if (ctx2.common.async === false) {
         const base = this._def.schema._parseSync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
+          data: ctx2.data,
+          path: ctx2.path,
+          parent: ctx2
         });
         if (!isValid(base))
           return INVALID;
@@ -11055,7 +11055,7 @@ var ZodEffects = class extends ZodType {
         }
         return { status: status.value, value: result };
       } else {
-        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((base) => {
+        return this._def.schema._parseAsync({ data: ctx2.data, path: ctx2.path, parent: ctx2 }).then((base) => {
           if (!isValid(base))
             return INVALID;
           return Promise.resolve(effect.transform(base.value, checkCtx)).then((result) => ({
@@ -11124,15 +11124,15 @@ ZodNullable.create = (type, params) => {
 };
 var ZodDefault = class extends ZodType {
   _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    let data = ctx.data;
-    if (ctx.parsedType === ZodParsedType.undefined) {
+    const { ctx: ctx2 } = this._processInputParams(input);
+    let data = ctx2.data;
+    if (ctx2.parsedType === ZodParsedType.undefined) {
       data = this._def.defaultValue();
     }
     return this._def.innerType._parse({
       data,
-      path: ctx.path,
-      parent: ctx
+      path: ctx2.path,
+      parent: ctx2
     });
   }
   removeDefault() {
@@ -11149,11 +11149,11 @@ ZodDefault.create = (type, params) => {
 };
 var ZodCatch = class extends ZodType {
   _parse(input) {
-    const { ctx } = this._processInputParams(input);
+    const { ctx: ctx2 } = this._processInputParams(input);
     const newCtx = {
-      ...ctx,
+      ...ctx2,
       common: {
-        ...ctx.common,
+        ...ctx2.common,
         issues: []
       }
     };
@@ -11204,11 +11204,11 @@ var ZodNaN = class extends ZodType {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.nan) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
         code: ZodIssueCode.invalid_type,
         expected: ZodParsedType.nan,
-        received: ctx.parsedType
+        received: ctx2.parsedType
       });
       return INVALID;
     }
@@ -11224,12 +11224,12 @@ ZodNaN.create = (params) => {
 var BRAND = /* @__PURE__ */ Symbol("zod_brand");
 var ZodBranded = class extends ZodType {
   _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    const data = ctx.data;
+    const { ctx: ctx2 } = this._processInputParams(input);
+    const data = ctx2.data;
     return this._def.type._parse({
       data,
-      path: ctx.path,
-      parent: ctx
+      path: ctx2.path,
+      parent: ctx2
     });
   }
   unwrap() {
@@ -11238,13 +11238,13 @@ var ZodBranded = class extends ZodType {
 };
 var ZodPipeline = class _ZodPipeline extends ZodType {
   _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.common.async) {
+    const { status, ctx: ctx2 } = this._processInputParams(input);
+    if (ctx2.common.async) {
       const handleAsync = async () => {
         const inResult = await this._def.in._parseAsync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
+          data: ctx2.data,
+          path: ctx2.path,
+          parent: ctx2
         });
         if (inResult.status === "aborted")
           return INVALID;
@@ -11254,17 +11254,17 @@ var ZodPipeline = class _ZodPipeline extends ZodType {
         } else {
           return this._def.out._parseAsync({
             data: inResult.value,
-            path: ctx.path,
-            parent: ctx
+            path: ctx2.path,
+            parent: ctx2
           });
         }
       };
       return handleAsync();
     } else {
       const inResult = this._def.in._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
+        data: ctx2.data,
+        path: ctx2.path,
+        parent: ctx2
       });
       if (inResult.status === "aborted")
         return INVALID;
@@ -11277,8 +11277,8 @@ var ZodPipeline = class _ZodPipeline extends ZodType {
       } else {
         return this._def.out._parseSync({
           data: inResult.value,
-          path: ctx.path,
-          parent: ctx
+          path: ctx2.path,
+          parent: ctx2
         });
       }
     }
@@ -11320,21 +11320,21 @@ function cleanParams(params, data) {
 }
 function custom(check2, _params = {}, fatal) {
   if (check2)
-    return ZodAny.create().superRefine((data, ctx) => {
+    return ZodAny.create().superRefine((data, ctx2) => {
       const r = check2(data);
       if (r instanceof Promise) {
         return r.then((r2) => {
           if (!r2) {
             const params = cleanParams(_params, data);
             const _fatal = params.fatal ?? fatal ?? true;
-            ctx.addIssue({ code: "custom", ...params, fatal: _fatal });
+            ctx2.addIssue({ code: "custom", ...params, fatal: _fatal });
           }
         });
       }
       if (!r) {
         const params = cleanParams(_params, data);
         const _fatal = params.fatal ?? fatal ?? true;
-        ctx.addIssue({ code: "custom", ...params, fatal: _fatal });
+        ctx2.addIssue({ code: "custom", ...params, fatal: _fatal });
       }
       return;
     });
@@ -11963,15 +11963,15 @@ function prefixIssues(path, issues) {
 function unwrapMessage(message) {
   return typeof message === "string" ? message : message?.message;
 }
-function finalizeIssue(iss, ctx, config3) {
+function finalizeIssue(iss, ctx2, config3) {
   const full = { ...iss, path: iss.path ?? [] };
   if (!iss.message) {
-    const message = unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config3.customError?.(iss)) ?? unwrapMessage(config3.localeError?.(iss)) ?? "Invalid input";
+    const message = unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx2?.error?.(iss)) ?? unwrapMessage(config3.customError?.(iss)) ?? unwrapMessage(config3.localeError?.(iss)) ?? "Invalid input";
     full.message = message;
   }
   delete full.inst;
   delete full.continue;
-  if (!ctx?.reportInput) {
+  if (!ctx2?.reportInput) {
     delete full.input;
   }
   return full;
@@ -12091,13 +12091,13 @@ function formatError(error2, _mapper) {
 
 // node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => (schema, value, _ctx, _params) => {
-  const ctx = _ctx ? Object.assign(_ctx, { async: false }) : { async: false };
-  const result = schema._zod.run({ value, issues: [] }, ctx);
+  const ctx2 = _ctx ? Object.assign(_ctx, { async: false }) : { async: false };
+  const result = schema._zod.run({ value, issues: [] }, ctx2);
   if (result instanceof Promise) {
     throw new $ZodAsyncError();
   }
   if (result.issues.length) {
-    const e = new (_params?.Err ?? _Err)(result.issues.map((iss) => finalizeIssue(iss, ctx, config())));
+    const e = new (_params?.Err ?? _Err)(result.issues.map((iss) => finalizeIssue(iss, ctx2, config())));
     captureStackTrace(e, _params?.callee);
     throw e;
   }
@@ -12105,12 +12105,12 @@ var _parse = (_Err) => (schema, value, _ctx, _params) => {
 };
 var parse = /* @__PURE__ */ _parse($ZodRealError);
 var _parseAsync = (_Err) => async (schema, value, _ctx, params) => {
-  const ctx = _ctx ? Object.assign(_ctx, { async: true }) : { async: true };
-  let result = schema._zod.run({ value, issues: [] }, ctx);
+  const ctx2 = _ctx ? Object.assign(_ctx, { async: true }) : { async: true };
+  let result = schema._zod.run({ value, issues: [] }, ctx2);
   if (result instanceof Promise)
     result = await result;
   if (result.issues.length) {
-    const e = new (params?.Err ?? _Err)(result.issues.map((iss) => finalizeIssue(iss, ctx, config())));
+    const e = new (params?.Err ?? _Err)(result.issues.map((iss) => finalizeIssue(iss, ctx2, config())));
     captureStackTrace(e, params?.callee);
     throw e;
   }
@@ -12118,25 +12118,25 @@ var _parseAsync = (_Err) => async (schema, value, _ctx, params) => {
 };
 var parseAsync = /* @__PURE__ */ _parseAsync($ZodRealError);
 var _safeParse = (_Err) => (schema, value, _ctx) => {
-  const ctx = _ctx ? { ..._ctx, async: false } : { async: false };
-  const result = schema._zod.run({ value, issues: [] }, ctx);
+  const ctx2 = _ctx ? { ..._ctx, async: false } : { async: false };
+  const result = schema._zod.run({ value, issues: [] }, ctx2);
   if (result instanceof Promise) {
     throw new $ZodAsyncError();
   }
   return result.issues.length ? {
     success: false,
-    error: new (_Err ?? $ZodError)(result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
+    error: new (_Err ?? $ZodError)(result.issues.map((iss) => finalizeIssue(iss, ctx2, config())))
   } : { success: true, data: result.value };
 };
 var safeParse = /* @__PURE__ */ _safeParse($ZodRealError);
 var _safeParseAsync = (_Err) => async (schema, value, _ctx) => {
-  const ctx = _ctx ? Object.assign(_ctx, { async: true }) : { async: true };
-  let result = schema._zod.run({ value, issues: [] }, ctx);
+  const ctx2 = _ctx ? Object.assign(_ctx, { async: true }) : { async: true };
+  let result = schema._zod.run({ value, issues: [] }, ctx2);
   if (result instanceof Promise)
     result = await result;
   return result.issues.length ? {
     success: false,
-    error: new _Err(result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
+    error: new _Err(result.issues.map((iss) => finalizeIssue(iss, ctx2, config())))
   } : { success: true, data: result.value };
 };
 var safeParseAsync = /* @__PURE__ */ _safeParseAsync($ZodRealError);
@@ -12649,7 +12649,7 @@ var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
       inst._zod.run = inst._zod.parse;
     });
   } else {
-    const runChecks2 = (payload, checks2, ctx) => {
+    const runChecks2 = (payload, checks2, ctx2) => {
       let isAborted2 = aborted(payload);
       let asyncResult;
       for (const ch of checks2) {
@@ -12662,7 +12662,7 @@ var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
         }
         const currLen = payload.issues.length;
         const _ = ch._zod.check(payload);
-        if (_ instanceof Promise && ctx?.async === false) {
+        if (_ instanceof Promise && ctx2?.async === false) {
           throw new $ZodAsyncError();
         }
         if (asyncResult || _ instanceof Promise) {
@@ -12689,14 +12689,14 @@ var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
       }
       return payload;
     };
-    inst._zod.run = (payload, ctx) => {
-      const result = inst._zod.parse(payload, ctx);
+    inst._zod.run = (payload, ctx2) => {
+      const result = inst._zod.parse(payload, ctx2);
       if (result instanceof Promise) {
-        if (ctx.async === false)
+        if (ctx2.async === false)
           throw new $ZodAsyncError();
-        return result.then((result2) => runChecks2(result2, checks, ctx));
+        return result.then((result2) => runChecks2(result2, checks, ctx2));
       }
-      return runChecks2(result, checks, ctx);
+      return runChecks2(result, checks, ctx2);
     };
   }
   inst["~standard"] = {
@@ -13101,7 +13101,7 @@ function handleArrayResult(result, final, index) {
 }
 var $ZodArray = /* @__PURE__ */ $constructor("$ZodArray", (inst, def) => {
   $ZodType.init(inst, def);
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     const input = payload.value;
     if (!Array.isArray(input)) {
       payload.issues.push({
@@ -13119,7 +13119,7 @@ var $ZodArray = /* @__PURE__ */ $constructor("$ZodArray", (inst, def) => {
       const result = def.element._zod.run({
         value: item,
         issues: []
-      }, ctx);
+      }, ctx2);
       if (result instanceof Promise) {
         proms.push(result.then((result2) => handleArrayResult(result2, payload, i)));
       } else {
@@ -13240,7 +13240,7 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
     doc.write(`payload.value = newResult;`);
     doc.write(`return payload;`);
     const fn = doc.compile();
-    return (payload, ctx) => fn(shape, payload, ctx);
+    return (payload, ctx2) => fn(shape, payload, ctx2);
   };
   let fastpass;
   const isObject2 = isObject;
@@ -13249,7 +13249,7 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
   const fastEnabled = jit && allowsEval2.value;
   const catchall = def.catchall;
   let value;
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     value ?? (value = _normalized.value);
     const input = payload.value;
     if (!isObject2(input)) {
@@ -13262,16 +13262,16 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
       return payload;
     }
     const proms = [];
-    if (jit && fastEnabled && ctx?.async === false && ctx.jitless !== true) {
+    if (jit && fastEnabled && ctx2?.async === false && ctx2.jitless !== true) {
       if (!fastpass)
         fastpass = generateFastpass(def.shape);
-      payload = fastpass(payload, ctx);
+      payload = fastpass(payload, ctx2);
     } else {
       payload.value = {};
       const shape = value.shape;
       for (const key of value.keys) {
         const el = shape[key];
-        const r = el._zod.run({ value: input[key], issues: [] }, ctx);
+        const r = el._zod.run({ value: input[key], issues: [] }, ctx2);
         const isOptional = el._zod.optin === "optional" && el._zod.optout === "optional";
         if (r instanceof Promise) {
           proms.push(r.then((r2) => isOptional ? handleOptionalObjectResult(r2, payload, key, input) : handleObjectResult(r2, payload, key)));
@@ -13296,7 +13296,7 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
         unrecognized.push(key);
         continue;
       }
-      const r = _catchall.run({ value: input[key], issues: [] }, ctx);
+      const r = _catchall.run({ value: input[key], issues: [] }, ctx2);
       if (r instanceof Promise) {
         proms.push(r.then((r2) => handleObjectResult(r2, payload, key)));
       } else {
@@ -13318,7 +13318,7 @@ var $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
     });
   };
 });
-function handleUnionResults(results, final, inst, ctx) {
+function handleUnionResults(results, final, inst, ctx2) {
   for (const result of results) {
     if (result.issues.length === 0) {
       final.value = result.value;
@@ -13329,7 +13329,7 @@ function handleUnionResults(results, final, inst, ctx) {
     code: "invalid_union",
     input: final.value,
     inst,
-    errors: results.map((result) => result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
+    errors: results.map((result) => result.issues.map((iss) => finalizeIssue(iss, ctx2, config())))
   });
   return final;
 }
@@ -13350,14 +13350,14 @@ var $ZodUnion = /* @__PURE__ */ $constructor("$ZodUnion", (inst, def) => {
     }
     return void 0;
   });
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     let async = false;
     const results = [];
     for (const option of def.options) {
       const result = option._zod.run({
         value: payload.value,
         issues: []
-      }, ctx);
+      }, ctx2);
       if (result instanceof Promise) {
         results.push(result);
         async = true;
@@ -13368,9 +13368,9 @@ var $ZodUnion = /* @__PURE__ */ $constructor("$ZodUnion", (inst, def) => {
       }
     }
     if (!async)
-      return handleUnionResults(results, payload, inst, ctx);
+      return handleUnionResults(results, payload, inst, ctx2);
     return Promise.all(results).then((results2) => {
-      return handleUnionResults(results2, payload, inst, ctx);
+      return handleUnionResults(results2, payload, inst, ctx2);
     });
   };
 });
@@ -13409,7 +13409,7 @@ var $ZodDiscriminatedUnion = /* @__PURE__ */ $constructor("$ZodDiscriminatedUnio
     }
     return map;
   });
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     const input = payload.value;
     if (!isObject(input)) {
       payload.issues.push({
@@ -13422,10 +13422,10 @@ var $ZodDiscriminatedUnion = /* @__PURE__ */ $constructor("$ZodDiscriminatedUnio
     }
     const opt = disc.value.get(input?.[def.discriminator]);
     if (opt) {
-      return opt._zod.run(payload, ctx);
+      return opt._zod.run(payload, ctx2);
     }
     if (def.unionFallback) {
-      return _super(payload, ctx);
+      return _super(payload, ctx2);
     }
     payload.issues.push({
       code: "invalid_union",
@@ -13440,10 +13440,10 @@ var $ZodDiscriminatedUnion = /* @__PURE__ */ $constructor("$ZodDiscriminatedUnio
 });
 var $ZodIntersection = /* @__PURE__ */ $constructor("$ZodIntersection", (inst, def) => {
   $ZodType.init(inst, def);
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     const input = payload.value;
-    const left = def.left._zod.run({ value: input, issues: [] }, ctx);
-    const right = def.right._zod.run({ value: input, issues: [] }, ctx);
+    const left = def.left._zod.run({ value: input, issues: [] }, ctx2);
+    const right = def.right._zod.run({ value: input, issues: [] }, ctx2);
     const async = left instanceof Promise || right instanceof Promise;
     if (async) {
       return Promise.all([left, right]).then(([left2, right2]) => {
@@ -13515,7 +13515,7 @@ function handleIntersectionResults(result, left, right) {
 }
 var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
   $ZodType.init(inst, def);
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     const input = payload.value;
     if (!isPlainObject(input)) {
       payload.issues.push({
@@ -13532,7 +13532,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
       payload.value = {};
       for (const key of values) {
         if (typeof key === "string" || typeof key === "number" || typeof key === "symbol") {
-          const result = def.valueType._zod.run({ value: input[key], issues: [] }, ctx);
+          const result = def.valueType._zod.run({ value: input[key], issues: [] }, ctx2);
           if (result instanceof Promise) {
             proms.push(result.then((result2) => {
               if (result2.issues.length) {
@@ -13568,7 +13568,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
       for (const key of Reflect.ownKeys(input)) {
         if (key === "__proto__")
           continue;
-        const keyResult = def.keyType._zod.run({ value: key, issues: [] }, ctx);
+        const keyResult = def.keyType._zod.run({ value: key, issues: [] }, ctx2);
         if (keyResult instanceof Promise) {
           throw new Error("Async schemas not supported in object keys currently");
         }
@@ -13576,7 +13576,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
           payload.issues.push({
             origin: "record",
             code: "invalid_key",
-            issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config())),
+            issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx2, config())),
             input: key,
             path: [key],
             inst
@@ -13584,7 +13584,7 @@ var $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
           payload.value[keyResult.value] = keyResult.value;
           continue;
         }
-        const result = def.valueType._zod.run({ value: input[key], issues: [] }, ctx);
+        const result = def.valueType._zod.run({ value: input[key], issues: [] }, ctx2);
         if (result instanceof Promise) {
           proms.push(result.then((result2) => {
             if (result2.issues.length) {
@@ -13672,14 +13672,14 @@ var $ZodOptional = /* @__PURE__ */ $constructor("$ZodOptional", (inst, def) => {
     const pattern = def.innerType._zod.pattern;
     return pattern ? new RegExp(`^(${cleanRegex(pattern.source)})?$`) : void 0;
   });
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     if (def.innerType._zod.optin === "optional") {
-      return def.innerType._zod.run(payload, ctx);
+      return def.innerType._zod.run(payload, ctx2);
     }
     if (payload.value === void 0) {
       return payload;
     }
-    return def.innerType._zod.run(payload, ctx);
+    return def.innerType._zod.run(payload, ctx2);
   };
 });
 var $ZodNullable = /* @__PURE__ */ $constructor("$ZodNullable", (inst, def) => {
@@ -13693,22 +13693,22 @@ var $ZodNullable = /* @__PURE__ */ $constructor("$ZodNullable", (inst, def) => {
   defineLazy(inst._zod, "values", () => {
     return def.innerType._zod.values ? /* @__PURE__ */ new Set([...def.innerType._zod.values, null]) : void 0;
   });
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     if (payload.value === null)
       return payload;
-    return def.innerType._zod.run(payload, ctx);
+    return def.innerType._zod.run(payload, ctx2);
   };
 });
 var $ZodDefault = /* @__PURE__ */ $constructor("$ZodDefault", (inst, def) => {
   $ZodType.init(inst, def);
   inst._zod.optin = "optional";
   defineLazy(inst._zod, "values", () => def.innerType._zod.values);
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     if (payload.value === void 0) {
       payload.value = def.defaultValue;
       return payload;
     }
-    const result = def.innerType._zod.run(payload, ctx);
+    const result = def.innerType._zod.run(payload, ctx2);
     if (result instanceof Promise) {
       return result.then((result2) => handleDefaultResult(result2, def));
     }
@@ -13725,11 +13725,11 @@ var $ZodPrefault = /* @__PURE__ */ $constructor("$ZodPrefault", (inst, def) => {
   $ZodType.init(inst, def);
   inst._zod.optin = "optional";
   defineLazy(inst._zod, "values", () => def.innerType._zod.values);
-  inst._zod.parse = (payload, ctx) => {
+  inst._zod.parse = (payload, ctx2) => {
     if (payload.value === void 0) {
       payload.value = def.defaultValue;
     }
-    return def.innerType._zod.run(payload, ctx);
+    return def.innerType._zod.run(payload, ctx2);
   };
 });
 var $ZodNonOptional = /* @__PURE__ */ $constructor("$ZodNonOptional", (inst, def) => {
@@ -13738,8 +13738,8 @@ var $ZodNonOptional = /* @__PURE__ */ $constructor("$ZodNonOptional", (inst, def
     const v = def.innerType._zod.values;
     return v ? new Set([...v].filter((x) => x !== void 0)) : void 0;
   });
-  inst._zod.parse = (payload, ctx) => {
-    const result = def.innerType._zod.run(payload, ctx);
+  inst._zod.parse = (payload, ctx2) => {
+    const result = def.innerType._zod.run(payload, ctx2);
     if (result instanceof Promise) {
       return result.then((result2) => handleNonOptionalResult(result2, inst));
     }
@@ -13762,8 +13762,8 @@ var $ZodCatch = /* @__PURE__ */ $constructor("$ZodCatch", (inst, def) => {
   inst._zod.optin = "optional";
   defineLazy(inst._zod, "optout", () => def.innerType._zod.optout);
   defineLazy(inst._zod, "values", () => def.innerType._zod.values);
-  inst._zod.parse = (payload, ctx) => {
-    const result = def.innerType._zod.run(payload, ctx);
+  inst._zod.parse = (payload, ctx2) => {
+    const result = def.innerType._zod.run(payload, ctx2);
     if (result instanceof Promise) {
       return result.then((result2) => {
         payload.value = result2.value;
@@ -13771,7 +13771,7 @@ var $ZodCatch = /* @__PURE__ */ $constructor("$ZodCatch", (inst, def) => {
           payload.value = def.catchValue({
             ...payload,
             error: {
-              issues: result2.issues.map((iss) => finalizeIssue(iss, ctx, config()))
+              issues: result2.issues.map((iss) => finalizeIssue(iss, ctx2, config()))
             },
             input: payload.value
           });
@@ -13785,7 +13785,7 @@ var $ZodCatch = /* @__PURE__ */ $constructor("$ZodCatch", (inst, def) => {
       payload.value = def.catchValue({
         ...payload,
         error: {
-          issues: result.issues.map((iss) => finalizeIssue(iss, ctx, config()))
+          issues: result.issues.map((iss) => finalizeIssue(iss, ctx2, config()))
         },
         input: payload.value
       });
@@ -13799,19 +13799,19 @@ var $ZodPipe = /* @__PURE__ */ $constructor("$ZodPipe", (inst, def) => {
   defineLazy(inst._zod, "values", () => def.in._zod.values);
   defineLazy(inst._zod, "optin", () => def.in._zod.optin);
   defineLazy(inst._zod, "optout", () => def.out._zod.optout);
-  inst._zod.parse = (payload, ctx) => {
-    const left = def.in._zod.run(payload, ctx);
+  inst._zod.parse = (payload, ctx2) => {
+    const left = def.in._zod.run(payload, ctx2);
     if (left instanceof Promise) {
-      return left.then((left2) => handlePipeResult(left2, def, ctx));
+      return left.then((left2) => handlePipeResult(left2, def, ctx2));
     }
-    return handlePipeResult(left, def, ctx);
+    return handlePipeResult(left, def, ctx2);
   };
 });
-function handlePipeResult(left, def, ctx) {
+function handlePipeResult(left, def, ctx2) {
   if (aborted(left)) {
     return left;
   }
-  return def.out._zod.run({ value: left.value, issues: left.issues }, ctx);
+  return def.out._zod.run({ value: left.value, issues: left.issues }, ctx2);
 }
 var $ZodReadonly = /* @__PURE__ */ $constructor("$ZodReadonly", (inst, def) => {
   $ZodType.init(inst, def);
@@ -13819,8 +13819,8 @@ var $ZodReadonly = /* @__PURE__ */ $constructor("$ZodReadonly", (inst, def) => {
   defineLazy(inst._zod, "values", () => def.innerType._zod.values);
   defineLazy(inst._zod, "optin", () => def.innerType._zod.optin);
   defineLazy(inst._zod, "optout", () => def.innerType._zod.optout);
-  inst._zod.parse = (payload, ctx) => {
-    const result = def.innerType._zod.run(payload, ctx);
+  inst._zod.parse = (payload, ctx2) => {
+    const result = def.innerType._zod.run(payload, ctx2);
     if (result instanceof Promise) {
       return result.then(handleReadonlyResult);
     }
@@ -15138,10 +15138,10 @@ function toJSONSchema(input, _params) {
   return gen.emit(input, _params);
 }
 function isTransforming(_schema, _ctx) {
-  const ctx = _ctx ?? { seen: /* @__PURE__ */ new Set() };
-  if (ctx.seen.has(_schema))
+  const ctx2 = _ctx ?? { seen: /* @__PURE__ */ new Set() };
+  if (ctx2.seen.has(_schema))
     return false;
-  ctx.seen.add(_schema);
+  ctx2.seen.add(_schema);
   const schema = _schema;
   const def = schema._zod.def;
   switch (def.type) {
@@ -15164,42 +15164,42 @@ function isTransforming(_schema, _ctx) {
     case "template_literal":
       return false;
     case "array": {
-      return isTransforming(def.element, ctx);
+      return isTransforming(def.element, ctx2);
     }
     case "object": {
       for (const key in def.shape) {
-        if (isTransforming(def.shape[key], ctx))
+        if (isTransforming(def.shape[key], ctx2))
           return true;
       }
       return false;
     }
     case "union": {
       for (const option of def.options) {
-        if (isTransforming(option, ctx))
+        if (isTransforming(option, ctx2))
           return true;
       }
       return false;
     }
     case "intersection": {
-      return isTransforming(def.left, ctx) || isTransforming(def.right, ctx);
+      return isTransforming(def.left, ctx2) || isTransforming(def.right, ctx2);
     }
     case "tuple": {
       for (const item of def.items) {
-        if (isTransforming(item, ctx))
+        if (isTransforming(item, ctx2))
           return true;
       }
-      if (def.rest && isTransforming(def.rest, ctx))
+      if (def.rest && isTransforming(def.rest, ctx2))
         return true;
       return false;
     }
     case "record": {
-      return isTransforming(def.keyType, ctx) || isTransforming(def.valueType, ctx);
+      return isTransforming(def.keyType, ctx2) || isTransforming(def.valueType, ctx2);
     }
     case "map": {
-      return isTransforming(def.keyType, ctx) || isTransforming(def.valueType, ctx);
+      return isTransforming(def.keyType, ctx2) || isTransforming(def.valueType, ctx2);
     }
     case "set": {
-      return isTransforming(def.valueType, ctx);
+      return isTransforming(def.valueType, ctx2);
     }
     // inner types
     case "promise":
@@ -15207,14 +15207,14 @@ function isTransforming(_schema, _ctx) {
     case "nonoptional":
     case "nullable":
     case "readonly":
-      return isTransforming(def.innerType, ctx);
+      return isTransforming(def.innerType, ctx2);
     case "lazy":
-      return isTransforming(def.getter(), ctx);
+      return isTransforming(def.getter(), ctx2);
     case "default": {
-      return isTransforming(def.innerType, ctx);
+      return isTransforming(def.innerType, ctx2);
     }
     case "prefault": {
-      return isTransforming(def.innerType, ctx);
+      return isTransforming(def.innerType, ctx2);
     }
     case "custom": {
       return false;
@@ -15223,7 +15223,7 @@ function isTransforming(_schema, _ctx) {
       return true;
     }
     case "pipe": {
-      return isTransforming(def.in, ctx) || isTransforming(def.out, ctx);
+      return isTransforming(def.in, ctx2) || isTransforming(def.out, ctx2);
     }
     case "success": {
       return false;
@@ -20712,12 +20712,12 @@ var ExperimentalMcpServerTasks = class {
     this._mcpServer = _mcpServer;
   }
   registerToolTask(name, config3, handler) {
-    const execution2 = { taskSupport: "required", ...config3.execution };
-    if (execution2.taskSupport === "forbidden") {
+    const execution = { taskSupport: "required", ...config3.execution };
+    if (execution.taskSupport === "forbidden") {
       throw new Error(`Cannot register task-based tool '${name}' with taskSupport 'forbidden'. Use registerTool() instead.`);
     }
     const mcpServerInternal = this._mcpServer;
-    return mcpServerInternal._createRegisteredTool(name, config3.title, config3.description, config3.inputSchema, config3.outputSchema, config3.annotations, execution2, config3._meta, handler);
+    return mcpServerInternal._createRegisteredTool(name, config3.title, config3.description, config3.inputSchema, config3.outputSchema, config3.annotations, execution, config3._meta, handler);
   }
 };
 
@@ -21275,7 +21275,7 @@ var McpServer = class {
     }
     return registeredPrompt;
   }
-  _createRegisteredTool(name, title, description, inputSchema, outputSchema, annotations, execution2, _meta, handler) {
+  _createRegisteredTool(name, title, description, inputSchema, outputSchema, annotations, execution, _meta, handler) {
     validateAndWarnToolName(name);
     const registeredTool = {
       title,
@@ -21283,7 +21283,7 @@ var McpServer = class {
       inputSchema: getZodSchemaObject(inputSchema),
       outputSchema: getZodSchemaObject(outputSchema),
       annotations,
-      execution: execution2,
+      execution,
       _meta,
       handler,
       enabled: true,
@@ -21818,37 +21818,241 @@ function modelForClass(cls) {
   return m;
 }
 
-// src/db.ts
-import { DatabaseSync } from "node:sqlite";
-import { chmodSync, existsSync as existsSync2, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+// src/session.ts
+import { EventEmitter } from "node:events";
 
-// src/db/migrations.ts
-var TASK_COLUMNS = [
-  ["target_id", "TEXT NOT NULL DEFAULT 'local'"],
-  ["target_kind", "TEXT NOT NULL DEFAULT 'local'"],
-  ["repository_commit", "TEXT"],
-  ["worker_version", "TEXT"],
-  ["routing_reason", "TEXT"],
-  ["fallback_from", "TEXT"]
-];
-var CURRENT_SCHEMA_VERSION = 2;
-function runMigrations(db) {
-  const existing = new Set(
-    db.prepare("PRAGMA table_info(tasks)").all().map((column) => column.name)
-  );
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    for (const [name, definition] of TASK_COLUMNS) {
-      if (!existing.has(name)) db.exec(`ALTER TABLE tasks ADD COLUMN ${name} ${definition}`);
-    }
-    db.exec(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);
-    db.exec("COMMIT");
-  } catch (error2) {
-    db.exec("ROLLBACK");
-    throw error2;
-  }
+// src/system-clock.ts
+import { randomUUID } from "node:crypto";
+function nowIso() {
+  return (/* @__PURE__ */ new Date()).toISOString();
 }
+function newId(prefix) {
+  return `${prefix}_${randomUUID().slice(0, 12)}`;
+}
+
+// src/events.ts
+function normalizeCommand(command) {
+  let normalized = command.toLowerCase().replace(/`/g, "").replace(/\s+/g, " ").trim();
+  const wrapper = normalized.match(
+    /^(?:\/bin\/)?(?:zsh|bash|sh)\s+-(?:l?c|cl)\s+(.+)$/
+  );
+  if (wrapper) {
+    normalized = wrapper[1].trim();
+    const quote = normalized[0];
+    if ((quote === '"' || quote === "'") && normalized.at(-1) === quote) {
+      normalized = normalized.slice(1, -1).trim();
+    }
+  }
+  return normalized;
+}
+function detectReportDiscrepancies(sliceResult, commands) {
+  const discrepancies = [];
+  for (const test of sliceResult.testsRun) {
+    if (test.result !== "pass") continue;
+    const reported = normalizeCommand(test.cmd);
+    if (!reported) continue;
+    const prefix = reported.length >= 20 ? reported.slice(0, 20) : null;
+    let matched;
+    for (let i = commands.length - 1; i >= 0; i--) {
+      const executed = normalizeCommand(commands[i].command);
+      if (executed.includes(reported) || prefix !== null && executed.includes(prefix)) {
+        matched = commands[i];
+        break;
+      }
+    }
+    if (matched && typeof matched.exit_code === "number" && matched.exit_code !== 0) {
+      discrepancies.push({
+        reported_cmd: test.cmd,
+        matched_command: matched.command,
+        exit_code: matched.exit_code
+      });
+    }
+  }
+  return discrepancies;
+}
+function parseStreamLines(lines) {
+  const out = {
+    threadId: null,
+    agentMessages: [],
+    commands: [],
+    usage: null,
+    turnFailed: false,
+    errorMessage: null,
+    rawEventCount: 0
+  };
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line.startsWith("{")) continue;
+    let ev;
+    try {
+      ev = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    out.rawEventCount++;
+    const type = ev.type ?? "";
+    switch (type) {
+      case "thread.started":
+        if (typeof ev.thread_id === "string") out.threadId = ev.thread_id;
+        break;
+      case "item.completed": {
+        const item = ev.item ?? {};
+        if (item.type === "agent_message" && typeof item.text === "string") {
+          out.agentMessages.push(item.text);
+        } else if (item.type === "command_execution") {
+          out.commands.push({
+            command: String(item.command ?? ""),
+            exit_code: typeof item.exit_code === "number" ? item.exit_code : null,
+            output: String(item.aggregated_output ?? "")
+          });
+        }
+        break;
+      }
+      case "turn.completed":
+        if (ev.usage) out.usage = ev.usage;
+        break;
+      case "turn.failed":
+        out.turnFailed = true;
+        out.errorMessage = ev.error?.message ?? "turn.failed";
+        break;
+      case "error":
+        if (typeof ev.message === "string" && !/Reconnecting/i.test(ev.message)) {
+          out.errorMessage = ev.message;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  return out;
+}
+var SLICE_TYPES = ["checkpoint", "submission", "blocker"];
+function parseSliceResult(agentText) {
+  const raw = agentText ?? "";
+  const empty = {
+    type: "checkpoint",
+    cluster: null,
+    doneInSlice: [],
+    changedFiles: [],
+    testsRun: [],
+    openItems: [],
+    nextStep: [],
+    blockerText: null,
+    parsed: false,
+    raw
+  };
+  const idx = raw.indexOf("SLICE_RESULT");
+  if (idx === -1) return empty;
+  const body = raw.slice(idx).replace(/```/g, "");
+  const lines = body.split(/\r?\n/);
+  const result = { ...empty, parsed: true };
+  let section = "none";
+  const bulletOf = (l) => {
+    const m = l.match(/^\s*[-*]\s+(.*\S)\s*$/);
+    return m ? m[1] : null;
+  };
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const lower = trimmed.toLowerCase();
+    const typeMatch = trimmed.match(/^Type\s*:\s*(\w+)/i);
+    if (typeMatch) {
+      const t = typeMatch[1].toLowerCase();
+      if (SLICE_TYPES.includes(t)) result.type = t;
+      section = "none";
+      continue;
+    }
+    const clusterMatch = trimmed.match(/^Cluster\s*:\s*(.+\S)/i);
+    if (clusterMatch) {
+      result.cluster = clusterMatch[1].trim();
+      section = "none";
+      continue;
+    }
+    if (/^Done in this slice\s*:/i.test(trimmed)) {
+      section = "done";
+      continue;
+    }
+    if (/^Changed files\s*:/i.test(trimmed)) {
+      section = "changed";
+      continue;
+    }
+    if (/^Tests run\s*:/i.test(trimmed)) {
+      section = "tests";
+      continue;
+    }
+    if (/^Open items\s*:/i.test(trimmed)) {
+      section = "open";
+      continue;
+    }
+    if (/^Next planned step\s*:/i.test(trimmed)) {
+      section = "next";
+      continue;
+    }
+    if (/^BLOCKER_OR_QUESTION/i.test(trimmed)) {
+      section = "blocker";
+      result.blockerText = "";
+      continue;
+    }
+    if (section === "blocker") {
+      result.blockerText = (result.blockerText ?? "") + line + "\n";
+      continue;
+    }
+    const bullet = bulletOf(line);
+    if (!bullet) continue;
+    switch (section) {
+      case "done":
+        result.doneInSlice.push(bullet);
+        break;
+      case "changed":
+        result.changedFiles.push(bullet);
+        break;
+      case "tests": {
+        const m = bullet.match(/^(.*?):\s*(pass|fail|skipped)\s*$/i);
+        if (m) result.testsRun.push({ cmd: m[1].trim(), result: m[2].toLowerCase() });
+        else result.testsRun.push({ cmd: bullet, result: "unknown" });
+        break;
+      }
+      case "open":
+        result.openItems.push(bullet);
+        break;
+      case "next":
+        result.nextStep.push(bullet);
+        break;
+      default:
+        break;
+    }
+    void lower;
+  }
+  if (result.blockerText) result.blockerText = result.blockerText.trim();
+  return result;
+}
+
+// src/runtime/environment.ts
+var COMMON_ENVIRONMENT = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TMPDIR",
+  "TEMP",
+  "TMP"
+];
+var CODEX_ENVIRONMENT = ["CODEX_HOME", "CODEX_CA_CERTIFICATE", "SSL_CERT_FILE"];
+var SSH_ENVIRONMENT = ["SSH_AUTH_SOCK"];
+function buildChildEnvironment(source, purpose) {
+  const allowed = purpose === "codex" ? [...COMMON_ENVIRONMENT, ...CODEX_ENVIRONMENT] : purpose === "ssh" ? [...COMMON_ENVIRONMENT, ...SSH_ENVIRONMENT] : COMMON_ENVIRONMENT;
+  const result = {};
+  for (const key of allowed) {
+    const value = source[key];
+    if (value !== void 0) result[key] = value;
+  }
+  return result;
+}
+
+// src/runtime/process.ts
+var import_cross_spawn = __toESM(require_cross_spawn(), 1);
 
 // src/redact.ts
 var PLACEHOLDER = "\xABredacted\xBB";
@@ -21896,13 +22100,865 @@ function redactDeep(value) {
   return value;
 }
 
-// src/system-clock.ts
-import { randomUUID } from "node:crypto";
-function nowIso() {
-  return (/* @__PURE__ */ new Date()).toISOString();
+// src/runtime/redaction.ts
+function redact(value) {
+  return redactText(value);
 }
-function newId(prefix) {
-  return `${prefix}_${randomUUID().slice(0, 12)}`;
+
+// src/runtime/process.ts
+function resolveManagedCommand(command, args, platform = process.platform) {
+  if (platform === "win32" && /\.(?:c|m)?js$/i.test(command)) {
+    return { command: process.execPath, args: [command, ...args] };
+  }
+  return { command, args };
+}
+function appendBounded(current, chunk, maximum) {
+  const next = current + chunk.toString();
+  if (Buffer.byteLength(next) <= maximum) return { value: next, exceeded: false };
+  return { value: next.slice(-maximum), exceeded: true };
+}
+function startManagedProcess(options) {
+  const resolved = resolveManagedCommand(options.command, options.args);
+  const child = (0, import_cross_spawn.default)(resolved.command, resolved.args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  let stdout = "";
+  let stderr = "";
+  let lineBuffer = "";
+  let termination = "normal";
+  let forceKillTimer;
+  let settled = false;
+  const terminate = (reason) => {
+    if (termination === "normal") termination = reason;
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill("SIGTERM");
+    forceKillTimer ??= setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }, options.killGraceMs);
+  };
+  child.stdout.on("data", (chunk) => {
+    const appended = appendBounded(stdout, chunk, options.maxStdoutBytes);
+    stdout = appended.value;
+    lineBuffer += chunk.toString();
+    let newline = lineBuffer.indexOf("\n");
+    while (newline >= 0) {
+      options.onStdoutLine?.(lineBuffer.slice(0, newline));
+      lineBuffer = lineBuffer.slice(newline + 1);
+      newline = lineBuffer.indexOf("\n");
+    }
+    if (appended.exceeded) terminate("output_limit");
+  });
+  child.stderr.on("data", (chunk) => {
+    const appended = appendBounded(stderr, chunk, options.maxStderrBytes);
+    stderr = appended.value;
+    if (appended.exceeded) terminate("output_limit");
+  });
+  if (options.input !== void 0) child.stdin.end(options.input);
+  else child.stdin.end();
+  const timeout = setTimeout(() => terminate("timeout"), options.timeoutMs);
+  const onAbort = () => terminate("aborted");
+  if (options.signal?.aborted) onAbort();
+  else options.signal?.addEventListener("abort", onAbort, { once: true });
+  const done = new Promise((resolve6) => {
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      options.signal?.removeEventListener("abort", onAbort);
+      resolve6(result);
+    };
+    child.on("close", (code, signal) => {
+      if (lineBuffer) options.onStdoutLine?.(lineBuffer);
+      finish({
+        code,
+        signal,
+        termination,
+        stdout,
+        stderr: redact(stderr)
+      });
+    });
+    child.on("error", (error2) => {
+      termination = "spawn_error";
+      finish({
+        code: null,
+        signal: null,
+        termination,
+        stdout,
+        stderr: redact(stderr),
+        error: redact(error2.message)
+      });
+    });
+  });
+  return { child, done };
+}
+
+// src/codex.ts
+var BLOCKED_CONFIG_KEYS = /* @__PURE__ */ new Set([
+  "model",
+  "model_reasoning_effort",
+  "notify",
+  "approval_policy"
+]);
+var BLOCKED_CONFIG_PREFIXES = [
+  "sandbox",
+  // sandbox_mode, sandbox_permissions, sandbox_workspace_write.*
+  "mcp_servers",
+  // beliebige MCP-Server / Prozesse starten
+  "shell_environment_policy",
+  // Umgebungsvariablen/Secrets durchreichen
+  "hooks",
+  // beliebige Kommandos ausführen
+  "projects",
+  // Trust-Level / Freigaben
+  "trust",
+  "history",
+  "experimental",
+  "features"
+  // Feature-Flags server-seitig kontrolliert
+];
+var ALLOWED_EXTRA_CONFIG = /* @__PURE__ */ new Map([
+  ["model_verbosity", /^(low|medium|high|concise)$/],
+  ["model_reasoning_summary", /^(none|auto|concise|detailed)$/],
+  ["hide_agent_reasoning", /^(true|false)$/]
+]);
+function isBlockedConfigKey(key) {
+  const k = key.trim().toLowerCase();
+  if (!k || /[\s=]/.test(k)) return true;
+  if (k.includes("danger")) return true;
+  if (BLOCKED_CONFIG_KEYS.has(k)) return true;
+  return BLOCKED_CONFIG_PREFIXES.some((p) => k === p || k.startsWith(p + ".") || k.startsWith(p + "_"));
+}
+function validateExtraConfig(key, value) {
+  const normalized = key.trim().toLowerCase();
+  const valueSchema = ALLOWED_EXTRA_CONFIG.get(normalized);
+  if (!valueSchema) {
+    throw new Error(`extra_config-Schl\xFCssel '${key}' ist nicht erlaubt`);
+  }
+  if (!valueSchema.test(value.trim())) {
+    throw new Error(`extra_config-Wert f\xFCr '${key}' ist nicht erlaubt`);
+  }
+}
+function buildCodexArgs(opts) {
+  const dropped = [];
+  const cfg = [
+    "-c",
+    `sandbox_mode=${opts.sandbox}`,
+    "-c",
+    `model=${opts.model}`,
+    "-c",
+    `model_reasoning_effort=${opts.effort}`,
+    "-c",
+    "notify=[]",
+    "-c",
+    `sandbox_workspace_write.network_access=${opts.network ? "true" : "false"}`
+  ];
+  for (const [key, value] of Object.entries(opts.extraConfig ?? {})) {
+    if (isBlockedConfigKey(key)) {
+      dropped.push(key);
+      continue;
+    }
+    validateExtraConfig(key, value);
+    cfg.push("-c", `${key}=${value}`);
+  }
+  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", ...cfg];
+  const args = opts.threadId ? ["exec", "resume", opts.threadId, ...common, "-"] : ["exec", ...common, "-"];
+  return { args, droppedConfigKeys: dropped };
+}
+function startSlice(opts) {
+  if (!config2.allowedSandboxes.includes(opts.sandbox)) {
+    throw new Error(`Sandbox nicht erlaubt: ${opts.sandbox}`);
+  }
+  const { args } = buildCodexArgs(opts);
+  const lines = [];
+  const childEnvironment = buildChildEnvironment(process.env, "codex");
+  if (opts.codexHome) childEnvironment.CODEX_HOME = opts.codexHome;
+  const managed = startManagedProcess({
+    command: opts.codexBin ?? config2.codexBin,
+    args,
+    cwd: opts.repoPath,
+    env: childEnvironment,
+    input: opts.prompt,
+    timeoutMs: opts.timeoutMs,
+    killGraceMs: config2.limits.sliceKillGraceMs,
+    maxStdoutBytes: 10 * 1024 * 1024,
+    maxStderrBytes: 64 * 1024,
+    signal: opts.signal,
+    onStdoutLine: (line) => {
+      lines.push(line);
+      if (lines.length > 1e4) lines.shift();
+      opts.onLine?.(line);
+    }
+  });
+  const done = managed.done.then((processResult) => {
+    const parsed = parseStreamLines(lines);
+    const lastMsg = parsed.agentMessages[parsed.agentMessages.length - 1] ?? "";
+    const sliceResult = parseSliceResult(lastMsg);
+    let status = "normal";
+    let errorMessage = null;
+    if (processResult.termination === "aborted") {
+      status = "killed";
+      errorMessage = "abgebrochen (cancel)";
+    } else if (processResult.termination === "timeout") {
+      status = "killed";
+      errorMessage = "Slice-Budget \xFCberschritten (killed)";
+    } else if (processResult.termination === "output_limit") {
+      status = "failed";
+      errorMessage = "Codex-Ausgabe \xFCberschritt das Sicherheitslimit";
+    } else if (processResult.termination === "spawn_error") {
+      status = "failed";
+      errorMessage = `Prozessfehler: ${processResult.error ?? "unbekannter Fehler"}`;
+    } else if (parsed.turnFailed || parsed.errorMessage) {
+      status = "failed";
+      errorMessage = parsed.errorMessage || `Codex-Fehler (exit ${processResult.code}). stderr: ${processResult.stderr.slice(-500)}`;
+    } else if (processResult.code !== 0 && parsed.rawEventCount === 0) {
+      status = "failed";
+      errorMessage = `codex exit ${processResult.code}. stderr: ${processResult.stderr.slice(-500)}`;
+    }
+    return {
+      threadId: parsed.threadId ?? opts.threadId ?? null,
+      agentMessages: parsed.agentMessages,
+      commands: parsed.commands,
+      usage: parsed.usage,
+      sliceResult,
+      status,
+      errorMessage,
+      rawEventCount: parsed.rawEventCount
+    };
+  });
+  return { child: managed.child, done };
+}
+
+// src/execution/local-target.ts
+var LocalExecutionTarget = class {
+  id = "local";
+  kind = "local";
+  codexBin;
+  codexHome;
+  constructor(options = {}) {
+    this.codexBin = options.codexBin ?? config2.codexBin;
+    this.codexHome = options.codexHome;
+  }
+  async doctor() {
+    const version2 = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5e3, "codex", this.codexHome);
+    if (version2.code !== 0) {
+      return {
+        targetId: this.id,
+        kind: this.kind,
+        state: "unhealthy",
+        codexVersion: null,
+        auth: { state: "unavailable", message: "Codex CLI nicht verf\xFCgbar" },
+        errorCode: "TARGET_VERSION",
+        message: version2.stderr || "Codex CLI nicht verf\xFCgbar"
+      };
+    }
+    const match = version2.stdout.match(/(\d+\.\d+\.\d+[^\s]*)/);
+    const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5e3, "codex", this.codexHome);
+    const auth = parseAuthStatus(login.code, `${login.stdout}
+${login.stderr}`);
+    return {
+      targetId: this.id,
+      kind: this.kind,
+      state: auth.state === "authenticated" ? "healthy" : "unhealthy",
+      codexVersion: match?.[1] ?? null,
+      auth,
+      errorCode: auth.state === "authenticated" ? void 0 : "TARGET_AUTH",
+      message: auth.message
+    };
+  }
+  startCodex(request) {
+    return startSlice({ ...request, codexBin: this.codexBin, codexHome: this.codexHome });
+  }
+  async repositoryIdentity(repoPath) {
+    const result = await this.runGit({
+      cwd: repoPath,
+      argv: ["rev-parse", "--show-toplevel", "HEAD"],
+      timeoutMs: 1e4
+    });
+    if (result.code !== 0) throw new Error(result.stderr || "Git-Repository nicht verf\xFCgbar");
+    const [topLevel, headCommit] = result.stdout.trim().split(/\r?\n/);
+    const status = await this.runGit({ cwd: repoPath, argv: ["status", "--porcelain=v1"], timeoutMs: 1e4 });
+    return { topLevel, headCommit, clean: status.code === 0 && status.stdout.trim() === "" };
+  }
+  runCheck(request) {
+    const [command, ...args] = request.argv;
+    return this.runBinary(command, args, request.cwd, request.timeoutMs ?? 15 * 6e4, "repository-check");
+  }
+  runGit(request) {
+    return this.runBinary("git", request.argv, request.cwd, request.timeoutMs ?? 6e4, "repository-check");
+  }
+  async runBinary(command, args, cwd, timeoutMs, purpose, codexHome) {
+    const environment = buildChildEnvironment(process.env, purpose);
+    if (purpose === "codex" && codexHome) environment.CODEX_HOME = codexHome;
+    const running = startManagedProcess({
+      command,
+      args,
+      cwd,
+      env: environment,
+      timeoutMs,
+      killGraceMs: config2.limits.sliceKillGraceMs,
+      maxStdoutBytes: 4e5,
+      maxStderrBytes: 64e3
+    });
+    const result = await running.done;
+    return { code: result.code, stdout: result.stdout, stderr: result.error ?? result.stderr };
+  }
+};
+function parseAuthStatus(code, output) {
+  if (code !== 0) return { state: "unauthenticated", message: "Codex CLI ist nicht angemeldet" };
+  if (/logged in using chatgpt/i.test(output)) {
+    return { state: "authenticated", method: "chatgpt", message: "Codex CLI ist \xFCber ChatGPT angemeldet" };
+  }
+  if (/logged in using.*api/i.test(output)) {
+    return { state: "authenticated", method: "api-key", message: "Codex CLI ist \xFCber API-Key angemeldet" };
+  }
+  return { state: "authenticated", method: "unknown", message: "Codex CLI ist angemeldet" };
+}
+
+// src/prompts.ts
+var SLICE_RESULT_SPEC = `
+When you stop working for this slice, end your final message with EXACTLY this block
+(plain text, no code fences):
+
+SLICE_RESULT
+Type: checkpoint | submission | blocker
+Cluster: <cluster id or ->
+Done in this slice:
+- ...
+Changed files:
+- ...
+Tests run:
+- <cmd>: pass|fail|skipped
+Open items:
+- ...
+Next planned step:
+- ...
+
+Rules:
+- Type: submission ONLY when the acceptance criteria are fully met and verified.
+- Type: blocker when you are missing information or hit an obstacle you must not
+  improvise around. In that case append a full BLOCKER_OR_QUESTION section after the
+  block describing: context, the concrete question/blocker, options you see, and your
+  recommendation. Never guess around missing information.
+- Type: checkpoint otherwise (progress made, more work remains).
+- "Changed files" must list every file you created or modified in this slice.
+`.trim();
+function buildFirstSlicePrompt(task, acceptance, stopCondition) {
+  const acc = acceptance.length ? acceptance.map((a) => `- ${a}`).join("\n") : "- (none specified)";
+  return [
+    `You are Codex, the implementation executor in a supervised, cluster-based workflow.`,
+    `An orchestrator (Claude) delegates bounded work slices to you and reviews the result.`,
+    ``,
+    `Cluster: ${task.cluster_id ?? "-"}`,
+    `Slice budget: about ${task.max_minutes} minutes of focused work, then checkpoint.`,
+    task.sandbox === "read-only" ? `Sandbox: read-only. Do NOT modify files; analyse/investigate/review only.` : `Sandbox: workspace-write. You may modify files within the working directory.`,
+    stopCondition ? `Stop condition: ${stopCondition}` : ``,
+    ``,
+    `Task instructions:`,
+    task.instructions,
+    ``,
+    `Acceptance criteria:`,
+    acc,
+    ``,
+    SLICE_RESULT_SPEC
+  ].filter((l) => l !== void 0).join("\n");
+}
+function buildResumeSlicePrompt(task, injections, acceptance) {
+  const parts = [];
+  if (injections.length) {
+    parts.push(`## Orchestrator injections (highest priority \u2014 read first)`);
+    for (const inj of injections) {
+      parts.push(`- [${inj.priority}] ${inj.message}`);
+    }
+    parts.push(``);
+  }
+  parts.push(`Continue the task from where you left off. Respect the slice budget of`);
+  parts.push(`about ${task.max_minutes} minutes, then produce a SLICE_RESULT.`);
+  if (acceptance.length) {
+    parts.push(``);
+    parts.push(`Reminder \u2014 acceptance criteria:`);
+    parts.push(acceptance.map((a) => `- ${a}`).join("\n"));
+  }
+  parts.push(``);
+  parts.push(SLICE_RESULT_SPEC);
+  return parts.join("\n");
+}
+
+// src/session.ts
+var SessionManager = class {
+  constructor(store, targetFor = (() => {
+    const local = new LocalExecutionTarget();
+    return () => local;
+  })()) {
+    this.store = store;
+    this.targetFor = targetFor;
+    this.emitter.setMaxListeners(0);
+  }
+  store;
+  targetFor;
+  controls = /* @__PURE__ */ new Map();
+  emitter = new EventEmitter();
+  active = 0;
+  waiters = [];
+  /**
+   * Beim Serverstart: NUR Tasks toter Prozesse als failed markieren (Reaper).
+   * Tasks, deren owner_pid ein lebender Prozess ist (z. B. eine parallele
+   * Instanz eines anderen Projekts, die sich denselben Store teilt), bleiben
+   * unangetastet — verhindert Cross-Kill zwischen gleichzeitigen Projekten.
+   */
+  reapOnStartup() {
+    const running = this.store.listTasks().filter((t) => t.status === "running" || t.status === "awaiting_resume");
+    let n = 0;
+    for (const t of running) {
+      if (t.owner_pid && t.owner_pid !== process.pid && isProcessAlive(t.owner_pid)) {
+        continue;
+      }
+      if (t.codex_pid && isProcessAlive(t.codex_pid)) {
+        try {
+          process.kill(t.codex_pid, "SIGTERM");
+        } catch {
+        }
+      }
+      this.store.updateTask(t.id, { status: "failed", ended_at: (/* @__PURE__ */ new Date()).toISOString(), codex_pid: null });
+      this.store.addEvent(t.id, "task_status", {
+        status: "failed",
+        reason: `Reaper: verwaister Prozess (owner_pid=${t.owner_pid ?? "?"}, codex_pid=${t.codex_pid ?? "?"}) nach Restart/Crash. Resume via task_control.`
+      });
+      n++;
+    }
+    return n;
+  }
+  /** F: Bei Server-Shutdown alle laufenden Codex-Kinder terminieren (SIGTERM). */
+  shutdown() {
+    let n = 0;
+    for (const [, c] of this.controls) {
+      if (c.abort) {
+        c.cancelRequested = true;
+        try {
+          c.abort.abort();
+        } catch {
+        }
+        n++;
+      }
+    }
+    return n;
+  }
+  ctrl(taskId) {
+    let c = this.controls.get(taskId);
+    if (!c) {
+      c = { pauseRequested: false, cancelRequested: false, abort: null, looping: false };
+      this.controls.set(taskId, c);
+    }
+    return c;
+  }
+  async acquire() {
+    if (this.active < config2.parallelism.maxConcurrent) {
+      this.active++;
+      return;
+    }
+    await new Promise((res) => this.waiters.push(res));
+    this.active++;
+  }
+  release() {
+    this.active--;
+    const next = this.waiters.shift();
+    if (next) next();
+  }
+  createTask(args) {
+    const id = newId("T");
+    return this.store.createTask({
+      id,
+      cluster_id: args.clusterId,
+      codex_session_id: null,
+      worktree: args.worktree,
+      branch: args.branch,
+      repo_path: args.repoPath,
+      sandbox: args.sandbox,
+      model: args.model,
+      effort: args.effort,
+      instructions: args.instructions,
+      acceptance_json: JSON.stringify(args.acceptance),
+      max_minutes: args.maxMinutes,
+      network: args.network ? 1 : 0,
+      status: "queued",
+      extra_config_json: args.extraConfig ? JSON.stringify(args.extraConfig) : null,
+      owner_pid: null,
+      target_id: args.targetId ?? "local",
+      target_kind: args.targetKind ?? "local",
+      repository_commit: args.repositoryCommit ?? null,
+      routing_reason: args.routingReason ?? "local-default",
+      fallback_from: args.fallbackFrom ?? null,
+      hypothesis_id: args.hypothesisId ?? null
+    });
+  }
+  /** Startet (oder setzt fort) den Hintergrund-Slice-Loop für einen Task. */
+  startLoop(taskId, stopCondition) {
+    const c = this.ctrl(taskId);
+    if (c.looping) return;
+    c.looping = true;
+    c.pauseRequested = false;
+    c.cancelRequested = false;
+    void this.loop(taskId, stopCondition).finally(() => {
+      c.looping = false;
+    });
+  }
+  acceptanceOf(task) {
+    try {
+      return task.acceptance_json ? JSON.parse(task.acceptance_json) : [];
+    } catch {
+      return [];
+    }
+  }
+  elapsedMinutes(task) {
+    if (!task.started_at) return 0;
+    return (Date.now() - Date.parse(task.started_at)) / 6e4;
+  }
+  async loop(taskId, stopCondition) {
+    const c = this.ctrl(taskId);
+    while (true) {
+      let task = this.store.getTask(taskId);
+      if (!task) return;
+      if (c.cancelRequested) {
+        this.finish(taskId, "cancelled", "vom Orchestrator abgebrochen");
+        return;
+      }
+      if (task.slice_count >= config2.limits.maxSlicesPerTask) {
+        this.limitBreach(taskId, `max_slices (${config2.limits.maxSlicesPerTask}) erreicht`);
+        return;
+      }
+      if (!task.started_at) {
+        this.store.updateTask(taskId, { started_at: (/* @__PURE__ */ new Date()).toISOString() });
+        task = this.store.getTask(taskId);
+      } else if (this.elapsedMinutes(task) > config2.limits.maxTaskMinutes) {
+        this.limitBreach(taskId, `max_task_minutes (${config2.limits.maxTaskMinutes}) \xFCberschritten`);
+        return;
+      }
+      const isFirst = !task.codex_session_id;
+      const workDir = task.worktree || task.repo_path;
+      const acceptance = this.acceptanceOf(task);
+      const injections = isFirst ? [] : this.store.pendingInjections(taskId);
+      const prompt = isFirst ? buildFirstSlicePrompt(task, acceptance, stopCondition) : buildResumeSlicePrompt(task, injections, acceptance);
+      await this.acquire();
+      if (c.cancelRequested) {
+        this.release();
+        this.finish(taskId, "cancelled", "abgebrochen vor Slice-Start");
+        return;
+      }
+      const abort = new AbortController();
+      c.abort = abort;
+      this.store.updateTask(taskId, { status: "running", owner_pid: process.pid });
+      this.emit(taskId);
+      let outcome;
+      try {
+        const timeoutMs = task.max_minutes * 6e4 + config2.limits.sliceKillGraceMs;
+        let extraConfig;
+        try {
+          extraConfig = task.extra_config_json ? JSON.parse(task.extra_config_json) : void 0;
+        } catch {
+          extraConfig = void 0;
+        }
+        const running = this.targetFor(task.target_id).startCodex({
+          repoPath: workDir,
+          threadId: task.codex_session_id,
+          prompt,
+          sandbox: task.sandbox,
+          model: task.model,
+          effort: task.effort,
+          network: task.network === 1,
+          extraConfig,
+          timeoutMs,
+          signal: abort.signal,
+          // H: Live-Fortschritt (Kommandos) sofort persistieren -> task_wait reagiert mid-slice.
+          onLine: (line) => this.persistLiveEvent(taskId, line)
+        });
+        if (running.child.pid) this.store.updateTask(taskId, { codex_pid: running.child.pid });
+        outcome = await running.done;
+      } finally {
+        this.release();
+        c.abort = null;
+        this.store.updateTask(taskId, { codex_pid: null });
+      }
+      if (injections.length && outcome.status === "normal") {
+        this.store.markInjectionsDelivered(injections.map((i) => i.id));
+        for (const inj of injections) {
+          this.store.addEvent(taskId, "injection_delivered", { priority: inj.priority, message: inj.message });
+        }
+      }
+      const sr = outcome.sliceResult;
+      const discrepancies = detectReportDiscrepancies(sr, outcome.commands);
+      const integrityOk = discrepancies.length === 0;
+      const integrity = integrityOk ? { integrity_ok: true } : { integrity_ok: false, discrepancies };
+      if (!integrityOk) {
+        this.store.addEvent(taskId, "report_discrepancy", { discrepancies });
+      }
+      const summary = summarize(sr, outcome);
+      this.store.addEvent(taskId, "slice_message", { text: (outcome.agentMessages.at(-1) ?? "").slice(0, 4e3) });
+      this.store.updateTask(taskId, {
+        codex_session_id: outcome.threadId,
+        slice_count: task.slice_count + 1,
+        last_slice_type: sr.type,
+        last_summary: summary
+      });
+      if (outcome.status === "killed") {
+        if (c.cancelRequested) {
+          this.finish(taskId, "cancelled", "abgebrochen (cancel)");
+          return;
+        }
+        this.store.addEvent(taskId, "slice_killed", { reason: outcome.errorMessage });
+        this.store.addEvent(taskId, "slice_result", {
+          type: "checkpoint",
+          parsed: false,
+          cluster: sr.cluster,
+          done: sr.doneInSlice,
+          changed_files: sr.changedFiles,
+          tests: sr.testsRun,
+          open_items: sr.openItems,
+          next_step: sr.nextStep,
+          blocker: null,
+          usage: outcome.usage,
+          ...integrity
+        });
+        this.finish(taskId, "blocked", "Slice-Budget \xFCberschritten (killed). Entscheidung n\xF6tig: resume mit gr\xF6\xDFerem Budget oder replan.");
+        return;
+      } else if (outcome.status === "failed") {
+        this.store.addEvent(taskId, "slice_error", { error: outcome.errorMessage });
+        this.finish(taskId, "failed", outcome.errorMessage ?? "Slice fehlgeschlagen");
+        return;
+      }
+      this.store.addEvent(taskId, "slice_result", {
+        type: sr.type,
+        parsed: sr.parsed,
+        cluster: sr.cluster,
+        done: sr.doneInSlice,
+        changed_files: sr.changedFiles,
+        tests: sr.testsRun,
+        open_items: sr.openItems,
+        next_step: sr.nextStep,
+        blocker: sr.blockerText,
+        usage: outcome.usage,
+        ...integrity
+      });
+      this.emit(taskId);
+      if (outcome.status === "normal" && sr.type === "submission") {
+        if (!integrityOk) {
+          this.finish(taskId, "blocked", "Ein als pass gemeldeter Check lief mit einem Exit-Code ungleich 0. Die Submission ist nicht vertrauensw\xFCrdig und ben\xF6tigt eine Pr\xFCfung durch den Orchestrator.");
+          return;
+        }
+        this.finish(taskId, "completed", "submission");
+        return;
+      }
+      if (outcome.status === "normal" && sr.type === "blocker") {
+        this.finish(taskId, "blocked", "blocker");
+        return;
+      }
+      if (c.pauseRequested) {
+        c.pauseRequested = false;
+        this.store.updateTask(taskId, { status: "paused" });
+        this.store.addEvent(taskId, "task_status", { status: "paused" });
+        this.emit(taskId);
+        return;
+      }
+      this.store.updateTask(taskId, { status: "awaiting_resume" });
+    }
+  }
+  finish(taskId, status, reason) {
+    this.store.updateTask(taskId, { status, ended_at: (/* @__PURE__ */ new Date()).toISOString() });
+    this.store.addEvent(taskId, "task_status", { status, reason });
+    try {
+      this.store.finishAgentJobByTask(taskId, status, reason);
+    } catch {
+    }
+    this.emit(taskId);
+  }
+  limitBreach(taskId, reason) {
+    this.store.updateTask(taskId, { status: "blocked", ended_at: (/* @__PURE__ */ new Date()).toISOString() });
+    this.store.addEvent(taskId, "limit_breach", { reason });
+    this.store.addEvent(taskId, "task_status", { status: "blocked", reason });
+    this.emit(taskId);
+  }
+  // ---- Steuerung (task_control) ----
+  pause(taskId) {
+    const c = this.ctrl(taskId);
+    const task = this.store.getTask(taskId);
+    if (!task) return { ok: false, note: "unbekannter Task" };
+    if (["completed", "failed", "cancelled", "blocked"].includes(task.status)) {
+      return { ok: false, note: `Task ist terminal (${task.status})` };
+    }
+    c.pauseRequested = true;
+    return { ok: true, note: "Pause angefordert; wirksam am n\xE4chsten Slice-Ende" };
+  }
+  resume(taskId) {
+    const task = this.store.getTask(taskId);
+    if (!task) return { ok: false, note: "unbekannter Task" };
+    if (["completed", "cancelled"].includes(task.status)) {
+      return { ok: false, note: `Task ist terminal (${task.status})` };
+    }
+    if (!task.codex_session_id && task.status !== "queued") {
+      return { ok: false, note: "keine Codex-Session zum Fortsetzen" };
+    }
+    this.startLoop(taskId, null);
+    return { ok: true, note: "Loop (fort-)gesetzt" };
+  }
+  cancel(taskId) {
+    const c = this.ctrl(taskId);
+    const task = this.store.getTask(taskId);
+    if (!task) return { ok: false, note: "unbekannter Task" };
+    c.cancelRequested = true;
+    if (c.abort) c.abort.abort();
+    if (!c.looping) this.finish(taskId, "cancelled", "abgebrochen (nicht laufend)");
+    return { ok: true, note: "Abbruch angefordert; Worktree bleibt f\xFCr Forensik erhalten" };
+  }
+  inject(taskId, message, priority) {
+    const task = this.store.getTask(taskId);
+    if (!task) return { ok: false, id: "", note: "unbekannter Task" };
+    const id = this.store.addInjection(taskId, message, priority);
+    return { ok: true, id, note: "Injektion in Queue; Auslieferung an n\xE4chster Slice-Grenze" };
+  }
+  /** H: Persistiert Kommando-Events live während des Slice (mid-slice-Observability). */
+  persistLiveEvent(taskId, line) {
+    const l = line.trim();
+    if (!l.startsWith("{")) return;
+    let ev;
+    try {
+      ev = JSON.parse(l);
+    } catch {
+      return;
+    }
+    if (ev.type === "item.completed" && ev.item?.type === "command_execution") {
+      this.store.addEvent(taskId, "slice_command", {
+        command: String(ev.item.command ?? ""),
+        exit_code: typeof ev.item.exit_code === "number" ? ev.item.exit_code : null,
+        output_tail: String(ev.item.aggregated_output ?? "").slice(-1200)
+      });
+      this.emit(taskId);
+    }
+  }
+  // ---- Warten (task_wait) ----
+  emit(taskId) {
+    this.emitter.emit(taskId);
+  }
+  /**
+   * Long-Poll: kehrt zurück, sobald ein Event mit seq>cursor vorliegt, der Task
+   * terminal wird, oder das Timeout greift.
+   */
+  async wait(taskId, cursor, timeoutSec) {
+    const cap = Math.min(timeoutSec, config2.maxWaitSeconds) * 1e3;
+    const deadline = Date.now() + cap;
+    const snapshot = () => {
+      const evs2 = this.store.eventsAfter(taskId, cursor);
+      const task2 = this.store.getTask(taskId);
+      return { evs: evs2, task: task2 };
+    };
+    let { evs, task } = snapshot();
+    if (evs.length > 0 || !task) {
+      return this.pack(taskId, evs, cursor, task?.status ?? "unknown", false);
+    }
+    await new Promise((resolve6) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        this.emitter.off(taskId, onEvent);
+        clearTimeout(timer);
+        clearInterval(poll);
+        resolve6();
+      };
+      const onEvent = () => done();
+      const timer = setTimeout(done, Math.max(0, deadline - Date.now()));
+      const poll = setInterval(() => {
+        if (this.store.maxSeq(taskId) > cursor) done();
+        if (Date.now() >= deadline) done();
+      }, 500);
+      this.emitter.on(taskId, onEvent);
+    });
+    ({ evs, task } = snapshot());
+    const timedOut = evs.length === 0;
+    return this.pack(taskId, evs, cursor, task?.status ?? "unknown", timedOut);
+  }
+  pack(taskId, evs, cursor, status, timedOut) {
+    const events = evs.map((e) => ({
+      seq: e.seq,
+      ts: e.ts,
+      kind: e.kind,
+      payload: safeParse4(e.payload_json)
+    }));
+    const newCursor = events.length ? events[events.length - 1].seq : cursor;
+    return { events, cursor: newCursor, task_status: status, timed_out: timedOut };
+  }
+  /** Wartet bis zu einer Bedingung (für task_start wait_for). */
+  async waitUntil(taskId, predicate, maxSec) {
+    const deadline = Date.now() + maxSec * 1e3;
+    let cursor = 0;
+    let sawSliceResult = false;
+    while (Date.now() < deadline) {
+      const remaining = Math.ceil((deadline - Date.now()) / 1e3);
+      const r = await this.wait(taskId, cursor, Math.min(remaining, config2.maxWaitSeconds));
+      cursor = r.cursor;
+      if (r.events.some((e) => e.kind === "slice_result")) sawSliceResult = true;
+      if (predicate(r.task_status, sawSliceResult)) return;
+      if (["completed", "failed", "cancelled", "blocked", "paused"].includes(r.task_status)) return;
+    }
+  }
+};
+function summarize(sr, outcome) {
+  const parts = [`[${sr.type}]`];
+  if (sr.doneInSlice.length) parts.push(`done: ${sr.doneInSlice.length} item(s)`);
+  if (sr.changedFiles.length) parts.push(`files: ${sr.changedFiles.length}`);
+  if (sr.testsRun.length) parts.push(`tests: ${sr.testsRun.map((t) => t.result).join(",")}`);
+  if (outcome.status !== "normal") parts.push(`status: ${outcome.status}`);
+  return parts.join(" ");
+}
+function safeParse4(s) {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return s;
+  }
+}
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code === "EPERM";
+  }
+}
+
+// src/version.ts
+var ORCHESTRATOR_VERSION = "1.5.2";
+
+// src/db.ts
+import { DatabaseSync } from "node:sqlite";
+import { chmodSync, existsSync as existsSync2, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
+// src/db/migrations.ts
+var TASK_COLUMNS = [
+  ["target_id", "TEXT NOT NULL DEFAULT 'local'"],
+  ["target_kind", "TEXT NOT NULL DEFAULT 'local'"],
+  ["repository_commit", "TEXT"],
+  ["worker_version", "TEXT"],
+  ["routing_reason", "TEXT"],
+  ["fallback_from", "TEXT"]
+];
+var CURRENT_SCHEMA_VERSION = 2;
+function runMigrations(db) {
+  const existing = new Set(
+    db.prepare("PRAGMA table_info(tasks)").all().map((column) => column.name)
+  );
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const [name, definition] of TASK_COLUMNS) {
+      if (!existing.has(name)) db.exec(`ALTER TABLE tasks ADD COLUMN ${name} ${definition}`);
+    }
+    db.exec(`PRAGMA user_version = ${CURRENT_SCHEMA_VERSION}`);
+    db.exec("COMMIT");
+  } catch (error2) {
+    db.exec("ROLLBACK");
+    throw error2;
+  }
 }
 
 // src/ports/persistence.ts
@@ -22490,1059 +23546,6 @@ var Store = class {
   }
 };
 
-// src/session.ts
-import { EventEmitter } from "node:events";
-
-// src/events.ts
-function normalizeCommand(command) {
-  let normalized = command.toLowerCase().replace(/`/g, "").replace(/\s+/g, " ").trim();
-  const wrapper = normalized.match(
-    /^(?:\/bin\/)?(?:zsh|bash|sh)\s+-(?:l?c|cl)\s+(.+)$/
-  );
-  if (wrapper) {
-    normalized = wrapper[1].trim();
-    const quote = normalized[0];
-    if ((quote === '"' || quote === "'") && normalized.at(-1) === quote) {
-      normalized = normalized.slice(1, -1).trim();
-    }
-  }
-  return normalized;
-}
-function detectReportDiscrepancies(sliceResult, commands) {
-  const discrepancies = [];
-  for (const test of sliceResult.testsRun) {
-    if (test.result !== "pass") continue;
-    const reported = normalizeCommand(test.cmd);
-    if (!reported) continue;
-    const prefix = reported.length >= 20 ? reported.slice(0, 20) : null;
-    let matched;
-    for (let i = commands.length - 1; i >= 0; i--) {
-      const executed = normalizeCommand(commands[i].command);
-      if (executed.includes(reported) || prefix !== null && executed.includes(prefix)) {
-        matched = commands[i];
-        break;
-      }
-    }
-    if (matched && typeof matched.exit_code === "number" && matched.exit_code !== 0) {
-      discrepancies.push({
-        reported_cmd: test.cmd,
-        matched_command: matched.command,
-        exit_code: matched.exit_code
-      });
-    }
-  }
-  return discrepancies;
-}
-function parseStreamLines(lines) {
-  const out = {
-    threadId: null,
-    agentMessages: [],
-    commands: [],
-    usage: null,
-    turnFailed: false,
-    errorMessage: null,
-    rawEventCount: 0
-  };
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line.startsWith("{")) continue;
-    let ev;
-    try {
-      ev = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    out.rawEventCount++;
-    const type = ev.type ?? "";
-    switch (type) {
-      case "thread.started":
-        if (typeof ev.thread_id === "string") out.threadId = ev.thread_id;
-        break;
-      case "item.completed": {
-        const item = ev.item ?? {};
-        if (item.type === "agent_message" && typeof item.text === "string") {
-          out.agentMessages.push(item.text);
-        } else if (item.type === "command_execution") {
-          out.commands.push({
-            command: String(item.command ?? ""),
-            exit_code: typeof item.exit_code === "number" ? item.exit_code : null,
-            output: String(item.aggregated_output ?? "")
-          });
-        }
-        break;
-      }
-      case "turn.completed":
-        if (ev.usage) out.usage = ev.usage;
-        break;
-      case "turn.failed":
-        out.turnFailed = true;
-        out.errorMessage = ev.error?.message ?? "turn.failed";
-        break;
-      case "error":
-        if (typeof ev.message === "string" && !/Reconnecting/i.test(ev.message)) {
-          out.errorMessage = ev.message;
-        }
-        break;
-      default:
-        break;
-    }
-  }
-  return out;
-}
-var SLICE_TYPES = ["checkpoint", "submission", "blocker"];
-function parseSliceResult(agentText) {
-  const raw = agentText ?? "";
-  const empty = {
-    type: "checkpoint",
-    cluster: null,
-    doneInSlice: [],
-    changedFiles: [],
-    testsRun: [],
-    openItems: [],
-    nextStep: [],
-    blockerText: null,
-    parsed: false,
-    raw
-  };
-  const idx = raw.indexOf("SLICE_RESULT");
-  if (idx === -1) return empty;
-  const body = raw.slice(idx).replace(/```/g, "");
-  const lines = body.split(/\r?\n/);
-  const result = { ...empty, parsed: true };
-  let section = "none";
-  const bulletOf = (l) => {
-    const m = l.match(/^\s*[-*]\s+(.*\S)\s*$/);
-    return m ? m[1] : null;
-  };
-  for (const line of lines) {
-    const trimmed = line.trim();
-    const lower = trimmed.toLowerCase();
-    const typeMatch = trimmed.match(/^Type\s*:\s*(\w+)/i);
-    if (typeMatch) {
-      const t = typeMatch[1].toLowerCase();
-      if (SLICE_TYPES.includes(t)) result.type = t;
-      section = "none";
-      continue;
-    }
-    const clusterMatch = trimmed.match(/^Cluster\s*:\s*(.+\S)/i);
-    if (clusterMatch) {
-      result.cluster = clusterMatch[1].trim();
-      section = "none";
-      continue;
-    }
-    if (/^Done in this slice\s*:/i.test(trimmed)) {
-      section = "done";
-      continue;
-    }
-    if (/^Changed files\s*:/i.test(trimmed)) {
-      section = "changed";
-      continue;
-    }
-    if (/^Tests run\s*:/i.test(trimmed)) {
-      section = "tests";
-      continue;
-    }
-    if (/^Open items\s*:/i.test(trimmed)) {
-      section = "open";
-      continue;
-    }
-    if (/^Next planned step\s*:/i.test(trimmed)) {
-      section = "next";
-      continue;
-    }
-    if (/^BLOCKER_OR_QUESTION/i.test(trimmed)) {
-      section = "blocker";
-      result.blockerText = "";
-      continue;
-    }
-    if (section === "blocker") {
-      result.blockerText = (result.blockerText ?? "") + line + "\n";
-      continue;
-    }
-    const bullet = bulletOf(line);
-    if (!bullet) continue;
-    switch (section) {
-      case "done":
-        result.doneInSlice.push(bullet);
-        break;
-      case "changed":
-        result.changedFiles.push(bullet);
-        break;
-      case "tests": {
-        const m = bullet.match(/^(.*?):\s*(pass|fail|skipped)\s*$/i);
-        if (m) result.testsRun.push({ cmd: m[1].trim(), result: m[2].toLowerCase() });
-        else result.testsRun.push({ cmd: bullet, result: "unknown" });
-        break;
-      }
-      case "open":
-        result.openItems.push(bullet);
-        break;
-      case "next":
-        result.nextStep.push(bullet);
-        break;
-      default:
-        break;
-    }
-    void lower;
-  }
-  if (result.blockerText) result.blockerText = result.blockerText.trim();
-  return result;
-}
-
-// src/runtime/environment.ts
-var COMMON_ENVIRONMENT = [
-  "PATH",
-  "HOME",
-  "USER",
-  "LOGNAME",
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "TMPDIR",
-  "TEMP",
-  "TMP"
-];
-var CODEX_ENVIRONMENT = ["CODEX_HOME", "CODEX_CA_CERTIFICATE", "SSL_CERT_FILE"];
-var SSH_ENVIRONMENT = ["SSH_AUTH_SOCK"];
-function buildChildEnvironment(source, purpose) {
-  const allowed = purpose === "codex" ? [...COMMON_ENVIRONMENT, ...CODEX_ENVIRONMENT] : purpose === "ssh" ? [...COMMON_ENVIRONMENT, ...SSH_ENVIRONMENT] : COMMON_ENVIRONMENT;
-  const result = {};
-  for (const key of allowed) {
-    const value = source[key];
-    if (value !== void 0) result[key] = value;
-  }
-  return result;
-}
-
-// src/runtime/process.ts
-var import_cross_spawn = __toESM(require_cross_spawn(), 1);
-
-// src/runtime/redaction.ts
-function redact(value) {
-  return redactText(value);
-}
-
-// src/runtime/process.ts
-function resolveManagedCommand(command, args, platform = process.platform) {
-  if (platform === "win32" && /\.(?:c|m)?js$/i.test(command)) {
-    return { command: process.execPath, args: [command, ...args] };
-  }
-  return { command, args };
-}
-function appendBounded(current, chunk, maximum) {
-  const next = current + chunk.toString();
-  if (Buffer.byteLength(next) <= maximum) return { value: next, exceeded: false };
-  return { value: next.slice(-maximum), exceeded: true };
-}
-function startManagedProcess(options) {
-  const resolved = resolveManagedCommand(options.command, options.args);
-  const child = (0, import_cross_spawn.default)(resolved.command, resolved.args, {
-    cwd: options.cwd,
-    env: options.env,
-    stdio: ["pipe", "pipe", "pipe"]
-  });
-  let stdout = "";
-  let stderr = "";
-  let lineBuffer = "";
-  let termination = "normal";
-  let forceKillTimer;
-  let settled = false;
-  const terminate = (reason) => {
-    if (termination === "normal") termination = reason;
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    child.kill("SIGTERM");
-    forceKillTimer ??= setTimeout(() => {
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-    }, options.killGraceMs);
-  };
-  child.stdout.on("data", (chunk) => {
-    const appended = appendBounded(stdout, chunk, options.maxStdoutBytes);
-    stdout = appended.value;
-    lineBuffer += chunk.toString();
-    let newline = lineBuffer.indexOf("\n");
-    while (newline >= 0) {
-      options.onStdoutLine?.(lineBuffer.slice(0, newline));
-      lineBuffer = lineBuffer.slice(newline + 1);
-      newline = lineBuffer.indexOf("\n");
-    }
-    if (appended.exceeded) terminate("output_limit");
-  });
-  child.stderr.on("data", (chunk) => {
-    const appended = appendBounded(stderr, chunk, options.maxStderrBytes);
-    stderr = appended.value;
-    if (appended.exceeded) terminate("output_limit");
-  });
-  if (options.input !== void 0) child.stdin.end(options.input);
-  else child.stdin.end();
-  const timeout = setTimeout(() => terminate("timeout"), options.timeoutMs);
-  const onAbort = () => terminate("aborted");
-  if (options.signal?.aborted) onAbort();
-  else options.signal?.addEventListener("abort", onAbort, { once: true });
-  const done = new Promise((resolve6) => {
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      if (forceKillTimer) clearTimeout(forceKillTimer);
-      options.signal?.removeEventListener("abort", onAbort);
-      resolve6(result);
-    };
-    child.on("close", (code, signal) => {
-      if (lineBuffer) options.onStdoutLine?.(lineBuffer);
-      finish({
-        code,
-        signal,
-        termination,
-        stdout,
-        stderr: redact(stderr)
-      });
-    });
-    child.on("error", (error2) => {
-      termination = "spawn_error";
-      finish({
-        code: null,
-        signal: null,
-        termination,
-        stdout,
-        stderr: redact(stderr),
-        error: redact(error2.message)
-      });
-    });
-  });
-  return { child, done };
-}
-
-// src/codex.ts
-var BLOCKED_CONFIG_KEYS = /* @__PURE__ */ new Set([
-  "model",
-  "model_reasoning_effort",
-  "notify",
-  "approval_policy"
-]);
-var BLOCKED_CONFIG_PREFIXES = [
-  "sandbox",
-  // sandbox_mode, sandbox_permissions, sandbox_workspace_write.*
-  "mcp_servers",
-  // beliebige MCP-Server / Prozesse starten
-  "shell_environment_policy",
-  // Umgebungsvariablen/Secrets durchreichen
-  "hooks",
-  // beliebige Kommandos ausführen
-  "projects",
-  // Trust-Level / Freigaben
-  "trust",
-  "history",
-  "experimental",
-  "features"
-  // Feature-Flags server-seitig kontrolliert
-];
-var ALLOWED_EXTRA_CONFIG = /* @__PURE__ */ new Map([
-  ["model_verbosity", /^(low|medium|high|concise)$/],
-  ["model_reasoning_summary", /^(none|auto|concise|detailed)$/],
-  ["hide_agent_reasoning", /^(true|false)$/]
-]);
-function isBlockedConfigKey(key) {
-  const k = key.trim().toLowerCase();
-  if (!k || /[\s=]/.test(k)) return true;
-  if (k.includes("danger")) return true;
-  if (BLOCKED_CONFIG_KEYS.has(k)) return true;
-  return BLOCKED_CONFIG_PREFIXES.some((p) => k === p || k.startsWith(p + ".") || k.startsWith(p + "_"));
-}
-function validateExtraConfig(key, value) {
-  const normalized = key.trim().toLowerCase();
-  const valueSchema = ALLOWED_EXTRA_CONFIG.get(normalized);
-  if (!valueSchema) {
-    throw new Error(`extra_config-Schl\xFCssel '${key}' ist nicht erlaubt`);
-  }
-  if (!valueSchema.test(value.trim())) {
-    throw new Error(`extra_config-Wert f\xFCr '${key}' ist nicht erlaubt`);
-  }
-}
-function buildCodexArgs(opts) {
-  const dropped = [];
-  const cfg = [
-    "-c",
-    `sandbox_mode=${opts.sandbox}`,
-    "-c",
-    `model=${opts.model}`,
-    "-c",
-    `model_reasoning_effort=${opts.effort}`,
-    "-c",
-    "notify=[]",
-    "-c",
-    `sandbox_workspace_write.network_access=${opts.network ? "true" : "false"}`
-  ];
-  for (const [key, value] of Object.entries(opts.extraConfig ?? {})) {
-    if (isBlockedConfigKey(key)) {
-      dropped.push(key);
-      continue;
-    }
-    validateExtraConfig(key, value);
-    cfg.push("-c", `${key}=${value}`);
-  }
-  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", ...cfg];
-  const args = opts.threadId ? ["exec", "resume", opts.threadId, ...common, "-"] : ["exec", ...common, "-"];
-  return { args, droppedConfigKeys: dropped };
-}
-function startSlice(opts) {
-  if (!config2.allowedSandboxes.includes(opts.sandbox)) {
-    throw new Error(`Sandbox nicht erlaubt: ${opts.sandbox}`);
-  }
-  const { args } = buildCodexArgs(opts);
-  const lines = [];
-  const childEnvironment = buildChildEnvironment(process.env, "codex");
-  if (opts.codexHome) childEnvironment.CODEX_HOME = opts.codexHome;
-  const managed = startManagedProcess({
-    command: opts.codexBin ?? config2.codexBin,
-    args,
-    cwd: opts.repoPath,
-    env: childEnvironment,
-    input: opts.prompt,
-    timeoutMs: opts.timeoutMs,
-    killGraceMs: config2.limits.sliceKillGraceMs,
-    maxStdoutBytes: 10 * 1024 * 1024,
-    maxStderrBytes: 64 * 1024,
-    signal: opts.signal,
-    onStdoutLine: (line) => {
-      lines.push(line);
-      if (lines.length > 1e4) lines.shift();
-      opts.onLine?.(line);
-    }
-  });
-  const done = managed.done.then((processResult) => {
-    const parsed = parseStreamLines(lines);
-    const lastMsg = parsed.agentMessages[parsed.agentMessages.length - 1] ?? "";
-    const sliceResult = parseSliceResult(lastMsg);
-    let status = "normal";
-    let errorMessage = null;
-    if (processResult.termination === "aborted") {
-      status = "killed";
-      errorMessage = "abgebrochen (cancel)";
-    } else if (processResult.termination === "timeout") {
-      status = "killed";
-      errorMessage = "Slice-Budget \xFCberschritten (killed)";
-    } else if (processResult.termination === "output_limit") {
-      status = "failed";
-      errorMessage = "Codex-Ausgabe \xFCberschritt das Sicherheitslimit";
-    } else if (processResult.termination === "spawn_error") {
-      status = "failed";
-      errorMessage = `Prozessfehler: ${processResult.error ?? "unbekannter Fehler"}`;
-    } else if (parsed.turnFailed || parsed.errorMessage) {
-      status = "failed";
-      errorMessage = parsed.errorMessage || `Codex-Fehler (exit ${processResult.code}). stderr: ${processResult.stderr.slice(-500)}`;
-    } else if (processResult.code !== 0 && parsed.rawEventCount === 0) {
-      status = "failed";
-      errorMessage = `codex exit ${processResult.code}. stderr: ${processResult.stderr.slice(-500)}`;
-    }
-    return {
-      threadId: parsed.threadId ?? opts.threadId ?? null,
-      agentMessages: parsed.agentMessages,
-      commands: parsed.commands,
-      usage: parsed.usage,
-      sliceResult,
-      status,
-      errorMessage,
-      rawEventCount: parsed.rawEventCount
-    };
-  });
-  return { child: managed.child, done };
-}
-
-// src/execution/local-target.ts
-var LocalExecutionTarget = class {
-  id = "local";
-  kind = "local";
-  codexBin;
-  codexHome;
-  constructor(options = {}) {
-    this.codexBin = options.codexBin ?? config2.codexBin;
-    this.codexHome = options.codexHome;
-  }
-  async doctor() {
-    const version2 = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5e3, "codex", this.codexHome);
-    if (version2.code !== 0) {
-      return {
-        targetId: this.id,
-        kind: this.kind,
-        state: "unhealthy",
-        codexVersion: null,
-        auth: { state: "unavailable", message: "Codex CLI nicht verf\xFCgbar" },
-        errorCode: "TARGET_VERSION",
-        message: version2.stderr || "Codex CLI nicht verf\xFCgbar"
-      };
-    }
-    const match = version2.stdout.match(/(\d+\.\d+\.\d+[^\s]*)/);
-    const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5e3, "codex", this.codexHome);
-    const auth = parseAuthStatus(login.code, `${login.stdout}
-${login.stderr}`);
-    return {
-      targetId: this.id,
-      kind: this.kind,
-      state: auth.state === "authenticated" ? "healthy" : "unhealthy",
-      codexVersion: match?.[1] ?? null,
-      auth,
-      errorCode: auth.state === "authenticated" ? void 0 : "TARGET_AUTH",
-      message: auth.message
-    };
-  }
-  startCodex(request) {
-    return startSlice({ ...request, codexBin: this.codexBin, codexHome: this.codexHome });
-  }
-  async repositoryIdentity(repoPath) {
-    const result = await this.runGit({
-      cwd: repoPath,
-      argv: ["rev-parse", "--show-toplevel", "HEAD"],
-      timeoutMs: 1e4
-    });
-    if (result.code !== 0) throw new Error(result.stderr || "Git-Repository nicht verf\xFCgbar");
-    const [topLevel, headCommit] = result.stdout.trim().split(/\r?\n/);
-    const status = await this.runGit({ cwd: repoPath, argv: ["status", "--porcelain=v1"], timeoutMs: 1e4 });
-    return { topLevel, headCommit, clean: status.code === 0 && status.stdout.trim() === "" };
-  }
-  runCheck(request) {
-    const [command, ...args] = request.argv;
-    return this.runBinary(command, args, request.cwd, request.timeoutMs ?? 15 * 6e4, "repository-check");
-  }
-  runGit(request) {
-    return this.runBinary("git", request.argv, request.cwd, request.timeoutMs ?? 6e4, "repository-check");
-  }
-  async runBinary(command, args, cwd, timeoutMs, purpose, codexHome) {
-    const environment = buildChildEnvironment(process.env, purpose);
-    if (purpose === "codex" && codexHome) environment.CODEX_HOME = codexHome;
-    const running = startManagedProcess({
-      command,
-      args,
-      cwd,
-      env: environment,
-      timeoutMs,
-      killGraceMs: config2.limits.sliceKillGraceMs,
-      maxStdoutBytes: 4e5,
-      maxStderrBytes: 64e3
-    });
-    const result = await running.done;
-    return { code: result.code, stdout: result.stdout, stderr: result.error ?? result.stderr };
-  }
-};
-function parseAuthStatus(code, output) {
-  if (code !== 0) return { state: "unauthenticated", message: "Codex CLI ist nicht angemeldet" };
-  if (/logged in using chatgpt/i.test(output)) {
-    return { state: "authenticated", method: "chatgpt", message: "Codex CLI ist \xFCber ChatGPT angemeldet" };
-  }
-  if (/logged in using.*api/i.test(output)) {
-    return { state: "authenticated", method: "api-key", message: "Codex CLI ist \xFCber API-Key angemeldet" };
-  }
-  return { state: "authenticated", method: "unknown", message: "Codex CLI ist angemeldet" };
-}
-
-// src/prompts.ts
-var SLICE_RESULT_SPEC = `
-When you stop working for this slice, end your final message with EXACTLY this block
-(plain text, no code fences):
-
-SLICE_RESULT
-Type: checkpoint | submission | blocker
-Cluster: <cluster id or ->
-Done in this slice:
-- ...
-Changed files:
-- ...
-Tests run:
-- <cmd>: pass|fail|skipped
-Open items:
-- ...
-Next planned step:
-- ...
-
-Rules:
-- Type: submission ONLY when the acceptance criteria are fully met and verified.
-- Type: blocker when you are missing information or hit an obstacle you must not
-  improvise around. In that case append a full BLOCKER_OR_QUESTION section after the
-  block describing: context, the concrete question/blocker, options you see, and your
-  recommendation. Never guess around missing information.
-- Type: checkpoint otherwise (progress made, more work remains).
-- "Changed files" must list every file you created or modified in this slice.
-`.trim();
-function buildFirstSlicePrompt(task, acceptance, stopCondition) {
-  const acc = acceptance.length ? acceptance.map((a) => `- ${a}`).join("\n") : "- (none specified)";
-  return [
-    `You are Codex, the implementation executor in a supervised, cluster-based workflow.`,
-    `An orchestrator (Claude) delegates bounded work slices to you and reviews the result.`,
-    ``,
-    `Cluster: ${task.cluster_id ?? "-"}`,
-    `Slice budget: about ${task.max_minutes} minutes of focused work, then checkpoint.`,
-    task.sandbox === "read-only" ? `Sandbox: read-only. Do NOT modify files; analyse/investigate/review only.` : `Sandbox: workspace-write. You may modify files within the working directory.`,
-    stopCondition ? `Stop condition: ${stopCondition}` : ``,
-    ``,
-    `Task instructions:`,
-    task.instructions,
-    ``,
-    `Acceptance criteria:`,
-    acc,
-    ``,
-    SLICE_RESULT_SPEC
-  ].filter((l) => l !== void 0).join("\n");
-}
-function buildResumeSlicePrompt(task, injections, acceptance) {
-  const parts = [];
-  if (injections.length) {
-    parts.push(`## Orchestrator injections (highest priority \u2014 read first)`);
-    for (const inj of injections) {
-      parts.push(`- [${inj.priority}] ${inj.message}`);
-    }
-    parts.push(``);
-  }
-  parts.push(`Continue the task from where you left off. Respect the slice budget of`);
-  parts.push(`about ${task.max_minutes} minutes, then produce a SLICE_RESULT.`);
-  if (acceptance.length) {
-    parts.push(``);
-    parts.push(`Reminder \u2014 acceptance criteria:`);
-    parts.push(acceptance.map((a) => `- ${a}`).join("\n"));
-  }
-  parts.push(``);
-  parts.push(SLICE_RESULT_SPEC);
-  return parts.join("\n");
-}
-
-// src/session.ts
-var SessionManager = class {
-  constructor(store2, targetFor = (() => {
-    const local = new LocalExecutionTarget();
-    return () => local;
-  })()) {
-    this.store = store2;
-    this.targetFor = targetFor;
-    this.emitter.setMaxListeners(0);
-  }
-  store;
-  targetFor;
-  controls = /* @__PURE__ */ new Map();
-  emitter = new EventEmitter();
-  active = 0;
-  waiters = [];
-  /**
-   * Beim Serverstart: NUR Tasks toter Prozesse als failed markieren (Reaper).
-   * Tasks, deren owner_pid ein lebender Prozess ist (z. B. eine parallele
-   * Instanz eines anderen Projekts, die sich denselben Store teilt), bleiben
-   * unangetastet — verhindert Cross-Kill zwischen gleichzeitigen Projekten.
-   */
-  reapOnStartup() {
-    const running = this.store.listTasks().filter((t) => t.status === "running" || t.status === "awaiting_resume");
-    let n = 0;
-    for (const t of running) {
-      if (t.owner_pid && t.owner_pid !== process.pid && isProcessAlive(t.owner_pid)) {
-        continue;
-      }
-      if (t.codex_pid && isProcessAlive(t.codex_pid)) {
-        try {
-          process.kill(t.codex_pid, "SIGTERM");
-        } catch {
-        }
-      }
-      this.store.updateTask(t.id, { status: "failed", ended_at: (/* @__PURE__ */ new Date()).toISOString(), codex_pid: null });
-      this.store.addEvent(t.id, "task_status", {
-        status: "failed",
-        reason: `Reaper: verwaister Prozess (owner_pid=${t.owner_pid ?? "?"}, codex_pid=${t.codex_pid ?? "?"}) nach Restart/Crash. Resume via task_control.`
-      });
-      n++;
-    }
-    return n;
-  }
-  /** F: Bei Server-Shutdown alle laufenden Codex-Kinder terminieren (SIGTERM). */
-  shutdown() {
-    let n = 0;
-    for (const [, c] of this.controls) {
-      if (c.abort) {
-        c.cancelRequested = true;
-        try {
-          c.abort.abort();
-        } catch {
-        }
-        n++;
-      }
-    }
-    return n;
-  }
-  ctrl(taskId) {
-    let c = this.controls.get(taskId);
-    if (!c) {
-      c = { pauseRequested: false, cancelRequested: false, abort: null, looping: false };
-      this.controls.set(taskId, c);
-    }
-    return c;
-  }
-  async acquire() {
-    if (this.active < config2.parallelism.maxConcurrent) {
-      this.active++;
-      return;
-    }
-    await new Promise((res) => this.waiters.push(res));
-    this.active++;
-  }
-  release() {
-    this.active--;
-    const next = this.waiters.shift();
-    if (next) next();
-  }
-  createTask(args) {
-    const id = newId("T");
-    return this.store.createTask({
-      id,
-      cluster_id: args.clusterId,
-      codex_session_id: null,
-      worktree: args.worktree,
-      branch: args.branch,
-      repo_path: args.repoPath,
-      sandbox: args.sandbox,
-      model: args.model,
-      effort: args.effort,
-      instructions: args.instructions,
-      acceptance_json: JSON.stringify(args.acceptance),
-      max_minutes: args.maxMinutes,
-      network: args.network ? 1 : 0,
-      status: "queued",
-      extra_config_json: args.extraConfig ? JSON.stringify(args.extraConfig) : null,
-      owner_pid: null,
-      target_id: args.targetId ?? "local",
-      target_kind: args.targetKind ?? "local",
-      repository_commit: args.repositoryCommit ?? null,
-      routing_reason: args.routingReason ?? "local-default",
-      fallback_from: args.fallbackFrom ?? null,
-      hypothesis_id: args.hypothesisId ?? null
-    });
-  }
-  /** Startet (oder setzt fort) den Hintergrund-Slice-Loop für einen Task. */
-  startLoop(taskId, stopCondition) {
-    const c = this.ctrl(taskId);
-    if (c.looping) return;
-    c.looping = true;
-    c.pauseRequested = false;
-    c.cancelRequested = false;
-    void this.loop(taskId, stopCondition).finally(() => {
-      c.looping = false;
-    });
-  }
-  acceptanceOf(task) {
-    try {
-      return task.acceptance_json ? JSON.parse(task.acceptance_json) : [];
-    } catch {
-      return [];
-    }
-  }
-  elapsedMinutes(task) {
-    if (!task.started_at) return 0;
-    return (Date.now() - Date.parse(task.started_at)) / 6e4;
-  }
-  async loop(taskId, stopCondition) {
-    const c = this.ctrl(taskId);
-    while (true) {
-      let task = this.store.getTask(taskId);
-      if (!task) return;
-      if (c.cancelRequested) {
-        this.finish(taskId, "cancelled", "vom Orchestrator abgebrochen");
-        return;
-      }
-      if (task.slice_count >= config2.limits.maxSlicesPerTask) {
-        this.limitBreach(taskId, `max_slices (${config2.limits.maxSlicesPerTask}) erreicht`);
-        return;
-      }
-      if (!task.started_at) {
-        this.store.updateTask(taskId, { started_at: (/* @__PURE__ */ new Date()).toISOString() });
-        task = this.store.getTask(taskId);
-      } else if (this.elapsedMinutes(task) > config2.limits.maxTaskMinutes) {
-        this.limitBreach(taskId, `max_task_minutes (${config2.limits.maxTaskMinutes}) \xFCberschritten`);
-        return;
-      }
-      const isFirst = !task.codex_session_id;
-      const workDir = task.worktree || task.repo_path;
-      const acceptance = this.acceptanceOf(task);
-      const injections = isFirst ? [] : this.store.pendingInjections(taskId);
-      const prompt = isFirst ? buildFirstSlicePrompt(task, acceptance, stopCondition) : buildResumeSlicePrompt(task, injections, acceptance);
-      await this.acquire();
-      if (c.cancelRequested) {
-        this.release();
-        this.finish(taskId, "cancelled", "abgebrochen vor Slice-Start");
-        return;
-      }
-      const abort = new AbortController();
-      c.abort = abort;
-      this.store.updateTask(taskId, { status: "running", owner_pid: process.pid });
-      this.emit(taskId);
-      let outcome;
-      try {
-        const timeoutMs = task.max_minutes * 6e4 + config2.limits.sliceKillGraceMs;
-        let extraConfig;
-        try {
-          extraConfig = task.extra_config_json ? JSON.parse(task.extra_config_json) : void 0;
-        } catch {
-          extraConfig = void 0;
-        }
-        const running = this.targetFor(task.target_id).startCodex({
-          repoPath: workDir,
-          threadId: task.codex_session_id,
-          prompt,
-          sandbox: task.sandbox,
-          model: task.model,
-          effort: task.effort,
-          network: task.network === 1,
-          extraConfig,
-          timeoutMs,
-          signal: abort.signal,
-          // H: Live-Fortschritt (Kommandos) sofort persistieren -> task_wait reagiert mid-slice.
-          onLine: (line) => this.persistLiveEvent(taskId, line)
-        });
-        if (running.child.pid) this.store.updateTask(taskId, { codex_pid: running.child.pid });
-        outcome = await running.done;
-      } finally {
-        this.release();
-        c.abort = null;
-        this.store.updateTask(taskId, { codex_pid: null });
-      }
-      if (injections.length && outcome.status === "normal") {
-        this.store.markInjectionsDelivered(injections.map((i) => i.id));
-        for (const inj of injections) {
-          this.store.addEvent(taskId, "injection_delivered", { priority: inj.priority, message: inj.message });
-        }
-      }
-      const sr = outcome.sliceResult;
-      const discrepancies = detectReportDiscrepancies(sr, outcome.commands);
-      const integrityOk = discrepancies.length === 0;
-      const integrity = integrityOk ? { integrity_ok: true } : { integrity_ok: false, discrepancies };
-      if (!integrityOk) {
-        this.store.addEvent(taskId, "report_discrepancy", { discrepancies });
-      }
-      const summary = summarize(sr, outcome);
-      this.store.addEvent(taskId, "slice_message", { text: (outcome.agentMessages.at(-1) ?? "").slice(0, 4e3) });
-      this.store.updateTask(taskId, {
-        codex_session_id: outcome.threadId,
-        slice_count: task.slice_count + 1,
-        last_slice_type: sr.type,
-        last_summary: summary
-      });
-      if (outcome.status === "killed") {
-        if (c.cancelRequested) {
-          this.finish(taskId, "cancelled", "abgebrochen (cancel)");
-          return;
-        }
-        this.store.addEvent(taskId, "slice_killed", { reason: outcome.errorMessage });
-        this.store.addEvent(taskId, "slice_result", {
-          type: "checkpoint",
-          parsed: false,
-          cluster: sr.cluster,
-          done: sr.doneInSlice,
-          changed_files: sr.changedFiles,
-          tests: sr.testsRun,
-          open_items: sr.openItems,
-          next_step: sr.nextStep,
-          blocker: null,
-          usage: outcome.usage,
-          ...integrity
-        });
-        this.finish(taskId, "blocked", "Slice-Budget \xFCberschritten (killed). Entscheidung n\xF6tig: resume mit gr\xF6\xDFerem Budget oder replan.");
-        return;
-      } else if (outcome.status === "failed") {
-        this.store.addEvent(taskId, "slice_error", { error: outcome.errorMessage });
-        this.finish(taskId, "failed", outcome.errorMessage ?? "Slice fehlgeschlagen");
-        return;
-      }
-      this.store.addEvent(taskId, "slice_result", {
-        type: sr.type,
-        parsed: sr.parsed,
-        cluster: sr.cluster,
-        done: sr.doneInSlice,
-        changed_files: sr.changedFiles,
-        tests: sr.testsRun,
-        open_items: sr.openItems,
-        next_step: sr.nextStep,
-        blocker: sr.blockerText,
-        usage: outcome.usage,
-        ...integrity
-      });
-      this.emit(taskId);
-      if (outcome.status === "normal" && sr.type === "submission") {
-        if (!integrityOk) {
-          this.finish(taskId, "blocked", "Ein als pass gemeldeter Check lief mit einem Exit-Code ungleich 0. Die Submission ist nicht vertrauensw\xFCrdig und ben\xF6tigt eine Pr\xFCfung durch den Orchestrator.");
-          return;
-        }
-        this.finish(taskId, "completed", "submission");
-        return;
-      }
-      if (outcome.status === "normal" && sr.type === "blocker") {
-        this.finish(taskId, "blocked", "blocker");
-        return;
-      }
-      if (c.pauseRequested) {
-        c.pauseRequested = false;
-        this.store.updateTask(taskId, { status: "paused" });
-        this.store.addEvent(taskId, "task_status", { status: "paused" });
-        this.emit(taskId);
-        return;
-      }
-      this.store.updateTask(taskId, { status: "awaiting_resume" });
-    }
-  }
-  finish(taskId, status, reason) {
-    this.store.updateTask(taskId, { status, ended_at: (/* @__PURE__ */ new Date()).toISOString() });
-    this.store.addEvent(taskId, "task_status", { status, reason });
-    try {
-      this.store.finishAgentJobByTask(taskId, status, reason);
-    } catch {
-    }
-    this.emit(taskId);
-  }
-  limitBreach(taskId, reason) {
-    this.store.updateTask(taskId, { status: "blocked", ended_at: (/* @__PURE__ */ new Date()).toISOString() });
-    this.store.addEvent(taskId, "limit_breach", { reason });
-    this.store.addEvent(taskId, "task_status", { status: "blocked", reason });
-    this.emit(taskId);
-  }
-  // ---- Steuerung (task_control) ----
-  pause(taskId) {
-    const c = this.ctrl(taskId);
-    const task = this.store.getTask(taskId);
-    if (!task) return { ok: false, note: "unbekannter Task" };
-    if (["completed", "failed", "cancelled", "blocked"].includes(task.status)) {
-      return { ok: false, note: `Task ist terminal (${task.status})` };
-    }
-    c.pauseRequested = true;
-    return { ok: true, note: "Pause angefordert; wirksam am n\xE4chsten Slice-Ende" };
-  }
-  resume(taskId) {
-    const task = this.store.getTask(taskId);
-    if (!task) return { ok: false, note: "unbekannter Task" };
-    if (["completed", "cancelled"].includes(task.status)) {
-      return { ok: false, note: `Task ist terminal (${task.status})` };
-    }
-    if (!task.codex_session_id && task.status !== "queued") {
-      return { ok: false, note: "keine Codex-Session zum Fortsetzen" };
-    }
-    this.startLoop(taskId, null);
-    return { ok: true, note: "Loop (fort-)gesetzt" };
-  }
-  cancel(taskId) {
-    const c = this.ctrl(taskId);
-    const task = this.store.getTask(taskId);
-    if (!task) return { ok: false, note: "unbekannter Task" };
-    c.cancelRequested = true;
-    if (c.abort) c.abort.abort();
-    if (!c.looping) this.finish(taskId, "cancelled", "abgebrochen (nicht laufend)");
-    return { ok: true, note: "Abbruch angefordert; Worktree bleibt f\xFCr Forensik erhalten" };
-  }
-  inject(taskId, message, priority) {
-    const task = this.store.getTask(taskId);
-    if (!task) return { ok: false, id: "", note: "unbekannter Task" };
-    const id = this.store.addInjection(taskId, message, priority);
-    return { ok: true, id, note: "Injektion in Queue; Auslieferung an n\xE4chster Slice-Grenze" };
-  }
-  /** H: Persistiert Kommando-Events live während des Slice (mid-slice-Observability). */
-  persistLiveEvent(taskId, line) {
-    const l = line.trim();
-    if (!l.startsWith("{")) return;
-    let ev;
-    try {
-      ev = JSON.parse(l);
-    } catch {
-      return;
-    }
-    if (ev.type === "item.completed" && ev.item?.type === "command_execution") {
-      this.store.addEvent(taskId, "slice_command", {
-        command: String(ev.item.command ?? ""),
-        exit_code: typeof ev.item.exit_code === "number" ? ev.item.exit_code : null,
-        output_tail: String(ev.item.aggregated_output ?? "").slice(-1200)
-      });
-      this.emit(taskId);
-    }
-  }
-  // ---- Warten (task_wait) ----
-  emit(taskId) {
-    this.emitter.emit(taskId);
-  }
-  /**
-   * Long-Poll: kehrt zurück, sobald ein Event mit seq>cursor vorliegt, der Task
-   * terminal wird, oder das Timeout greift.
-   */
-  async wait(taskId, cursor, timeoutSec) {
-    const cap = Math.min(timeoutSec, config2.maxWaitSeconds) * 1e3;
-    const deadline = Date.now() + cap;
-    const snapshot = () => {
-      const evs2 = this.store.eventsAfter(taskId, cursor);
-      const task2 = this.store.getTask(taskId);
-      return { evs: evs2, task: task2 };
-    };
-    let { evs, task } = snapshot();
-    if (evs.length > 0 || !task) {
-      return this.pack(taskId, evs, cursor, task?.status ?? "unknown", false);
-    }
-    await new Promise((resolve6) => {
-      let settled = false;
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        this.emitter.off(taskId, onEvent);
-        clearTimeout(timer);
-        clearInterval(poll);
-        resolve6();
-      };
-      const onEvent = () => done();
-      const timer = setTimeout(done, Math.max(0, deadline - Date.now()));
-      const poll = setInterval(() => {
-        if (this.store.maxSeq(taskId) > cursor) done();
-        if (Date.now() >= deadline) done();
-      }, 500);
-      this.emitter.on(taskId, onEvent);
-    });
-    ({ evs, task } = snapshot());
-    const timedOut = evs.length === 0;
-    return this.pack(taskId, evs, cursor, task?.status ?? "unknown", timedOut);
-  }
-  pack(taskId, evs, cursor, status, timedOut) {
-    const events = evs.map((e) => ({
-      seq: e.seq,
-      ts: e.ts,
-      kind: e.kind,
-      payload: safeParse4(e.payload_json)
-    }));
-    const newCursor = events.length ? events[events.length - 1].seq : cursor;
-    return { events, cursor: newCursor, task_status: status, timed_out: timedOut };
-  }
-  /** Wartet bis zu einer Bedingung (für task_start wait_for). */
-  async waitUntil(taskId, predicate, maxSec) {
-    const deadline = Date.now() + maxSec * 1e3;
-    let cursor = 0;
-    let sawSliceResult = false;
-    while (Date.now() < deadline) {
-      const remaining = Math.ceil((deadline - Date.now()) / 1e3);
-      const r = await this.wait(taskId, cursor, Math.min(remaining, config2.maxWaitSeconds));
-      cursor = r.cursor;
-      if (r.events.some((e) => e.kind === "slice_result")) sawSliceResult = true;
-      if (predicate(r.task_status, sawSliceResult)) return;
-      if (["completed", "failed", "cancelled", "blocked", "paused"].includes(r.task_status)) return;
-    }
-  }
-};
-function summarize(sr, outcome) {
-  const parts = [`[${sr.type}]`];
-  if (sr.doneInSlice.length) parts.push(`done: ${sr.doneInSlice.length} item(s)`);
-  if (sr.changedFiles.length) parts.push(`files: ${sr.changedFiles.length}`);
-  if (sr.testsRun.length) parts.push(`tests: ${sr.testsRun.map((t) => t.result).join(",")}`);
-  if (outcome.status !== "normal") parts.push(`status: ${outcome.status}`);
-  return parts.join(" ");
-}
-function safeParse4(s) {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return s;
-  }
-}
-function isProcessAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return e?.code === "EPERM";
-  }
-}
-
 // src/statemachine.ts
 function mergeEligibility(input) {
   const reasons = [];
@@ -23571,8 +23574,8 @@ var ALLOWED = {
   replan: ["active", "submitted", "in_review", "needs_changes", "blocked", "confirmed"]
 };
 var ClusterStateMachine = class {
-  constructor(store2) {
-    this.store = store2;
+  constructor(store) {
+    this.store = store;
   }
   store;
   /** Prüft, ob Cluster N gestartet werden darf (Vorgänger confirmed + Retro). */
@@ -23797,133 +23800,1060 @@ var WorktreeManager = class {
   }
 };
 
-// src/checks.ts
-async function runChecks(store2, clusterId, repoPath, names, target = new LocalExecutionTarget()) {
-  const runs = [];
-  const unknown2 = [];
-  for (const name of names) {
-    const spec = config2.checks[name];
-    if (!spec) {
-      unknown2.push(name);
-      continue;
+// src/hypotheses.ts
+function needsFollowUp(result) {
+  return result === "partially_confirmed" || result === "refuted";
+}
+function clampConfidence(v, field) {
+  if (typeof v !== "number" || Number.isNaN(v)) {
+    throw new Error(`${field} muss eine Zahl in [0,1] sein`);
+  }
+  if (v < 0 || v > 1) {
+    throw new Error(`${field}=${v} liegt au\xDFerhalb [0,1]`);
+  }
+  return v;
+}
+function normQuestions(qs) {
+  if (!qs) return [];
+  return qs.map(
+    (q) => typeof q === "string" ? { question: q, answer: null } : { question: q.question, answer: q.answer ?? null }
+  );
+}
+function normFalsification(fs) {
+  if (!fs) return [];
+  return fs.map(
+    (f) => typeof f === "string" ? { description: f, method: null, expectationIfFalse: null, observed: null } : {
+      description: f.description,
+      method: f.method ?? null,
+      expectationIfFalse: f.expectationIfFalse ?? null,
+      observed: f.observed ?? null
     }
-    const result = await target.runCheck({ cwd: repoPath, argv: spec.argv });
-    const code = result.code;
-    const out = `${result.stdout}${result.stderr}`;
-    const summary = summarizeOutput(out);
-    const ok2 = code === 0;
-    store2.addCheck(clusterId, name, code, summary);
-    runs.push({ name, cmd: spec.argv.join(" "), exit_code: code, ok: ok2, summary });
-  }
-  const allGreen = runs.length > 0 && runs.every((r) => r.ok);
-  return { runs, allGreen, unknown: unknown2 };
+  );
 }
-function summarizeOutput(out) {
-  const lines = out.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  const tail = lines.slice(-12).join("\n");
-  return redact(tail.slice(0, 2e3));
+function normEvidence(es) {
+  if (!es) return [];
+  return es.map(
+    (e) => typeof e === "string" ? { source: "note", observation: e, ts: nowIso() } : { source: e.source, observation: e.observation, ts: e.ts ?? nowIso() }
+  );
 }
-async function diffSize(repoPath, target = new LocalExecutionTarget()) {
-  let files = 0;
-  let lines = 0;
-  const tracked = await target.runGit({ cwd: repoPath, argv: ["diff", "--numstat", "HEAD"], timeoutMs: 6e4 });
-  for (const l of `${tracked.stdout}${tracked.stderr}`.split(/\r?\n/)) {
-    const m = l.match(/^(\d+|-)\t(\d+|-)\t/);
-    if (!m) continue;
-    files++;
-    lines += (m[1] === "-" ? 0 : Number(m[1])) + (m[2] === "-" ? 0 : Number(m[2]));
+var HypothesisRepo = class _HypothesisRepo {
+  constructor(store) {
+    this.store = store;
   }
-  const untracked = await target.runGit({ cwd: repoPath, argv: ["ls-files", "--others", "--exclude-standard"], timeoutMs: 6e4 });
-  for (const rel of untracked.stdout.split(/\r?\n/)) {
-    const name = rel.trim();
-    if (!name) continue;
-    files++;
-    const wc = await target.runGit({ cwd: repoPath, argv: ["diff", "--numstat", "--no-index", "/dev/null", name], timeoutMs: 6e4 });
-    const m = wc.stdout.match(/^(\d+|-)\t/);
-    if (m && m[1] !== "-") lines += Number(m[1]);
+  store;
+  /** Serialisiert eine Hypothese in ein stabiles, maschinenlesbares Objekt. */
+  static serialize(h) {
+    return {
+      id: h.id,
+      planId: h.planId,
+      taskId: h.taskId,
+      clusterId: h.clusterId,
+      version: h.version,
+      status: h.status,
+      initialAssumption: h.initialAssumption,
+      confidenceBefore: h.confidenceBefore,
+      criticalQuestions: h.criticalQuestions,
+      falsificationPlan: h.falsificationPlan,
+      evidence: h.evidence,
+      result: h.result,
+      confidenceAfter: h.confidenceAfter,
+      updatedAssumption: h.updatedAssumption,
+      followUpQuestions: h.followUpQuestions,
+      risks: h.risks,
+      nextAction: h.nextAction,
+      createdAt: h.createdAt,
+      updatedAt: h.updatedAt
+    };
   }
-  return { files, lines };
-}
+  /** Rehydriert eine Hypothese aus einem serialisierten Snapshot. */
+  static deserialize(o) {
+    return {
+      id: String(o.id),
+      planId: o.planId ?? null,
+      taskId: o.taskId ?? null,
+      clusterId: o.clusterId ?? null,
+      version: Number(o.version),
+      status: o.status ?? "open",
+      initialAssumption: String(o.initialAssumption ?? ""),
+      confidenceBefore: Number(o.confidenceBefore ?? 0),
+      criticalQuestions: o.criticalQuestions ?? [],
+      falsificationPlan: o.falsificationPlan ?? [],
+      evidence: o.evidence ?? [],
+      result: o.result ?? "open",
+      confidenceAfter: o.confidenceAfter ?? null,
+      updatedAssumption: o.updatedAssumption ?? null,
+      followUpQuestions: o.followUpQuestions ?? [],
+      risks: o.risks ?? [],
+      nextAction: o.nextAction ?? null,
+      createdAt: String(o.createdAt ?? ""),
+      updatedAt: String(o.updatedAt ?? "")
+    };
+  }
+  /** Legt eine neue Hypothese (Version 1) an. */
+  create(input) {
+    if (!input.initialAssumption || !input.initialAssumption.trim()) {
+      throw new Error("initialAssumption ist erforderlich");
+    }
+    const confidenceBefore = clampConfidence(input.confidenceBefore, "confidenceBefore");
+    const id = newId("H");
+    const ts = nowIso();
+    const h = {
+      id,
+      planId: input.planId ?? null,
+      taskId: input.taskId ?? null,
+      clusterId: input.clusterId ?? null,
+      version: 1,
+      status: "open",
+      initialAssumption: input.initialAssumption,
+      confidenceBefore,
+      criticalQuestions: normQuestions(input.criticalQuestions),
+      falsificationPlan: normFalsification(input.falsificationPlan),
+      evidence: [],
+      result: "open",
+      confidenceAfter: null,
+      updatedAssumption: null,
+      followUpQuestions: [],
+      risks: [],
+      nextAction: null,
+      createdAt: ts,
+      updatedAt: ts
+    };
+    return this.store.tx(() => {
+      this.store.insertHypothesisHeader({
+        id: h.id,
+        planId: h.planId ?? "",
+        // Header-Spalte ist NOT NULL (Legacy); Snapshot behält echtes null.
+        taskId: h.taskId,
+        clusterId: h.clusterId,
+        text: h.initialAssumption,
+        status: h.status,
+        result: h.result,
+        latestVersion: h.version,
+        createdAt: h.createdAt,
+        updatedAt: h.updatedAt
+      });
+      this.writeVersion(h);
+      return h;
+    });
+  }
+  writeVersion(h) {
+    this.store.insertHypothesisVersion({
+      id: newId("HV"),
+      hypothesisId: h.id,
+      version: h.version,
+      snapshotJson: JSON.stringify(_HypothesisRepo.serialize(h)),
+      createdAt: h.updatedAt
+    });
+  }
+  /**
+   * Aktualisiert eine Hypothese: erzeugt append-only eine neue Version aus der
+   * neuesten und schreibt den Header fort. Die alten Versionen bleiben
+   * unverändert erhalten (Nachvollziehbarkeit).
+   */
+  update(id, patch) {
+    return this.store.tx(() => {
+      const current = this.get(id);
+      if (!current) throw new Error(`Hypothese ${id} nicht gefunden`);
+      const ts = nowIso();
+      const result = patch.result ?? current.result;
+      const followUpQuestions = patch.followUpQuestions !== void 0 ? patch.followUpQuestions : current.followUpQuestions;
+      if (needsFollowUp(result) && followUpQuestions.length === 0) {
+        throw new Error(
+          `Ergebnis '${result}' erfordert mindestens eine Folgefrage (followUpQuestions): Was bleibt offen? Welche neue Hypothese folgt? Welche Risiken/n\xE4chste Aktion?`
+        );
+      }
+      const next = {
+        ...current,
+        version: current.version + 1,
+        status: patch.status ?? current.status,
+        result,
+        followUpQuestions,
+        risks: patch.risks !== void 0 ? patch.risks : current.risks,
+        nextAction: patch.nextAction !== void 0 ? patch.nextAction : current.nextAction,
+        confidenceAfter: patch.confidenceAfter !== void 0 ? patch.confidenceAfter === null ? null : clampConfidence(patch.confidenceAfter, "confidenceAfter") : current.confidenceAfter,
+        updatedAssumption: patch.updatedAssumption !== void 0 ? patch.updatedAssumption : current.updatedAssumption,
+        criticalQuestions: patch.criticalQuestions ? normQuestions(patch.criticalQuestions) : current.criticalQuestions,
+        falsificationPlan: patch.falsificationPlan ? normFalsification(patch.falsificationPlan) : current.falsificationPlan,
+        evidence: patch.addEvidence ? [...current.evidence, ...normEvidence(patch.addEvidence)] : current.evidence,
+        taskId: patch.taskId !== void 0 ? patch.taskId : current.taskId,
+        clusterId: patch.clusterId !== void 0 ? patch.clusterId : current.clusterId,
+        updatedAt: ts
+      };
+      this.store.updateHypothesisHeader(id, {
+        status: next.status,
+        result: next.result,
+        latestVersion: next.version,
+        updatedAt: next.updatedAt,
+        taskId: next.taskId,
+        clusterId: next.clusterId,
+        evidenceJson: next.evidence.length ? JSON.stringify(next.evidence) : null
+      });
+      this.writeVersion(next);
+      return next;
+    });
+  }
+  /** Lädt die neueste Version einer Hypothese. */
+  get(id) {
+    const snapshot = this.store.latestHypothesisSnapshot(id);
+    if (snapshot === void 0) return void 0;
+    return _HypothesisRepo.deserialize(JSON.parse(snapshot));
+  }
+  /** Lädt eine konkrete Version. */
+  getVersion(id, version2) {
+    const snapshot = this.store.hypothesisSnapshotAt(id, version2);
+    if (snapshot === void 0) return void 0;
+    return _HypothesisRepo.deserialize(JSON.parse(snapshot));
+  }
+  /** Alle Versionen einer Hypothese (aufsteigend) — vollständige Historie. */
+  listVersions(id) {
+    return this.store.hypothesisSnapshots(id).map((snapshot) => _HypothesisRepo.deserialize(JSON.parse(snapshot)));
+  }
+  listByColumn(column, value) {
+    return this.store.hypothesisIdsByColumn(column, value).map((hid) => this.get(hid)).filter((h) => !!h);
+  }
+  listByTask(taskId) {
+    return this.listByColumn("task_id", taskId);
+  }
+  listByCluster(clusterId) {
+    return this.listByColumn("cluster_id", clusterId);
+  }
+  listByPlan(planId) {
+    return this.listByColumn("plan_id", planId);
+  }
+  /**
+   * Bindet eine bestehende Hypothese provenienzhalber an einen Task/Cluster.
+   * Aktualisiert NUR die Header-Spalten (für listByTask/listByCluster) und lässt
+   * die versionierten Snapshots unangetastet — Binden ist Provenienz, keine
+   * inhaltliche Revision, erzeugt daher keine neue Version.
+   */
+  bindToTask(id, taskId, clusterId) {
+    this.store.bindHypothesisToTask(id, taskId, clusterId);
+  }
+  /** Neueste (rich) Hypothese, die an einen Task gebunden ist — für das Gate. */
+  latestForTask(taskId) {
+    const rows = this.listByTask(taskId);
+    return rows.length ? rows[rows.length - 1] : void 0;
+  }
+};
 
-// src/project-boundary.ts
-import { spawnSync as spawnSync2 } from "node:child_process";
-import { realpathSync, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
-function canonicalDirectory(path, variable) {
-  if (!isAbsolute(path)) {
-    throw new Error(`${variable} must be an absolute path`);
+// src/auth/bootstrap.ts
+import { lstatSync, readFileSync as readFileSync2 } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { join } from "node:path";
+
+// src/execution/errors.ts
+var TargetError = class extends Error {
+  constructor(code, message, targetId, retryable = false) {
+    super(message);
+    this.code = code;
+    this.targetId = targetId;
+    this.retryable = retryable;
+    this.name = "TargetError";
   }
-  try {
-    const canonical = realpathSync(path);
-    if (!statSync(canonical).isDirectory()) {
-      throw new Error(`${variable} must be a directory`);
-    }
-    return canonical;
-  } catch (error2) {
-    if (error2 instanceof Error && error2.message === `${variable} must be a directory`) {
-      throw error2;
-    }
-    throw new Error(`${variable} must be a directory`);
+  code;
+  targetId;
+  retryable;
+};
+
+// src/auth/bootstrap.ts
+var MAX_CREDENTIAL_BYTES = 64 * 1024;
+function loadCredentialFile(path) {
+  const metadata = lstatSync(path);
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    throw new Error("Credential-Quelle muss eine regul\xE4re Datei und darf kein Symlink sein");
   }
+  if (typeof process.getuid === "function" && metadata.uid !== process.getuid()) {
+    throw new Error("Credential-Quelle muss dem aktuellen Benutzer geh\xF6ren");
+  }
+  if (process.platform !== "win32" && (metadata.mode & 63) !== 0) {
+    throw new Error("Credential-Quelle ben\xF6tigt private Rechte (0600)");
+  }
+  if (metadata.size < 1 || metadata.size > MAX_CREDENTIAL_BYTES) {
+    throw new Error("Credential-Quelle muss zwischen 1 Byte und 64 KiB gro\xDF sein");
+  }
+  return readFileSync2(path);
 }
-function assertGitRepositoryRoot(candidate) {
-  const project = canonicalDirectory(candidate, "repo_path");
-  const git3 = spawnSync2("git", ["-C", project, "rev-parse", "--is-inside-work-tree", "--show-prefix"], {
-    encoding: "utf8",
-    shell: false
+function defaultCredentialSource() {
+  return join(process.env.CODEX_HOME ?? join(homedir2(), ".codex"), "auth.json");
+}
+function requireHealthy(health, targetId) {
+  if (health.state === "healthy" && health.auth.state === "authenticated") return health;
+  throw new TargetError(
+    "TARGET_AUTH",
+    `Codex-Authentifizierung auf Target ${targetId} ist nicht verf\xFCgbar: ${health.auth.message}`,
+    targetId
+  );
+}
+var RemoteAuthBootstrapper = class {
+  async ensure(target, strategy) {
+    const current = await target.doctor();
+    if (current.state === "healthy" && current.auth.state === "authenticated") return current;
+    if (strategy.strategy === "existing") return requireHealthy(current, target.id);
+    if (strategy.strategy === "sync-file") {
+      if (!target.bootstrapAuth) {
+        throw new TargetError("TARGET_AUTH", "Remote-Target unterst\xFCtzt keinen Auth-Bootstrap", target.id);
+      }
+      const credentials = loadCredentialFile(strategy.source ?? defaultCredentialSource());
+      try {
+        await target.bootstrapAuth(strategy.codexHome ?? "~/.codex", credentials);
+      } finally {
+        credentials.fill(0);
+      }
+    } else {
+      if (!target.loginAccessToken) {
+        throw new TargetError("TARGET_AUTH", "Remote-Target unterst\xFCtzt keinen Token-Login", target.id);
+      }
+      const [command, ...args] = strategy.secretCommand;
+      if (!command) throw new TargetError("TARGET_AUTH", "Secret-Command fehlt", target.id);
+      const result = await startManagedProcess({
+        command,
+        args,
+        env: buildChildEnvironment(process.env, "ssh"),
+        timeoutMs: 3e4,
+        killGraceMs: 2e3,
+        maxStdoutBytes: MAX_CREDENTIAL_BYTES,
+        maxStderrBytes: 16 * 1024
+      }).done;
+      if (result.code !== 0 || result.termination !== "normal") {
+        throw new TargetError(
+          "TARGET_AUTH",
+          `Secret-Command fehlgeschlagen: ${result.stderr || result.error || result.termination}`,
+          target.id
+        );
+      }
+      const token = Buffer.from(result.stdout.replace(/[\r\n]+$/, ""));
+      if (token.length === 0 || token.length > MAX_CREDENTIAL_BYTES) {
+        throw new TargetError("TARGET_AUTH", "Secret-Command lieferte keinen g\xFCltigen Token", target.id);
+      }
+      try {
+        await target.loginAccessToken(strategy.codexHome ?? "~/.codex", token);
+      } finally {
+        token.fill(0);
+      }
+    }
+    return requireHealthy(await target.doctor(), target.id);
+  }
+};
+
+// src/execution/router.ts
+function healthError(health) {
+  const code = health.errorCode ?? (health.auth.state === "authenticated" ? "TARGET_VERSION" : "TARGET_AUTH");
+  return new TargetError(code, health.message, health.targetId, false);
+}
+var ExecutionTargetRouter = class {
+  constructor(options) {
+    this.options = options;
+  }
+  options;
+  async select(repoPath) {
+    if (this.options.mode === "local-only") {
+      const repository = await this.requireHealthy(this.options.local, repoPath);
+      return { target: this.options.local, repository, reason: "local-only", fallbackFrom: null };
+    }
+    const remote = this.options.remote;
+    if (!remote) throw new TargetError("TARGET_POLICY", "Remote-Ausf\xFChrung ist nicht konfiguriert", "remote");
+    try {
+      const remoteRepository = await this.requireHealthy(remote, repoPath);
+      const localRepository = await this.requireHealthy(this.options.local, repoPath);
+      this.requireMatchingRepositories(localRepository, remoteRepository, remote.id);
+      return { target: remote, repository: remoteRepository, reason: "remote-healthy", fallbackFrom: null };
+    } catch (error2) {
+      const targetError = error2 instanceof TargetError ? error2 : new TargetError("TARGET_PROTOCOL", error2 instanceof Error ? error2.message : String(error2), remote.id);
+      const canFallback = this.options.mode === "remote-preferred" && this.options.fallback === "connectivity-only" && targetError.code === "TARGET_CONNECTIVITY" && targetError.retryable;
+      if (!canFallback) throw targetError;
+      const repository = await this.requireHealthy(this.options.local, repoPath);
+      if (!repository.clean) {
+        throw new TargetError("TARGET_REPOSITORY", "Lokales Fallback-Repository enth\xE4lt uncommittierte \xC4nderungen", "local");
+      }
+      return {
+        target: this.options.local,
+        repository,
+        reason: "remote-connectivity-fallback",
+        fallbackFrom: remote.id
+      };
+    }
+  }
+  async requireHealthy(target, repoPath) {
+    const health = await target.doctor();
+    if (health.state !== "healthy") throw healthError(health);
+    return target.repositoryIdentity(repoPath);
+  }
+  requireMatchingRepositories(local, remote, remoteTargetId) {
+    if (local.headCommit !== remote.headCommit) {
+      throw new TargetError("TARGET_REPOSITORY", "Lokaler und entfernter Git-Commit stimmen nicht \xFCberein", remoteTargetId);
+    }
+    if (!local.clean || !remote.clean) {
+      throw new TargetError("TARGET_REPOSITORY", "Remote-Routing erfordert saubere Repository-Zust\xE4nde", remoteTargetId);
+    }
+  }
+};
+
+// src/execution/ssh/target.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { existsSync as existsSync5 } from "node:fs";
+import { dirname as dirname2, isAbsolute as isAbsolute2, relative, resolve as resolve4, sep as sep2 } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// src/execution/ssh/client.ts
+function sshOptions(options) {
+  return [
+    ...options.configFile ? ["-F", options.configFile] : [],
+    "-T",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    `ConnectTimeout=${options.connectTimeoutSeconds ?? 10}`
+  ];
+}
+function scpOptions(options) {
+  return [
+    ...options.configFile ? ["-F", options.configFile] : [],
+    "-q",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes"
+  ];
+}
+function startWorkerProcess(options, workerEntry, request, timeoutMs, onLine) {
+  return startManagedProcess({
+    command: options.sshBin ?? "ssh",
+    args: [...sshOptions(options), options.host, "node", workerEntry],
+    env: buildChildEnvironment(process.env, "ssh"),
+    input: JSON.stringify(request),
+    timeoutMs,
+    killGraceMs: config2.limits.sliceKillGraceMs,
+    maxStdoutBytes: 12 * 1024 * 1024,
+    maxStderrBytes: 64 * 1024,
+    onStdoutLine: onLine
   });
-  if (git3.status !== 0) {
-    throw new Error("repo_path must be a Git repository root");
-  }
-  const [insideWorktree, ...prefixLines] = git3.stdout.split(/\r?\n/);
-  if (insideWorktree !== "true" || prefixLines.join("\n").trim() !== "") {
-    throw new Error("repo_path must be a Git repository root");
-  }
-  return project;
 }
 
-// src/resolve.ts
-function resolveModel(model, effort) {
-  if (model && model !== "auto") return model;
-  const cls = effort === "low" ? "fast" : effort === "high" || effort === "xhigh" ? "strong" : "balanced";
-  return modelForClass(cls).model;
-}
-function repoPathForCluster(store2, clusterId) {
-  const cluster = store2.getCluster(clusterId);
-  if (!cluster) return null;
-  const plan = store2.getPlan(cluster.plan_id);
-  if (!plan) return null;
-  try {
-    return assertGitRepositoryRoot(plan.repo_path);
-  } catch {
-    return null;
+// src/execution/ssh/deploy.ts
+import { createHash } from "node:crypto";
+import { existsSync as existsSync4, readFileSync as readFileSync3 } from "node:fs";
+function safeRemotePath(path) {
+  if (!/^(?:~\/|\/)[A-Za-z0-9._/-]+$/.test(path) || path.includes("..")) {
+    throw new TargetError("TARGET_POLICY", "Unsicherer Remote-Worker-Pfad", "remote");
   }
 }
-function latestWorktreeForCluster(store2, clusterId) {
-  const tasks = store2.listTasks({ clusterId });
-  const withWt = tasks.filter((t) => t.worktree);
-  const last = withWt[withWt.length - 1];
-  return last?.worktree ?? null;
+async function run(command, args, timeoutMs) {
+  const processResult = await startManagedProcess({
+    command,
+    args,
+    env: buildChildEnvironment(process.env, "ssh"),
+    timeoutMs,
+    killGraceMs: 2e3,
+    maxStdoutBytes: 64e3,
+    maxStderrBytes: 64e3
+  }).done;
+  return { code: processResult.code, output: `${processResult.stdout}${processResult.stderr}` };
+}
+var WorkerDeployer = class {
+  constructor(options) {
+    this.options = options;
+  }
+  options;
+  async ensure() {
+    if (!existsSync4(this.options.workerBundlePath)) {
+      throw new TargetError("TARGET_VERSION", "Remote-Worker-Bundle fehlt", this.options.host);
+    }
+    safeRemotePath(this.options.workerRoot);
+    const bytes = readFileSync3(this.options.workerBundlePath);
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    const directory = `${this.options.workerRoot}/${ORCHESTRATOR_VERSION}/${hash}`;
+    const destination = `${directory}/worker.mjs`;
+    const temporary = `${destination}.tmp`;
+    const common = sshOptions(this.options);
+    const present = await run(this.options.sshBin ?? "ssh", [
+      ...common,
+      this.options.host,
+      "test",
+      "-f",
+      destination
+    ], 15e3);
+    if (present.code === 0) return destination;
+    const created = await run(this.options.sshBin ?? "ssh", [
+      ...common,
+      this.options.host,
+      "mkdir",
+      "-p",
+      directory
+    ], 15e3);
+    if (created.code !== 0) {
+      throw new TargetError("TARGET_CONNECTIVITY", `Worker-Verzeichnis nicht erstellbar: ${created.output}`, this.options.host, true);
+    }
+    const copied = await run(this.options.scpBin ?? "scp", [
+      ...scpOptions(this.options),
+      this.options.workerBundlePath,
+      `${this.options.host}:${temporary}`
+    ], 6e4);
+    if (copied.code !== 0) {
+      throw new TargetError("TARGET_CONNECTIVITY", `Worker-Upload fehlgeschlagen: ${copied.output}`, this.options.host, true);
+    }
+    const activated = await run(this.options.sshBin ?? "ssh", [
+      ...common,
+      this.options.host,
+      "chmod",
+      "700",
+      temporary,
+      "&&",
+      "mv",
+      temporary,
+      destination
+    ], 15e3);
+    if (activated.code !== 0) {
+      throw new TargetError("TARGET_CONNECTIVITY", `Worker-Aktivierung fehlgeschlagen: ${activated.output}`, this.options.host, true);
+    }
+    return destination;
+  }
+};
+
+// src/execution/ssh/protocol.ts
+import { isAbsolute, resolve as resolve3, sep } from "node:path";
+var WORKER_PROTOCOL_VERSION = 1;
+var RequestBase = {
+  requestId: external_exports.string().uuid(),
+  protocol: external_exports.literal(WORKER_PROTOCOL_VERSION)
+};
+var RepositoryScope = external_exports.object({
+  allowedRoot: external_exports.string().min(1),
+  cwd: external_exports.string().min(1)
+}).strict().superRefine(({ allowedRoot, cwd }, context) => {
+  const root = resolve3(allowedRoot);
+  const candidate = resolve3(cwd);
+  if (candidate !== root && !candidate.startsWith(`${root}${sep}`)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      path: ["cwd"],
+      message: "cwd must resolve within allowedRoot"
+    });
+  }
+});
+var ScopedShape = {
+  allowedRoot: external_exports.string().min(1),
+  cwd: external_exports.string().min(1)
+};
+var safeScope = (shape) => external_exports.object({
+  ...RequestBase,
+  ...ScopedShape,
+  ...shape
+}).strict().superRefine((value, context) => {
+  const result = RepositoryScope.safeParse({ allowedRoot: value.allowedRoot, cwd: value.cwd });
+  if (!result.success) {
+    for (const issue2 of result.error.issues) context.addIssue(issue2);
+  }
+});
+var GitArgumentsSchema = external_exports.array(external_exports.string().min(1).max(4096)).min(1).max(32).superRefine((args, context) => {
+  const allowed = /* @__PURE__ */ new Set(["rev-parse", "status", "diff", "ls-files", "worktree", "merge", "branch"]);
+  if (!allowed.has(args[0])) {
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "Git subcommand is not allowed" });
+  }
+  if (args.some((argument) => argument.includes("\0") || argument.includes("\n") || argument.includes("\r"))) {
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "Git args contain invalid control characters" });
+  }
+});
+var CheckNameSchema = external_exports.enum([
+  "git_diff_summary",
+  "git_status",
+  "mvn_test",
+  "npm_test",
+  "npm_build",
+  "lint",
+  "typecheck"
+]);
+var CodexHomeSchema = external_exports.string().superRefine((value, context) => {
+  if (!value.startsWith("~/") && !isAbsolute(value)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "codexHome must be absolute or start with ~/"
+    });
+  }
+  if (/[\0\r\n`$;&|<>"']/.test(value)) {
+    context.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: "codexHome contains unsupported control or shell characters"
+    });
+  }
+  if (value.split(/[\\/]/).includes("..")) {
+    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "codexHome must not contain traversal" });
+  }
+});
+var WorkerRequestSchema = external_exports.union([
+  external_exports.object({ ...RequestBase, operation: external_exports.literal("handshake") }).strict(),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("doctor"),
+    codexBin: external_exports.string().min(1).optional(),
+    codexHome: CodexHomeSchema
+  }).strict(),
+  safeScope({ operation: external_exports.literal("repository.identity") }),
+  safeScope({ operation: external_exports.literal("check.run"), checkName: CheckNameSchema }),
+  safeScope({ operation: external_exports.literal("git.run"), args: GitArgumentsSchema }),
+  safeScope({
+    operation: external_exports.literal("codex.run"),
+    codexBin: external_exports.string().min(1),
+    codexHome: CodexHomeSchema,
+    options: external_exports.object({
+      threadId: external_exports.string().nullable().optional(),
+      prompt: external_exports.string().max(2e6),
+      sandbox: external_exports.enum(["read-only", "workspace-write"]),
+      model: external_exports.string().min(1),
+      effort: external_exports.enum(["low", "medium", "high", "xhigh"]),
+      network: external_exports.boolean(),
+      timeoutMs: external_exports.number().int().positive().max(4 * 60 * 6e4),
+      extraConfig: external_exports.record(external_exports.string()).optional()
+    }).strict()
+  }),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("auth.status"),
+    codexBin: external_exports.string().min(1),
+    codexHome: CodexHomeSchema
+  }).strict(),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("auth.bootstrap"),
+    codexHome: CodexHomeSchema,
+    credentialBase64: external_exports.string().max(128 * 1024)
+  }).strict(),
+  external_exports.object({
+    ...RequestBase,
+    operation: external_exports.literal("auth.login-token"),
+    codexBin: external_exports.string().min(1),
+    codexHome: CodexHomeSchema,
+    tokenBase64: external_exports.string().max(128 * 1024)
+  }).strict()
+]);
+
+// src/execution/ssh/target.ts
+function defaultWorkerBundle() {
+  const directory = dirname2(fileURLToPath(import.meta.url));
+  const candidates = [resolve4(directory, "worker.mjs"), resolve4(directory, "../../../bundle/worker.mjs")];
+  return candidates.find((candidate) => existsSync5(candidate)) ?? candidates[0];
+}
+function failedOutcome(message) {
+  return {
+    threadId: null,
+    agentMessages: [],
+    commands: [],
+    usage: null,
+    sliceResult: parseSliceResult(""),
+    status: "failed",
+    errorMessage: message,
+    rawEventCount: 0
+  };
+}
+var SshExecutionTarget = class {
+  constructor(options) {
+    this.options = options;
+    this.id = options.id;
+    this.workerEntry = options.workerEntry ?? "";
+    this.ready = options.skipDeploy === true;
+    if (!options.skipDeploy) {
+      this.deployer = new WorkerDeployer({
+        host: options.host,
+        sshBin: options.sshBin,
+        scpBin: options.scpBin,
+        configFile: options.configFile,
+        workerBundlePath: options.workerBundlePath ?? defaultWorkerBundle(),
+        workerRoot: options.workerRoot ?? "~/.cache/codex-orchestrator"
+      });
+    }
+  }
+  options;
+  kind = "ssh";
+  id;
+  deployer;
+  workerEntry;
+  ready;
+  mapRepository(localPath) {
+    const localRoot = resolve4(this.options.localRoot);
+    const candidate = resolve4(localPath);
+    const suffix = relative(localRoot, candidate);
+    if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute2(suffix)) {
+      throw new TargetError("TARGET_REPOSITORY", "Repository-Pfad liegt au\xDFerhalb des lokalen Mappings", this.id);
+    }
+    return resolve4(this.options.remoteRoot, suffix);
+  }
+  async doctor() {
+    await this.prepare();
+    const data = await this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "doctor",
+      codexBin: this.options.codexBin,
+      codexHome: this.options.codexHome
+    }, 2e4);
+    return { ...data, targetId: this.id, kind: this.kind };
+  }
+  startCodex(request) {
+    if (!this.ready) throw new TargetError("TARGET_CONNECTIVITY", "Remote-Target wurde nicht vorbereitet", this.id, true);
+    const requestId = randomUUID2();
+    let final;
+    const process3 = startWorkerProcess(
+      { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
+      this.workerEntry,
+      {
+        requestId,
+        protocol: WORKER_PROTOCOL_VERSION,
+        operation: "codex.run",
+        allowedRoot: this.options.remoteRoot,
+        cwd: this.mapRepository(request.repoPath),
+        codexBin: this.options.codexBin,
+        codexHome: this.options.codexHome,
+        options: {
+          threadId: request.threadId,
+          prompt: request.prompt,
+          sandbox: request.sandbox,
+          model: request.model,
+          effort: request.effort,
+          network: request.network,
+          timeoutMs: request.timeoutMs,
+          extraConfig: request.extraConfig
+        }
+      },
+      request.timeoutMs + config2.limits.sliceKillGraceMs + 15e3,
+      (line) => {
+        const frame = parseFrame(line);
+        if (!frame || frame.requestId !== requestId) return;
+        if (frame.frame === "event") request.onLine?.(frame.line);
+        else final = frame;
+      }
+    );
+    const done = process3.done.then(() => {
+      if (!final || final.frame !== "result") return failedOutcome("Remote-Worker lieferte kein Ergebnis");
+      if (!final.ok) return failedOutcome(final.error.message);
+      return final.data;
+    });
+    return { child: process3.child, done };
+  }
+  async repositoryIdentity(repoPath) {
+    await this.prepare();
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "repository.identity",
+      allowedRoot: this.options.remoteRoot,
+      cwd: this.mapRepository(repoPath)
+    }, 2e4);
+  }
+  async runCheck(request) {
+    await this.prepare();
+    const checkName = Object.entries(config2.checks).find(([, check2]) => check2.argv.length === request.argv.length && check2.argv.every((value, index) => value === request.argv[index]))?.[0];
+    if (!checkName) throw new TargetError("TARGET_POLICY", "Check ist nicht allowlisted", this.id);
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "check.run",
+      allowedRoot: this.options.remoteRoot,
+      cwd: this.mapRepository(request.cwd),
+      checkName
+    }, request.timeoutMs ?? 15 * 6e4);
+  }
+  async runGit(request) {
+    await this.prepare();
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "git.run",
+      allowedRoot: this.options.remoteRoot,
+      cwd: this.mapRepository(request.cwd),
+      args: request.argv
+    }, request.timeoutMs ?? 6e4);
+  }
+  async createWorktree(repoPath, taskId) {
+    const worktree = resolve4(this.options.localRoot, ".codex-orchestrator-worktrees", taskId);
+    const remoteWorktree = this.mapRepository(worktree);
+    const branch = `codex/${taskId}`;
+    const result = await this.runGit({
+      cwd: repoPath,
+      argv: ["worktree", "add", "-b", branch, remoteWorktree, "HEAD"],
+      timeoutMs: 6e4
+    });
+    if (result.code !== 0) {
+      throw new TargetError("TARGET_REPOSITORY", result.stderr || "Remote-Worktree konnte nicht erstellt werden", this.id);
+    }
+    return { worktree, branch };
+  }
+  async mergeWorktree(repoPath, branch, options) {
+    const args = ["merge"];
+    if (options.noFf) args.push("--no-ff");
+    if (options.noGpgSign) args.push("--no-gpg-sign");
+    args.push(branch);
+    const result = await this.runGit({ cwd: repoPath, argv: args, timeoutMs: 12e4 });
+    const output = `${result.stdout}${result.stderr}`;
+    if (result.code === 0) return { ok: true, conflict: false, output };
+    const conflict = /CONFLICT|automatic merge failed/i.test(output);
+    if (conflict) await this.runGit({ cwd: repoPath, argv: ["merge", "--abort"], timeoutMs: 3e4 });
+    return { ok: false, conflict, output };
+  }
+  async removeWorktree(repoPath, worktree, branch) {
+    const removed = await this.runGit({
+      cwd: repoPath,
+      argv: ["worktree", "remove", "--force", this.mapRepository(worktree)],
+      timeoutMs: 6e4
+    });
+    if (removed.code !== 0) throw new TargetError("TARGET_REPOSITORY", removed.stderr, this.id);
+    const deleted = await this.runGit({ cwd: repoPath, argv: ["branch", "-D", branch], timeoutMs: 3e4 });
+    if (deleted.code !== 0) throw new TargetError("TARGET_REPOSITORY", deleted.stderr, this.id);
+  }
+  async bootstrapAuth(codexHome, credentials) {
+    await this.prepare();
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "auth.bootstrap",
+      codexHome,
+      credentialBase64: credentials.toString("base64")
+    }, 2e4);
+  }
+  async loginAccessToken(codexHome, token) {
+    await this.prepare();
+    return this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "auth.login-token",
+      codexBin: this.options.codexBin,
+      codexHome,
+      tokenBase64: token.toString("base64")
+    }, 75e3);
+  }
+  async prepare() {
+    if (this.ready) return;
+    if (!this.deployer) throw new TargetError("TARGET_VERSION", "Remote-Worker-Deployer fehlt", this.id);
+    this.workerEntry = await this.deployer.ensure();
+    this.ready = true;
+    const handshake = await this.invoke({
+      requestId: randomUUID2(),
+      protocol: WORKER_PROTOCOL_VERSION,
+      operation: "handshake"
+    }, 2e4);
+    if (handshake.protocol !== WORKER_PROTOCOL_VERSION) {
+      this.ready = false;
+      throw new TargetError("TARGET_VERSION", "Remote-Worker-Protokoll ist inkompatibel", this.id);
+    }
+  }
+  async invoke(request, timeoutMs) {
+    let final;
+    const process3 = startWorkerProcess(
+      { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
+      this.workerEntry,
+      request,
+      timeoutMs,
+      (line) => {
+        const frame = parseFrame(line);
+        if (frame?.frame === "result" && frame.requestId === request.requestId) final = frame;
+      }
+    );
+    const result = await process3.done;
+    if (!final || final.frame !== "result") {
+      throw classifySshFailure(this.id, result.code, result.stderr);
+    }
+    if (!final.ok) throw new TargetError(parseTargetErrorCode(final.error.code), final.error.message, this.id);
+    return final.data;
+  }
+};
+var TARGET_ERROR_CODES = /* @__PURE__ */ new Set([
+  "TARGET_CONNECTIVITY",
+  "TARGET_HOST_KEY",
+  "TARGET_AUTH",
+  "TARGET_POLICY",
+  "TARGET_VERSION",
+  "TARGET_PROTOCOL",
+  "TARGET_REPOSITORY",
+  "TARGET_CANCELLED",
+  "TARGET_TIMEOUT"
+]);
+function parseTargetErrorCode(value) {
+  return TARGET_ERROR_CODES.has(value) ? value : "TARGET_PROTOCOL";
+}
+function parseFrame(line) {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return void 0;
+  }
+}
+function classifySshFailure(targetId, code, stderr) {
+  if (/host key verification failed|remote host identification has changed/i.test(stderr)) {
+    return new TargetError("TARGET_HOST_KEY", "SSH-Host-Key-Pr\xFCfung fehlgeschlagen", targetId);
+  }
+  if (code === 255 || /timed out|connection refused|could not resolve hostname/i.test(stderr)) {
+    return new TargetError("TARGET_CONNECTIVITY", "SSH-Verbindung zum Remote-Target fehlgeschlagen", targetId, true);
+  }
+  return new TargetError("TARGET_PROTOCOL", "Remote-Worker lieferte keine g\xFCltige Antwort", targetId);
+}
+
+// src/execution/registry.ts
+var AuthenticatedExecutionTarget = class {
+  constructor(target, strategy, bootstrapper = new RemoteAuthBootstrapper()) {
+    this.target = target;
+    this.strategy = strategy;
+    this.bootstrapper = bootstrapper;
+    this.id = target.id;
+    this.kind = target.kind;
+  }
+  target;
+  strategy;
+  bootstrapper;
+  id;
+  kind;
+  doctor() {
+    return this.bootstrapper.ensure(this.target, this.strategy);
+  }
+  startCodex(request) {
+    return this.target.startCodex(request);
+  }
+  repositoryIdentity(repoPath) {
+    return this.target.repositoryIdentity(repoPath);
+  }
+  runCheck(request) {
+    return this.target.runCheck(request);
+  }
+  runGit(request) {
+    return this.target.runGit(request);
+  }
+  createWorktree(repoPath, taskId) {
+    return this.target.createWorktree(repoPath, taskId);
+  }
+  mergeWorktree(repoPath, branch, options) {
+    return this.target.mergeWorktree(repoPath, branch, options);
+  }
+  removeWorktree(repoPath, worktree, branch) {
+    return this.target.removeWorktree(repoPath, worktree, branch);
+  }
+};
+var ExecutionTargetRegistry = class {
+  targets = /* @__PURE__ */ new Map();
+  register(target) {
+    this.targets.set(target.id, target);
+  }
+  get(id) {
+    const target = this.targets.get(id);
+    if (!target) throw new Error(`Unbekanntes Execution-Target: ${id}`);
+    return target;
+  }
+  list() {
+    return [...this.targets.values()];
+  }
+};
+function createExecutionRuntime(configuration) {
+  const registry2 = new ExecutionTargetRegistry();
+  const local = new LocalExecutionTarget({ codexBin: configuration.codexBin });
+  registry2.register(local);
+  let remote;
+  if (configuration.execution.mode !== "local-only") {
+    const remoteConfig = configuration.execution.remote;
+    const raw = new SshExecutionTarget({
+      id: remoteConfig.id,
+      host: remoteConfig.host,
+      localRoot: remoteConfig.repository.localRoot,
+      remoteRoot: remoteConfig.repository.remoteRoot,
+      codexBin: remoteConfig.codexBin,
+      codexHome: remoteConfig.codexHome,
+      workerRoot: remoteConfig.workerRoot
+    });
+    const strategy = remoteConfig.auth.strategy === "existing" ? remoteConfig.auth : { ...remoteConfig.auth, codexHome: remoteConfig.codexHome };
+    remote = new AuthenticatedExecutionTarget(raw, strategy);
+    registry2.register(remote);
+  }
+  return {
+    registry: registry2,
+    router: new ExecutionTargetRouter({
+      mode: configuration.execution.mode,
+      fallback: configuration.execution.fallback,
+      local,
+      remote
+    })
+  };
+}
+
+// src/app/context.ts
+function createAppContext() {
+  const store = new Store(config2.dbPath);
+  const execution = createExecutionRuntime(config2);
+  const sessions = new SessionManager(store, (id) => execution.registry.get(id));
+  const hypRepo = new HypothesisRepo(store);
+  const machine = new ClusterStateMachine(store);
+  const worktrees = new WorktreeManager();
+  const ok = (obj) => ({
+    content: [{ type: "text", text: JSON.stringify(obj, null, 2) }]
+  });
+  const err = (obj) => ({
+    content: [{ type: "text", text: JSON.stringify(obj, null, 2) }],
+    isError: true
+  });
+  const executionTargetForCluster = (clusterId) => {
+    const latest = store.listTasks({ clusterId }).at(-1);
+    return execution.registry.get(latest?.target_id ?? "local");
+  };
+  return { store, execution, sessions, hypRepo, machine, worktrees, ok, err, executionTargetForCluster };
+}
+
+// src/app/prompts.ts
+function registerPrompts(server2) {
+  server2.registerPrompt(
+    "codex_orchestrator",
+    {
+      title: "Codex Orchestrator",
+      description: "Plan and supervise a Codex implementation through gated clusters.",
+      argsSchema: {
+        request: external_exports.string().min(1).max(2e4),
+        repo_path: external_exports.string().min(1).optional().describe("Exact absolute Git repository root; omit only when Claude should ask the user.")
+      }
+    },
+    ({ request, repo_path }) => ({
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: "Run orchestrator_doctor first. Then decompose this request into gated clusters, form explicit hypotheses, delegate bounded slices to Codex, review every result and confirm only after declared checks pass. " + (repo_path ? `Use this exact absolute Git repository root for repo_path: ${repo_path}. ` : "Ask the user for the exact absolute Git repository root before calling cluster_plan; never infer it. ") + `Request: ${request}`
+        }
+      }]
+    })
+  );
+  server2.registerPrompt(
+    "orchestrator_status",
+    {
+      title: "Orchestrator Status",
+      description: "Load the durable state of an orchestration plan.",
+      argsSchema: {
+        plan_id: external_exports.string().optional()
+      }
+    },
+    ({ plan_id }) => ({
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: plan_id ? `Call plan_snapshot for plan ${plan_id}, then summarize cluster, task, review and check status without changing state.` : "Identify the current plan from available task events, call plan_snapshot and summarize status without changing state."
+        }
+      }]
+    })
+  );
 }
 
 // src/agents.ts
-import { existsSync as existsSync4, readFileSync as readFileSync2, writeFileSync, mkdirSync as mkdirSync3, copyFileSync } from "node:fs";
-import { dirname as dirname2, join, resolve as resolve3 } from "node:path";
-import { fileURLToPath } from "node:url";
-var __dirname = dirname2(fileURLToPath(import.meta.url));
+import { existsSync as existsSync6, readFileSync as readFileSync4, writeFileSync, mkdirSync as mkdirSync3, copyFileSync } from "node:fs";
+import { dirname as dirname3, join as join2, resolve as resolve5 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+var __dirname = dirname3(fileURLToPath2(import.meta.url));
 function templatePath() {
   const candidates = [
-    resolve3(__dirname, "../templates/AGENTS.executor.md"),
-    resolve3(__dirname, "../../templates/AGENTS.executor.md")
+    resolve5(__dirname, "../templates/AGENTS.executor.md"),
+    resolve5(__dirname, "../../templates/AGENTS.executor.md")
   ];
-  return candidates.find((p) => existsSync4(p)) ?? candidates[0];
+  return candidates.find((p) => existsSync6(p)) ?? candidates[0];
 }
 function centralAgentsMd() {
-  const dest = join(config2.home, "AGENTS.md");
+  const dest = join2(config2.home, "AGENTS.md");
   try {
     mkdirSync3(config2.home, { recursive: true });
     const tpl = templatePath();
-    if (existsSync4(tpl)) copyFileSync(tpl, dest);
+    if (existsSync6(tpl)) copyFileSync(tpl, dest);
   } catch {
   }
   return dest;
@@ -23968,7 +24898,7 @@ function runUpdate(channel) {
     child.stdout?.on("data", (d) => out += d.toString());
     child.stderr?.on("data", (d) => out += d.toString());
     child.on("close", (code) => resolve6({ ok: code === 0, output: out.slice(-4e3) }));
-    child.on("error", (err2) => resolve6({ ok: false, output: String(err2) }));
+    child.on("error", (err) => resolve6({ ok: false, output: String(err) }));
   });
 }
 
@@ -24009,6 +24939,561 @@ function buildDoctorReport(probe) {
     allowedSandboxes: config2.allowedSandboxes,
     guidance
   };
+}
+
+// src/types.ts
+var EFFORT_LADDER = ["low", "medium", "high", "xhigh"];
+
+// src/app/tools/diagnostics.ts
+function registerDiagnosticsTools(server2, ctx2) {
+  const { store, execution, ok, err } = ctx2;
+  server2.registerTool(
+    "orchestrator_doctor",
+    {
+      title: "Codex-Orchestrator Diagnose",
+      description: "Pr\xFCft alle konfigurierten Execution-Targets inklusive Codex-Version und Authentifizierung. Remote-Auth wird gem\xE4\xDF Serverkonfiguration sicher initialisiert und danach erneut gepr\xFCft.",
+      inputSchema: {}
+    },
+    async () => {
+      const targets = [];
+      for (const target of execution.registry.list()) {
+        try {
+          targets.push(await target.doctor());
+        } catch (e) {
+          targets.push({
+            targetId: target.id,
+            kind: target.kind,
+            state: "unhealthy",
+            codexVersion: null,
+            auth: { state: "error", message: e?.message ?? String(e) },
+            errorCode: e?.code ?? "TARGET_PROTOCOL",
+            message: e?.message ?? String(e)
+          });
+        }
+      }
+      const healthy = targets.every((target) => target.state === "healthy");
+      const local = targets.find((target) => target.targetId === "local");
+      const environment = buildDoctorReport({
+        codexVersion: local?.codexVersion ?? null,
+        loginStatus: local?.auth?.state === "authenticated" ? "Logged in" : "Not logged in"
+      });
+      return (healthy ? ok : err)({
+        ok: healthy,
+        version: ORCHESTRATOR_VERSION,
+        execution: config2.execution.mode,
+        project_mode: "per-request-git-root",
+        environment,
+        targets
+      });
+    }
+  );
+  server2.registerTool(
+    "models_list",
+    {
+      title: "Verf\xFCgbare Modellklassen",
+      description: "Statische Routing-Tabelle (Plan \xA79). Claude w\xE4hlt Klasse+Effort pro Phase; Namen nie hartkodieren.",
+      inputSchema: {}
+    },
+    async () => ok({
+      available_models: config2.availableModels,
+      class_defaults: config2.models,
+      effort_ladder: EFFORT_LADDER,
+      usage: "task_start akzeptiert model=<konkreter Name> ODER 'auto', plus effort=low|medium|high|xhigh. Bei model:'auto' bestimmt der Effort die Klasse (low->fast, medium->balanced, high/xhigh->strong).",
+      escalation_rule: "Zwei fehlgeschlagene Korrektur-Slices in Folge -> n\xE4chste Effort-Stufe (low->medium->high->xhigh) oder st\xE4rkeres Modell. Im Event-Log dokumentieren.",
+      routing_table: [
+        { phase: "Analyse/Recherche", model: "gpt-5.4-mini", effort: "low", sandbox: "read-only" },
+        { phase: "Architekturpr\xFCfung", model: "gpt-5.5", effort: "high", sandbox: "read-only" },
+        { phase: "Implementierung", model: "gpt-5.5", effort: "medium", sandbox: "workspace-write" },
+        { phase: "Tests", model: "gpt-5.4", effort: "medium", sandbox: "workspace-write" },
+        { phase: "CI-Fix (komplex)", model: "gpt-5.5", effort: "high", sandbox: "workspace-write" },
+        { phase: "Review", model: "gpt-5.5", effort: "high", sandbox: "read-only" },
+        { phase: "kritische Analyse/Sparring", model: "gpt-5.5", effort: "xhigh", sandbox: "read-only" },
+        { phase: "Dokumentation", model: "gpt-5.4-mini", effort: "low", sandbox: "workspace-write" }
+      ]
+    })
+  );
+  server2.registerTool(
+    "audit_log",
+    {
+      title: "Sicherheitsrelevanter Audit-Trail",
+      description: "Liest die Audit-Events (Sandbox-Wahl, abgelehnte Gefahrmodi, verworfene Config-Keys, Artefakt-Erzeugung). Alle Details sind bereits Secret-redacted. F\xFCr Firmeneinsatz/Nachvollziehbarkeit.",
+      inputSchema: { limit: external_exports.number().int().positive().max(1e3).default(200) }
+    },
+    async (a) => ok({ ok: true, events: store.listAuditEvents(a.limit) })
+  );
+  server2.registerTool(
+    "codex_update",
+    {
+      title: "Codex-CLI pr\xFCfen/aktualisieren",
+      description: "Pr\xFCft (check) oder installiert (apply) die neueste Codex-Version via npm. Kan\xE4le: latest (stabil), alpha/beta (prerelease, z. B. f\xFCr neue Modelle). Nicht anwenden, solange Tasks laufen.",
+      inputSchema: {
+        action: external_exports.enum(["check", "apply"]).default("check"),
+        channel: external_exports.enum(["latest", "alpha", "beta"]).default("latest")
+      }
+    },
+    async (a) => {
+      const channel = a.channel;
+      const running = store.listTasks({ status: "running" }).length + store.listTasks({ status: "awaiting_resume" }).length;
+      const chk = checkForUpdate(channel, config2.codexBin);
+      if (a.action === "check") return ok({ ok: true, ...chk, running_tasks: running });
+      if (running > 0) {
+        return err({ ok: false, error: `Update abgelehnt: ${running} Task(s) aktiv. Erst abschlie\xDFen/pausieren.`, ...chk });
+      }
+      if (!chk.updateAvailable) return ok({ ok: true, applied: false, reason: "bereits aktuell", ...chk });
+      const res = await runUpdate(channel);
+      return res.ok ? ok({ ok: true, applied: true, from: chk.installed, to: chk.latest, channel }) : err({ ok: false, applied: false, error: "npm install fehlgeschlagen", output: res.output });
+    }
+  );
+  centralAgentsMd();
+}
+
+// src/checks.ts
+async function runChecks(store, clusterId, repoPath, names, target = new LocalExecutionTarget()) {
+  const runs = [];
+  const unknown2 = [];
+  for (const name of names) {
+    const spec = config2.checks[name];
+    if (!spec) {
+      unknown2.push(name);
+      continue;
+    }
+    const result = await target.runCheck({ cwd: repoPath, argv: spec.argv });
+    const code = result.code;
+    const out = `${result.stdout}${result.stderr}`;
+    const summary = summarizeOutput(out);
+    const ok = code === 0;
+    store.addCheck(clusterId, name, code, summary);
+    runs.push({ name, cmd: spec.argv.join(" "), exit_code: code, ok, summary });
+  }
+  const allGreen = runs.length > 0 && runs.every((r) => r.ok);
+  return { runs, allGreen, unknown: unknown2 };
+}
+function summarizeOutput(out) {
+  const lines = out.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const tail = lines.slice(-12).join("\n");
+  return redact(tail.slice(0, 2e3));
+}
+async function diffSize(repoPath, target = new LocalExecutionTarget()) {
+  let files = 0;
+  let lines = 0;
+  const tracked = await target.runGit({ cwd: repoPath, argv: ["diff", "--numstat", "HEAD"], timeoutMs: 6e4 });
+  for (const l of `${tracked.stdout}${tracked.stderr}`.split(/\r?\n/)) {
+    const m = l.match(/^(\d+|-)\t(\d+|-)\t/);
+    if (!m) continue;
+    files++;
+    lines += (m[1] === "-" ? 0 : Number(m[1])) + (m[2] === "-" ? 0 : Number(m[2]));
+  }
+  const untracked = await target.runGit({ cwd: repoPath, argv: ["ls-files", "--others", "--exclude-standard"], timeoutMs: 6e4 });
+  for (const rel of untracked.stdout.split(/\r?\n/)) {
+    const name = rel.trim();
+    if (!name) continue;
+    files++;
+    const wc = await target.runGit({ cwd: repoPath, argv: ["diff", "--numstat", "--no-index", "/dev/null", name], timeoutMs: 6e4 });
+    const m = wc.stdout.match(/^(\d+|-)\t/);
+    if (m && m[1] !== "-") lines += Number(m[1]);
+  }
+  return { files, lines };
+}
+
+// src/project-boundary.ts
+import { spawnSync as spawnSync2 } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute as isAbsolute3 } from "node:path";
+function canonicalDirectory(path, variable) {
+  if (!isAbsolute3(path)) {
+    throw new Error(`${variable} must be an absolute path`);
+  }
+  try {
+    const canonical = realpathSync(path);
+    if (!statSync(canonical).isDirectory()) {
+      throw new Error(`${variable} must be a directory`);
+    }
+    return canonical;
+  } catch (error2) {
+    if (error2 instanceof Error && error2.message === `${variable} must be a directory`) {
+      throw error2;
+    }
+    throw new Error(`${variable} must be a directory`);
+  }
+}
+function assertGitRepositoryRoot(candidate) {
+  const project = canonicalDirectory(candidate, "repo_path");
+  const git3 = spawnSync2("git", ["-C", project, "rev-parse", "--is-inside-work-tree", "--show-prefix"], {
+    encoding: "utf8",
+    shell: false
+  });
+  if (git3.status !== 0) {
+    throw new Error("repo_path must be a Git repository root");
+  }
+  const [insideWorktree, ...prefixLines] = git3.stdout.split(/\r?\n/);
+  if (insideWorktree !== "true" || prefixLines.join("\n").trim() !== "") {
+    throw new Error("repo_path must be a Git repository root");
+  }
+  return project;
+}
+
+// src/resolve.ts
+function resolveModel(model, effort) {
+  if (model && model !== "auto") return model;
+  const cls = effort === "low" ? "fast" : effort === "high" || effort === "xhigh" ? "strong" : "balanced";
+  return modelForClass(cls).model;
+}
+function repoPathForCluster(store, clusterId) {
+  const cluster = store.getCluster(clusterId);
+  if (!cluster) return null;
+  const plan = store.getPlan(cluster.plan_id);
+  if (!plan) return null;
+  try {
+    return assertGitRepositoryRoot(plan.repo_path);
+  } catch {
+    return null;
+  }
+}
+function latestWorktreeForCluster(store, clusterId) {
+  const tasks = store.listTasks({ clusterId });
+  const withWt = tasks.filter((t) => t.worktree);
+  const last = withWt[withWt.length - 1];
+  return last?.worktree ?? null;
+}
+
+// src/gate.ts
+var MISSING_MSG = "Start blockiert: F\xFCr jeden Codex-Agentenjob ist zwingend eine Hypothese erforderlich. Bilde zuerst eine Hypothese (hypotheses \u2192 create: initialAssumption, criticalQuestions, falsificationPlan, confidenceBefore) und \xFCbergib deren id als 'hypothesis_id' an task_start.";
+function checkHypothesisGate(repo, input, require2) {
+  if (!require2) return { ok: true };
+  const id = input.hypothesisId?.trim();
+  if (!id) {
+    return { ok: false, error: MISSING_MSG };
+  }
+  const h = repo.get(id);
+  if (!h) {
+    return {
+      ok: false,
+      error: `Start blockiert: hypothesis_id '${id}' existiert nicht. Lege die Hypothese zuerst an (hypotheses \u2192 create) oder korrigiere die id.`
+    };
+  }
+  return { ok: true, hypothesis: h };
+}
+
+// src/sandbox.ts
+var ALLOWED_SANDBOXES = ["read-only", "workspace-write"];
+function classifySandbox(s) {
+  const v = s.trim().toLowerCase();
+  if (v === "read-only") return "read-only";
+  if (v === "workspace-write") return "workspace-write";
+  if (v.includes("danger") || v.includes("full-access")) return "danger";
+  return "unknown";
+}
+function checkSandboxPolicy(requested) {
+  const cls = classifySandbox(requested);
+  if (cls === "danger") {
+    return {
+      ok: false,
+      dangerous: true,
+      error: "Sandbox 'danger-full-access' ist serverseitig deaktiviert und ben\xF6tigt eine explizite Nutzerfreigabe. W\xE4hle 'read-only' (Research/Review) oder 'workspace-write' (Implementierung)."
+    };
+  }
+  if (cls === "unknown") {
+    return {
+      ok: false,
+      dangerous: false,
+      error: `Unbekannter Sandbox-Modus '${requested}'. Erlaubt: ${ALLOWED_SANDBOXES.join(", ")}.`
+    };
+  }
+  return { ok: true, sandbox: cls, dangerous: false };
+}
+
+// src/app/tools/tasks.ts
+function registerTaskTools(server2, ctx2) {
+  const { store, execution, sessions, hypRepo, worktrees, ok, err } = ctx2;
+  server2.registerTool(
+    "task_start",
+    {
+      title: "Codex-Task/Slice starten",
+      description: "Startet einen Codex-Auftrag als Slice-Folge. Kleine Aufgaben: wait_for='completed' (nur wenn Slice-Budget <= Sync-Limit). Gro\xDFe: 'started'/'first_checkpoint' + task_wait-Loop. danger-full-access ist unerreichbar.",
+      inputSchema: {
+        cluster_id: external_exports.string().optional().describe("Cluster, zu dem der Task geh\xF6rt (bestimmt Repo-Pfad)."),
+        repo_path: external_exports.string().optional().describe("Repo-Pfad, falls kein cluster_id angegeben ist."),
+        hypothesis_id: external_exports.string().optional().describe("PFLICHT: id der zuvor gebildeten Hypothese (hypotheses \u2192 create). Ohne verkn\xFCpfte Hypothese wird der Start blockiert."),
+        instructions: external_exports.string().describe("Konkrete Arbeitsanweisung f\xFCr Codex."),
+        acceptance_criteria: external_exports.array(external_exports.string()).optional(),
+        sandbox: external_exports.enum(["read-only", "workspace-write"]),
+        model: external_exports.string().default("auto").describe("'auto' oder konkreter Modellname aus models_list (z. B. gpt-5.5, gpt-5.4, gpt-5.4-mini)."),
+        effort: external_exports.enum(["low", "medium", "high", "xhigh"]).default("medium").describe("Reasoning effort: low|medium|high|xhigh (extra hoch)."),
+        slice_budget: external_exports.object({ max_minutes: external_exports.number().int().positive().default(8), stop_condition: external_exports.string().optional() }).optional(),
+        wait_for: external_exports.enum(["started", "first_checkpoint", "completed"]).default("started"),
+        worktree: external_exports.enum(["none", "auto"]).default("none").describe("'none' (Repo direkt) oder 'auto' (serververwaltetes isoliertes Worktree)."),
+        network: external_exports.boolean().optional().describe("Netzwerkzugriff f\xFCr den Slice (Default: Server-Policy, i.d.R. aus)."),
+        extra_config: external_exports.record(external_exports.string()).optional().describe("Zus\xE4tzliche codex -c key=value Overrides. Sicherheitskritische Keys (sandbox_mode, danger*, approval_policy, model, notify) werden ignoriert.")
+      }
+    },
+    async (a) => {
+      const effort = a.effort;
+      const sandboxCheck = checkSandboxPolicy(a.sandbox);
+      if (!sandboxCheck.ok) {
+        store.addAuditEvent({
+          actor: "claude",
+          action: sandboxCheck.dangerous ? "danger_mode_denied" : "sandbox_rejected",
+          resource: a.cluster_id ?? a.repo_path ?? null,
+          detail: { requested: a.sandbox },
+          redacted: false
+        });
+        return err({ ok: false, error: sandboxCheck.error });
+      }
+      const sandbox = sandboxCheck.sandbox;
+      const maxMinutes = a.slice_budget?.max_minutes ?? 8;
+      const stopCondition = a.slice_budget?.stop_condition ?? null;
+      const waitFor = a.wait_for;
+      let repoPath = null;
+      try {
+        if (a.cluster_id) {
+          repoPath = repoPathForCluster(store, a.cluster_id);
+          if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
+        } else if (a.repo_path !== void 0) {
+          repoPath = assertGitRepositoryRoot(a.repo_path);
+        } else {
+          return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });
+        }
+      } catch (e) {
+        return err({ ok: false, error: e?.message ?? String(e) });
+      }
+      if (waitFor === "completed" && maxMinutes > config2.syncMaxMinutes) {
+        return err({
+          ok: false,
+          error: `wait_for='completed' nur bei slice_budget.max_minutes <= ${config2.syncMaxMinutes} zul\xE4ssig`
+        });
+      }
+      const gate = checkHypothesisGate(hypRepo, { hypothesisId: a.hypothesis_id }, config2.requireHypothesis);
+      if (!gate.ok) {
+        return err({ ok: false, error: gate.error, hint: "hypotheses \u2192 create, dann hypothesis_id an task_start \xFCbergeben." });
+      }
+      let selection;
+      try {
+        selection = await execution.router.select(repoPath);
+      } catch (e) {
+        return err({ ok: false, error: `Execution-Target nicht verf\xFCgbar: ${e?.message ?? e}`, code: e?.code });
+      }
+      const wantAutoWorktree = a.worktree === "auto";
+      let worktree = null;
+      let branch = null;
+      if (wantAutoWorktree) {
+        if (selection.target.kind === "local" && !isGitRepo(repoPath)) {
+          return err({ ok: false, error: `worktree:auto ben\xF6tigt ein git-Repo: ${repoPath}` });
+        }
+      }
+      const model = resolveModel(a.model ?? "auto", effort);
+      const known = config2.availableModels.find((m) => m.model === model);
+      if (known && !known.efforts.includes(effort)) {
+        return err({
+          ok: false,
+          error: `Effort '${effort}' f\xFCr Modell '${model}' nicht zul\xE4ssig. Erlaubt: ${known.efforts.join(", ")}`
+        });
+      }
+      const modelNote = known ? void 0 : `Hinweis: Modell '${model}' ist nicht im Katalog (models_list) \u2014 wird ungepr\xFCft an Codex \xFCbergeben.`;
+      let extraConfig;
+      const droppedConfig = [];
+      if (a.extra_config) {
+        extraConfig = {};
+        for (const [k, v] of Object.entries(a.extra_config)) {
+          if (isBlockedConfigKey(k)) droppedConfig.push(k);
+          else extraConfig[k] = String(v);
+        }
+        if (Object.keys(extraConfig).length === 0) extraConfig = void 0;
+      }
+      const task = sessions.createTask({
+        clusterId: a.cluster_id ?? null,
+        repoPath,
+        worktree,
+        branch,
+        instructions: a.instructions,
+        acceptance: a.acceptance_criteria ?? [],
+        sandbox,
+        model,
+        effort,
+        network: a.network ?? config2.networkDefault,
+        maxMinutes,
+        extraConfig,
+        targetId: selection.target.id,
+        targetKind: selection.target.kind,
+        repositoryCommit: selection.repository.headCommit,
+        routingReason: selection.reason,
+        fallbackFrom: selection.fallbackFrom,
+        hypothesisId: a.hypothesis_id ?? null
+      });
+      if (a.hypothesis_id) {
+        try {
+          hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null);
+        } catch {
+        }
+      }
+      try {
+        store.recordAgentJob({
+          taskId: task.id,
+          clusterId: a.cluster_id ?? null,
+          hypothesisId: a.hypothesis_id ?? null,
+          model,
+          effort,
+          sandbox,
+          status: "queued"
+        });
+      } catch {
+      }
+      try {
+        store.addAuditEvent({
+          actor: "claude",
+          action: "task_started",
+          resource: task.id,
+          detail: { sandbox, model, effort, network: a.network ?? config2.networkDefault, dropped_config_keys: droppedConfig },
+          redacted: false
+        });
+      } catch {
+      }
+      if (wantAutoWorktree) {
+        try {
+          const wt = selection.target.kind === "ssh" && selection.target.createWorktree ? await selection.target.createWorktree(repoPath, task.id) : worktrees.create(repoPath, task.id);
+          worktree = wt.worktree;
+          branch = wt.branch;
+          store.updateTask(task.id, { worktree, branch });
+        } catch (e) {
+          store.updateTask(task.id, { status: "failed", ended_at: (/* @__PURE__ */ new Date()).toISOString() });
+          return err({ ok: false, task_id: task.id, error: `Worktree-Erstellung fehlgeschlagen: ${e?.message ?? e}` });
+        }
+      }
+      sessions.startLoop(task.id, stopCondition);
+      const dropped = droppedConfig.length ? { dropped_config_keys: droppedConfig } : {};
+      if (waitFor === "started") {
+        return ok({
+          ok: true,
+          task_id: task.id,
+          status: "queued",
+          model,
+          effort,
+          worktree,
+          branch,
+          target: selection.target.id,
+          routing_reason: selection.reason,
+          fallback_from: selection.fallbackFrom,
+          note: modelNote,
+          ...dropped
+        });
+      }
+      if (waitFor === "first_checkpoint") {
+        await sessions.waitUntil(task.id, (_s, sawSlice) => sawSlice, config2.maxWaitSeconds);
+      } else {
+        await sessions.waitUntil(
+          task.id,
+          (s) => ["completed", "failed", "cancelled", "blocked"].includes(s),
+          maxMinutes * 60 + 30
+        );
+      }
+      const t = store.getTask(task.id);
+      const lastSlice = store.eventsAfter(task.id, 0, ["slice_result"], 50).map((e) => JSON.parse(e.payload_json)).at(-1);
+      return ok({ ok: true, task_id: task.id, status: t.status, model, effort, worktree, branch, last_slice_result: lastSlice ?? null, note: modelNote, ...dropped });
+    }
+  );
+  server2.registerTool(
+    "task_wait",
+    {
+      title: "Long-Poll auf Task-Events",
+      description: "Kehrt zur\xFCck bei neuem Event (seq>cursor), Slice-Ende, Statuswechsel oder Timeout. Kernprimitive des Orchestrierungs-Loops (MCP ist pull-basiert).",
+      inputSchema: {
+        task_id: external_exports.string(),
+        cursor: external_exports.number().int().nonnegative().default(0),
+        timeout_seconds: external_exports.number().int().positive().default(50)
+      }
+    },
+    async (a) => {
+      const r = await sessions.wait(a.task_id, a.cursor, a.timeout_seconds);
+      return ok(r);
+    }
+  );
+  server2.registerTool(
+    "task_events",
+    {
+      title: "Historische Events cursorbasiert abrufen",
+      description: "Ruft Events mit seq>cursor ab, optional gefiltert nach kind.",
+      inputSchema: {
+        task_id: external_exports.string(),
+        cursor: external_exports.number().int().nonnegative().default(0),
+        kinds: external_exports.array(external_exports.string()).optional(),
+        limit: external_exports.number().int().positive().max(500).default(200)
+      }
+    },
+    async (a) => {
+      const rows = store.eventsAfter(a.task_id, a.cursor, a.kinds, a.limit);
+      const events = rows.map((e) => ({ seq: e.seq, ts: e.ts, kind: e.kind, payload: JSON.parse(e.payload_json) }));
+      const cursor = events.length ? events[events.length - 1].seq : a.cursor;
+      return ok({ task_id: a.task_id, events, cursor });
+    }
+  );
+  server2.registerTool(
+    "task_control",
+    {
+      title: "Task steuern",
+      description: "pause (kein Auto-Resume nach Slice), resume, cancel (SIGTERM->SIGKILL, Worktree bleibt), inject (Nachricht an n\xE4chster Slice-Grenze).",
+      inputSchema: {
+        task_id: external_exports.string(),
+        action: external_exports.enum(["pause", "resume", "cancel", "inject"]),
+        message: external_exports.string().optional(),
+        priority: external_exports.enum(["normal", "high"]).default("normal")
+      }
+    },
+    async (a) => {
+      switch (a.action) {
+        case "pause":
+          return ok({ action: "pause", ...sessions.pause(a.task_id) });
+        case "resume":
+          return ok({ action: "resume", ...sessions.resume(a.task_id) });
+        case "cancel":
+          return ok({ action: "cancel", ...sessions.cancel(a.task_id) });
+        case "inject": {
+          if (!a.message) return err({ ok: false, error: "inject erfordert 'message'" });
+          return ok({ action: "inject", ...sessions.inject(a.task_id, a.message, a.priority) });
+        }
+      }
+    }
+  );
+  server2.registerTool(
+    "task_result",
+    {
+      title: "Konsolidierte Task-Abgabe",
+      description: "Diff-Zusammenfassung (Datei-Liste, Zeilenstatistik), Testresultate, letzte SLICE_RESULT-Bl\xF6cke, offene Punkte. Keine vollst\xE4ndigen Diffs/Logs.",
+      inputSchema: { task_id: external_exports.string(), max_slice_results: external_exports.number().int().positive().max(20).default(3) }
+    },
+    async (a) => {
+      const t = store.getTask(a.task_id);
+      if (!t) return err({ ok: false, error: "unbekannter Task" });
+      const sliceResults = store.eventsAfter(a.task_id, 0, ["slice_result"], 100).map((e) => JSON.parse(e.payload_json));
+      const recent = sliceResults.slice(-a.max_slice_results);
+      const repo = t.worktree || t.repo_path;
+      const target = execution.registry.get(t.target_id);
+      let diff = { files: 0, lines: 0 };
+      try {
+        diff = await diffSize(repo, target);
+      } catch {
+      }
+      const tests = recent.flatMap((r) => r.tests ?? []);
+      const openItems = recent.flatMap((r) => r.open_items ?? []);
+      const changed = [...new Set(recent.flatMap((r) => r.changed_files ?? []))];
+      return ok({
+        ok: true,
+        task_id: t.id,
+        status: t.status,
+        slice_count: t.slice_count,
+        last_slice_type: t.last_slice_type,
+        last_summary: t.last_summary,
+        diff_summary: diff,
+        changed_files: changed,
+        tests_run: tests,
+        open_items: openItems,
+        recent_slice_results: recent,
+        limits: {
+          max_diff_lines: config2.limits.maxDiffLines,
+          max_diff_files: config2.limits.maxDiffFiles,
+          over_diff_limit: diff.lines > config2.limits.maxDiffLines || diff.files > config2.limits.maxDiffFiles
+        }
+      });
+    }
+  );
 }
 
 // node_modules/@toon-format/toon/dist/index.mjs
@@ -24406,7 +25891,7 @@ function resolveOptions(options) {
 
 // src/snapshot.ts
 import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join2 } from "node:path";
+import { join as join3 } from "node:path";
 function parse3(json) {
   if (!json) return null;
   try {
@@ -24415,10 +25900,10 @@ function parse3(json) {
     return json;
   }
 }
-function buildPlanSnapshot(store2, planId) {
-  const plan = store2.getPlan(planId);
+function buildPlanSnapshot(store, planId) {
+  const plan = store.getPlan(planId);
   if (!plan) return null;
-  const clusters = store2.listClusters(planId).map((c) => ({
+  const clusters = store.listClusters(planId).map((c) => ({
     id: c.id,
     ordinal: c.ordinal,
     name: c.name,
@@ -24431,12 +25916,12 @@ function buildPlanSnapshot(store2, planId) {
     model_policy: parse3(c.model_policy_json),
     review_strategy: parse3(c.review_strategy_json),
     latest_review: (() => {
-      const r = store2.latestReview(c.id);
+      const r = store.latestReview(c.id);
       return r ? { status: r.status, ts: r.ts } : null;
     })(),
-    checks: store2.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code, ts: k.ts }))
+    checks: store.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code, ts: k.ts }))
   }));
-  const hypotheses = store2.listHypotheses(planId).map((h) => ({
+  const hypotheses = store.listHypotheses(planId).map((h) => ({
     id: h.id,
     status: h.status,
     text: h.text,
@@ -24449,260 +25934,22 @@ function buildPlanSnapshot(store2, planId) {
     hypotheses
   };
 }
-function writePlanSnapshot(store2, planId, format = "toon") {
-  const snap = buildPlanSnapshot(store2, planId);
+function writePlanSnapshot(store, planId, format = "toon") {
+  const snap = buildPlanSnapshot(store, planId);
   if (!snap) return null;
   const content = format === "toon" ? encode(snap) : JSON.stringify(snap, null, 2);
-  const dir = join2(config2.home, "snapshots");
+  const dir = join3(config2.home, "snapshots");
   mkdirSync4(dir, { recursive: true });
-  const path = join2(dir, `${planId}.${format}`);
+  const path = join3(dir, `${planId}.${format}`);
   writeFileSync2(path, content, "utf8");
   return { format, content, path };
 }
 
 // src/artifact.ts
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync3 } from "node:fs";
-import { basename, join as join3 } from "node:path";
-
-// src/hypotheses.ts
-function needsFollowUp(result) {
-  return result === "partially_confirmed" || result === "refuted";
-}
-function clampConfidence(v, field) {
-  if (typeof v !== "number" || Number.isNaN(v)) {
-    throw new Error(`${field} muss eine Zahl in [0,1] sein`);
-  }
-  if (v < 0 || v > 1) {
-    throw new Error(`${field}=${v} liegt au\xDFerhalb [0,1]`);
-  }
-  return v;
-}
-function normQuestions(qs) {
-  if (!qs) return [];
-  return qs.map(
-    (q) => typeof q === "string" ? { question: q, answer: null } : { question: q.question, answer: q.answer ?? null }
-  );
-}
-function normFalsification(fs) {
-  if (!fs) return [];
-  return fs.map(
-    (f) => typeof f === "string" ? { description: f, method: null, expectationIfFalse: null, observed: null } : {
-      description: f.description,
-      method: f.method ?? null,
-      expectationIfFalse: f.expectationIfFalse ?? null,
-      observed: f.observed ?? null
-    }
-  );
-}
-function normEvidence(es) {
-  if (!es) return [];
-  return es.map(
-    (e) => typeof e === "string" ? { source: "note", observation: e, ts: nowIso() } : { source: e.source, observation: e.observation, ts: e.ts ?? nowIso() }
-  );
-}
-var HypothesisRepo = class _HypothesisRepo {
-  constructor(store2) {
-    this.store = store2;
-  }
-  store;
-  /** Serialisiert eine Hypothese in ein stabiles, maschinenlesbares Objekt. */
-  static serialize(h) {
-    return {
-      id: h.id,
-      planId: h.planId,
-      taskId: h.taskId,
-      clusterId: h.clusterId,
-      version: h.version,
-      status: h.status,
-      initialAssumption: h.initialAssumption,
-      confidenceBefore: h.confidenceBefore,
-      criticalQuestions: h.criticalQuestions,
-      falsificationPlan: h.falsificationPlan,
-      evidence: h.evidence,
-      result: h.result,
-      confidenceAfter: h.confidenceAfter,
-      updatedAssumption: h.updatedAssumption,
-      followUpQuestions: h.followUpQuestions,
-      risks: h.risks,
-      nextAction: h.nextAction,
-      createdAt: h.createdAt,
-      updatedAt: h.updatedAt
-    };
-  }
-  /** Rehydriert eine Hypothese aus einem serialisierten Snapshot. */
-  static deserialize(o) {
-    return {
-      id: String(o.id),
-      planId: o.planId ?? null,
-      taskId: o.taskId ?? null,
-      clusterId: o.clusterId ?? null,
-      version: Number(o.version),
-      status: o.status ?? "open",
-      initialAssumption: String(o.initialAssumption ?? ""),
-      confidenceBefore: Number(o.confidenceBefore ?? 0),
-      criticalQuestions: o.criticalQuestions ?? [],
-      falsificationPlan: o.falsificationPlan ?? [],
-      evidence: o.evidence ?? [],
-      result: o.result ?? "open",
-      confidenceAfter: o.confidenceAfter ?? null,
-      updatedAssumption: o.updatedAssumption ?? null,
-      followUpQuestions: o.followUpQuestions ?? [],
-      risks: o.risks ?? [],
-      nextAction: o.nextAction ?? null,
-      createdAt: String(o.createdAt ?? ""),
-      updatedAt: String(o.updatedAt ?? "")
-    };
-  }
-  /** Legt eine neue Hypothese (Version 1) an. */
-  create(input) {
-    if (!input.initialAssumption || !input.initialAssumption.trim()) {
-      throw new Error("initialAssumption ist erforderlich");
-    }
-    const confidenceBefore = clampConfidence(input.confidenceBefore, "confidenceBefore");
-    const id = newId("H");
-    const ts = nowIso();
-    const h = {
-      id,
-      planId: input.planId ?? null,
-      taskId: input.taskId ?? null,
-      clusterId: input.clusterId ?? null,
-      version: 1,
-      status: "open",
-      initialAssumption: input.initialAssumption,
-      confidenceBefore,
-      criticalQuestions: normQuestions(input.criticalQuestions),
-      falsificationPlan: normFalsification(input.falsificationPlan),
-      evidence: [],
-      result: "open",
-      confidenceAfter: null,
-      updatedAssumption: null,
-      followUpQuestions: [],
-      risks: [],
-      nextAction: null,
-      createdAt: ts,
-      updatedAt: ts
-    };
-    return this.store.tx(() => {
-      this.store.insertHypothesisHeader({
-        id: h.id,
-        planId: h.planId ?? "",
-        // Header-Spalte ist NOT NULL (Legacy); Snapshot behält echtes null.
-        taskId: h.taskId,
-        clusterId: h.clusterId,
-        text: h.initialAssumption,
-        status: h.status,
-        result: h.result,
-        latestVersion: h.version,
-        createdAt: h.createdAt,
-        updatedAt: h.updatedAt
-      });
-      this.writeVersion(h);
-      return h;
-    });
-  }
-  writeVersion(h) {
-    this.store.insertHypothesisVersion({
-      id: newId("HV"),
-      hypothesisId: h.id,
-      version: h.version,
-      snapshotJson: JSON.stringify(_HypothesisRepo.serialize(h)),
-      createdAt: h.updatedAt
-    });
-  }
-  /**
-   * Aktualisiert eine Hypothese: erzeugt append-only eine neue Version aus der
-   * neuesten und schreibt den Header fort. Die alten Versionen bleiben
-   * unverändert erhalten (Nachvollziehbarkeit).
-   */
-  update(id, patch) {
-    return this.store.tx(() => {
-      const current = this.get(id);
-      if (!current) throw new Error(`Hypothese ${id} nicht gefunden`);
-      const ts = nowIso();
-      const result = patch.result ?? current.result;
-      const followUpQuestions = patch.followUpQuestions !== void 0 ? patch.followUpQuestions : current.followUpQuestions;
-      if (needsFollowUp(result) && followUpQuestions.length === 0) {
-        throw new Error(
-          `Ergebnis '${result}' erfordert mindestens eine Folgefrage (followUpQuestions): Was bleibt offen? Welche neue Hypothese folgt? Welche Risiken/n\xE4chste Aktion?`
-        );
-      }
-      const next = {
-        ...current,
-        version: current.version + 1,
-        status: patch.status ?? current.status,
-        result,
-        followUpQuestions,
-        risks: patch.risks !== void 0 ? patch.risks : current.risks,
-        nextAction: patch.nextAction !== void 0 ? patch.nextAction : current.nextAction,
-        confidenceAfter: patch.confidenceAfter !== void 0 ? patch.confidenceAfter === null ? null : clampConfidence(patch.confidenceAfter, "confidenceAfter") : current.confidenceAfter,
-        updatedAssumption: patch.updatedAssumption !== void 0 ? patch.updatedAssumption : current.updatedAssumption,
-        criticalQuestions: patch.criticalQuestions ? normQuestions(patch.criticalQuestions) : current.criticalQuestions,
-        falsificationPlan: patch.falsificationPlan ? normFalsification(patch.falsificationPlan) : current.falsificationPlan,
-        evidence: patch.addEvidence ? [...current.evidence, ...normEvidence(patch.addEvidence)] : current.evidence,
-        taskId: patch.taskId !== void 0 ? patch.taskId : current.taskId,
-        clusterId: patch.clusterId !== void 0 ? patch.clusterId : current.clusterId,
-        updatedAt: ts
-      };
-      this.store.updateHypothesisHeader(id, {
-        status: next.status,
-        result: next.result,
-        latestVersion: next.version,
-        updatedAt: next.updatedAt,
-        taskId: next.taskId,
-        clusterId: next.clusterId,
-        evidenceJson: next.evidence.length ? JSON.stringify(next.evidence) : null
-      });
-      this.writeVersion(next);
-      return next;
-    });
-  }
-  /** Lädt die neueste Version einer Hypothese. */
-  get(id) {
-    const snapshot = this.store.latestHypothesisSnapshot(id);
-    if (snapshot === void 0) return void 0;
-    return _HypothesisRepo.deserialize(JSON.parse(snapshot));
-  }
-  /** Lädt eine konkrete Version. */
-  getVersion(id, version2) {
-    const snapshot = this.store.hypothesisSnapshotAt(id, version2);
-    if (snapshot === void 0) return void 0;
-    return _HypothesisRepo.deserialize(JSON.parse(snapshot));
-  }
-  /** Alle Versionen einer Hypothese (aufsteigend) — vollständige Historie. */
-  listVersions(id) {
-    return this.store.hypothesisSnapshots(id).map((snapshot) => _HypothesisRepo.deserialize(JSON.parse(snapshot)));
-  }
-  listByColumn(column, value) {
-    return this.store.hypothesisIdsByColumn(column, value).map((hid) => this.get(hid)).filter((h) => !!h);
-  }
-  listByTask(taskId) {
-    return this.listByColumn("task_id", taskId);
-  }
-  listByCluster(clusterId) {
-    return this.listByColumn("cluster_id", clusterId);
-  }
-  listByPlan(planId) {
-    return this.listByColumn("plan_id", planId);
-  }
-  /**
-   * Bindet eine bestehende Hypothese provenienzhalber an einen Task/Cluster.
-   * Aktualisiert NUR die Header-Spalten (für listByTask/listByCluster) und lässt
-   * die versionierten Snapshots unangetastet — Binden ist Provenienz, keine
-   * inhaltliche Revision, erzeugt daher keine neue Version.
-   */
-  bindToTask(id, taskId, clusterId) {
-    this.store.bindHypothesisToTask(id, taskId, clusterId);
-  }
-  /** Neueste (rich) Hypothese, die an einen Task gebunden ist — für das Gate. */
-  latestForTask(taskId) {
-    const rows = this.listByTask(taskId);
-    return rows.length ? rows[rows.length - 1] : void 0;
-  }
-};
-
-// src/artifact.ts
+import { basename, join as join4 } from "node:path";
 var ARTIFACT_SCHEMA_VERSION = SCHEMA_VERSION;
 function git2(repo, args) {
   try {
@@ -24719,12 +25966,12 @@ function parseJson(s) {
     return s;
   }
 }
-function buildResultArtifact(store2, planId, opts = {}) {
-  const plan = store2.getPlan(planId);
+function buildResultArtifact(store, planId, opts = {}) {
+  const plan = store.getPlan(planId);
   if (!plan) return null;
   const repo = plan.repo_path;
-  const hyp = new HypothesisRepo(store2);
-  const clusters = store2.listClusters(planId).map((c) => ({
+  const hyp = new HypothesisRepo(store);
+  const clusters = store.listClusters(planId).map((c) => ({
     id: c.id,
     ordinal: c.ordinal,
     name: c.name,
@@ -24733,13 +25980,13 @@ function buildResultArtifact(store2, planId, opts = {}) {
     acceptance: parseJson(c.acceptance_json),
     review_strategy: parseJson(c.review_strategy_json),
     latest_review: (() => {
-      const r = store2.latestReview(c.id);
+      const r = store.latestReview(c.id);
       return r ? { status: r.status, ts: r.ts } : null;
     })(),
-    checks: store2.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code }))
+    checks: store.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code }))
   }));
   const clusterIds = new Set(clusters.map((c) => c.id));
-  const planTasks = store2.listTasks().filter((t) => t.cluster_id !== null && clusterIds.has(t.cluster_id));
+  const planTasks = store.listTasks().filter((t) => t.cluster_id !== null && clusterIds.has(t.cluster_id));
   const taskIds = new Set(planTasks.map((t) => t.id));
   const tasks = planTasks.map((t) => ({
     id: t.id,
@@ -24752,7 +25999,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
     slice_count: t.slice_count,
     last_slice_type: t.last_slice_type
   }));
-  const agentJobs = store2.listAgentJobs().filter((j) => j.cluster_id && clusterIds.has(j.cluster_id) || j.task_id && taskIds.has(j.task_id)).map((j) => ({
+  const agentJobs = store.listAgentJobs().filter((j) => j.cluster_id && clusterIds.has(j.cluster_id) || j.task_id && taskIds.has(j.task_id)).map((j) => ({
     id: j.id,
     task_id: j.task_id,
     cluster_id: j.cluster_id,
@@ -24765,7 +26012,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
     ended_at: j.ended_at
   }));
   const richIds = /* @__PURE__ */ new Set();
-  const allHeaders = store2.listHypothesisHeaders();
+  const allHeaders = store.listHypothesisHeaders();
   const headers = allHeaders.filter(
     (h) => h.plan_id === planId || h.cluster_id && clusterIds.has(h.cluster_id) || h.task_id && taskIds.has(h.task_id)
   );
@@ -24780,10 +26027,10 @@ function buildResultArtifact(store2, planId, opts = {}) {
   }
   const reviews = [
     ...clusters.flatMap((c) => {
-      const r = store2.latestReview(c.id);
+      const r = store.latestReview(c.id);
       return r ? [{ kind: "cluster", cluster_id: c.id, status: r.status, findings: parseJson(r.findings_json), ts: r.ts }] : [];
     }),
-    ...store2.listHypothesisReviews().filter((r) => r.cluster_id && clusterIds.has(r.cluster_id) || r.hypothesis_id && richIds.has(r.hypothesis_id)).map((r) => ({
+    ...store.listHypothesisReviews().filter((r) => r.cluster_id && clusterIds.has(r.cluster_id) || r.hypothesis_id && richIds.has(r.hypothesis_id)).map((r) => ({
       kind: "hypothesis",
       hypothesis_id: r.hypothesis_id,
       cluster_id: r.cluster_id,
@@ -24793,7 +26040,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
       synthesis: r.synthesis
     }))
   ];
-  const userDecisions = store2.listDecisions().filter((d) => d.plan_id === planId || d.cluster_id && clusterIds.has(d.cluster_id)).map((d) => ({
+  const userDecisions = store.listDecisions().filter((d) => d.plan_id === planId || d.cluster_id && clusterIds.has(d.cluster_id)).map((d) => ({
     id: d.id,
     cluster_id: d.cluster_id,
     topic: d.topic,
@@ -24807,7 +26054,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
   const nameOnly = before ? git2(repo, ["--no-pager", "diff", "--name-only", `${before}..HEAD`]) : git2(repo, ["--no-pager", "diff", "--name-only", "HEAD~1..HEAD"]);
   if (nameOnly) filesChanged = nameOnly.split("\n").filter(Boolean);
   const testsRun = clusters.flatMap(
-    (c) => store2.checksForCluster(c.id).map((k) => ({ cluster_id: c.id, cmd: k.cmd, exit_code: k.exit_code }))
+    (c) => store.checksForCluster(c.id).map((k) => ({ cluster_id: c.id, cmd: k.cmd, exit_code: k.exit_code }))
   );
   const findings = reviews.flatMap(
     (r) => Array.isArray(r.findings) ? r.findings.map((f) => ({ source: r.kind, cluster_id: r.cluster_id ?? null, finding: typeof f === "string" ? f : JSON.stringify(f) })) : []
@@ -24827,7 +26074,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
   })();
   const artifact = redactDeep({
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
-    artifactVersion: store2.latestArtifactVersion(planId, "toln") + 1,
+    artifactVersion: store.latestArtifactVersion(planId, "toln") + 1,
     timestamp: (/* @__PURE__ */ new Date()).toISOString(),
     projectName: basename(repo),
     gitBranch: git2(repo, ["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -24853,7 +26100,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
   return { ...artifact, checksum };
 }
 function computeChecksum(artifact) {
-  return "sha256:" + createHash("sha256").update(stableStringify(artifact)).digest("hex");
+  return "sha256:" + createHash2("sha256").update(stableStringify(artifact)).digest("hex");
 }
 function stableStringify(v) {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
@@ -24952,18 +26199,18 @@ function renderSummaryMd(a) {
   ];
   return lines.join("\n");
 }
-function writeResultArtifact(store2, planId, opts = {}) {
-  const artifact = buildResultArtifact(store2, planId, opts);
+function writeResultArtifact(store, planId, opts = {}) {
+  const artifact = buildResultArtifact(store, planId, opts);
   if (!artifact) return null;
-  const dir = join3(config2.home, "artifacts");
+  const dir = join4(config2.home, "artifacts");
   mkdirSync5(dir, { recursive: true });
   const stamp = artifact.timestamp.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
   const base = `codex-orchestration-result.v${artifact.schemaVersion}.${stamp}`;
-  const tolnPath = join3(dir, `${base}.toln`);
-  const summaryPath = join3(dir, `${base}.summary.md`);
+  const tolnPath = join4(dir, `${base}.toln`);
+  const summaryPath = join4(dir, `${base}.summary.md`);
   writeFileSync3(tolnPath, renderToln(artifact), "utf8");
   writeFileSync3(summaryPath, renderSummaryMd(artifact), "utf8");
-  store2.addArtifact({
+  store.addArtifact({
     planId,
     kind: "toln",
     path: tolnPath,
@@ -24974,802 +26221,430 @@ function writeResultArtifact(store2, planId, opts = {}) {
   return { tolnPath, summaryPath, artifact };
 }
 
-// src/gate.ts
-var MISSING_MSG = "Start blockiert: F\xFCr jeden Codex-Agentenjob ist zwingend eine Hypothese erforderlich. Bilde zuerst eine Hypothese (hypotheses \u2192 create: initialAssumption, criticalQuestions, falsificationPlan, confidenceBefore) und \xFCbergib deren id als 'hypothesis_id' an task_start.";
-function checkHypothesisGate(repo, input, require2) {
-  if (!require2) return { ok: true };
-  const id = input.hypothesisId?.trim();
-  if (!id) {
-    return { ok: false, error: MISSING_MSG };
-  }
-  const h = repo.get(id);
-  if (!h) {
-    return {
-      ok: false,
-      error: `Start blockiert: hypothesis_id '${id}' existiert nicht. Lege die Hypothese zuerst an (hypotheses \u2192 create) oder korrigiere die id.`
-    };
-  }
-  return { ok: true, hypothesis: h };
-}
-
-// src/sandbox.ts
-var ALLOWED_SANDBOXES = ["read-only", "workspace-write"];
-function classifySandbox(s) {
-  const v = s.trim().toLowerCase();
-  if (v === "read-only") return "read-only";
-  if (v === "workspace-write") return "workspace-write";
-  if (v.includes("danger") || v.includes("full-access")) return "danger";
-  return "unknown";
-}
-function checkSandboxPolicy(requested) {
-  const cls = classifySandbox(requested);
-  if (cls === "danger") {
-    return {
-      ok: false,
-      dangerous: true,
-      error: "Sandbox 'danger-full-access' ist serverseitig deaktiviert und ben\xF6tigt eine explizite Nutzerfreigabe. W\xE4hle 'read-only' (Research/Review) oder 'workspace-write' (Implementierung)."
-    };
-  }
-  if (cls === "unknown") {
-    return {
-      ok: false,
-      dangerous: false,
-      error: `Unbekannter Sandbox-Modus '${requested}'. Erlaubt: ${ALLOWED_SANDBOXES.join(", ")}.`
-    };
-  }
-  return { ok: true, sandbox: cls, dangerous: false };
-}
-
-// src/types.ts
-var EFFORT_LADDER = ["low", "medium", "high", "xhigh"];
-
-// src/auth/bootstrap.ts
-import { lstatSync, readFileSync as readFileSync3 } from "node:fs";
-import { homedir as homedir2 } from "node:os";
-import { join as join4 } from "node:path";
-
-// src/execution/errors.ts
-var TargetError = class extends Error {
-  constructor(code, message, targetId, retryable = false) {
-    super(message);
-    this.code = code;
-    this.targetId = targetId;
-    this.retryable = retryable;
-    this.name = "TargetError";
-  }
-  code;
-  targetId;
-  retryable;
-};
-
-// src/auth/bootstrap.ts
-var MAX_CREDENTIAL_BYTES = 64 * 1024;
-function loadCredentialFile(path) {
-  const metadata = lstatSync(path);
-  if (metadata.isSymbolicLink() || !metadata.isFile()) {
-    throw new Error("Credential-Quelle muss eine regul\xE4re Datei und darf kein Symlink sein");
-  }
-  if (typeof process.getuid === "function" && metadata.uid !== process.getuid()) {
-    throw new Error("Credential-Quelle muss dem aktuellen Benutzer geh\xF6ren");
-  }
-  if (process.platform !== "win32" && (metadata.mode & 63) !== 0) {
-    throw new Error("Credential-Quelle ben\xF6tigt private Rechte (0600)");
-  }
-  if (metadata.size < 1 || metadata.size > MAX_CREDENTIAL_BYTES) {
-    throw new Error("Credential-Quelle muss zwischen 1 Byte und 64 KiB gro\xDF sein");
-  }
-  return readFileSync3(path);
-}
-function defaultCredentialSource() {
-  return join4(process.env.CODEX_HOME ?? join4(homedir2(), ".codex"), "auth.json");
-}
-function requireHealthy(health, targetId) {
-  if (health.state === "healthy" && health.auth.state === "authenticated") return health;
-  throw new TargetError(
-    "TARGET_AUTH",
-    `Codex-Authentifizierung auf Target ${targetId} ist nicht verf\xFCgbar: ${health.auth.message}`,
-    targetId
-  );
-}
-var RemoteAuthBootstrapper = class {
-  async ensure(target, strategy) {
-    const current = await target.doctor();
-    if (current.state === "healthy" && current.auth.state === "authenticated") return current;
-    if (strategy.strategy === "existing") return requireHealthy(current, target.id);
-    if (strategy.strategy === "sync-file") {
-      if (!target.bootstrapAuth) {
-        throw new TargetError("TARGET_AUTH", "Remote-Target unterst\xFCtzt keinen Auth-Bootstrap", target.id);
+// src/app/tools/planning.ts
+function registerPlanningTools(server2, ctx2) {
+  const { store, execution, machine, worktrees, ok, err, executionTargetForCluster } = ctx2;
+  server2.registerTool(
+    "cluster_plan",
+    {
+      title: "Clusterplan anlegen/aktualisieren",
+      description: "Persistierter Plan mit Clustern (Gates, Acceptance, Risiken, Modellpolitik, Sandbox, Review-Strategie). Idempotent \xFCber plan_id.",
+      inputSchema: {
+        plan_id: external_exports.string().optional().describe("Weglassen f\xFCr neuen Plan."),
+        goal: external_exports.string(),
+        constraints: external_exports.string().optional(),
+        repo_path: external_exports.string(),
+        clusters: external_exports.array(
+          external_exports.object({
+            id: external_exports.string(),
+            name: external_exports.string(),
+            goal: external_exports.string(),
+            tasks: external_exports.array(external_exports.string()).default([]),
+            acceptance: external_exports.array(external_exports.string()).default([]),
+            risks: external_exports.array(external_exports.string()).optional(),
+            model_policy: external_exports.object({
+              class: external_exports.enum(["fast", "balanced", "strong"]).default("balanced"),
+              effort: external_exports.enum(["low", "medium", "high", "xhigh"]).default("medium"),
+              sandbox: external_exports.enum(["read-only", "workspace-write"]).default("workspace-write"),
+              model: external_exports.string().optional().describe("Konkreter Modellname f\xFCr diesen Cluster (sonst 'auto').")
+            }).default({ class: "balanced", effort: "medium", sandbox: "workspace-write" }),
+            review_strategy: external_exports.object({ checks: external_exports.array(external_exports.string()).default([]), codex_review: external_exports.boolean().default(false), notes: external_exports.string().optional() }).default({ checks: [], codex_review: false }),
+            parallel_ok: external_exports.boolean().default(false)
+          })
+        )
       }
-      const credentials = loadCredentialFile(strategy.source ?? defaultCredentialSource());
+    },
+    async (a) => {
+      let repoPath;
       try {
-        await target.bootstrapAuth(strategy.codexHome ?? "~/.codex", credentials);
-      } finally {
-        credentials.fill(0);
+        repoPath = assertGitRepositoryRoot(a.repo_path);
+        if (!isGitRepo(repoPath)) {
+          return err({ ok: false, error: `Kein git-Repo: ${repoPath}` });
+        }
+        if (a.plan_id) {
+          const existing = store.getPlan(a.plan_id);
+          if (existing) {
+            const existingRepoPath = assertGitRepositoryRoot(existing.repo_path);
+            if (existingRepoPath !== repoPath) {
+              throw new Error("repo_path does not match the existing plan repository");
+            }
+          }
+        }
+      } catch (e) {
+        return err({ ok: false, error: e?.message ?? String(e) });
       }
-    } else {
-      if (!target.loginAccessToken) {
-        throw new TargetError("TARGET_AUTH", "Remote-Target unterst\xFCtzt keinen Token-Login", target.id);
-      }
-      const [command, ...args] = strategy.secretCommand;
-      if (!command) throw new TargetError("TARGET_AUTH", "Secret-Command fehlt", target.id);
-      const result = await startManagedProcess({
-        command,
-        args,
-        env: buildChildEnvironment(process.env, "ssh"),
-        timeoutMs: 3e4,
-        killGraceMs: 2e3,
-        maxStdoutBytes: MAX_CREDENTIAL_BYTES,
-        maxStderrBytes: 16 * 1024
-      }).done;
-      if (result.code !== 0 || result.termination !== "normal") {
-        throw new TargetError(
-          "TARGET_AUTH",
-          `Secret-Command fehlgeschlagen: ${result.stderr || result.error || result.termination}`,
-          target.id
+      return store.tx(() => {
+        let planId = a.plan_id;
+        if (!planId || !store.getPlan(planId)) {
+          const p = store.createPlan(a.goal, a.constraints ?? null, repoPath);
+          planId = p.id;
+        }
+        const persisted = a.clusters.map(
+          (c, i) => store.upsertCluster({
+            id: c.id,
+            plan_id: planId,
+            ordinal: i,
+            name: c.name,
+            goal: c.goal,
+            tasks_json: JSON.stringify(c.tasks),
+            acceptance_json: JSON.stringify(c.acceptance),
+            risks_json: JSON.stringify(c.risks ?? []),
+            model_policy_json: JSON.stringify(c.model_policy),
+            review_strategy_json: JSON.stringify(c.review_strategy),
+            parallel_ok: c.parallel_ok ? 1 : 0
+          })
         );
-      }
-      const token = Buffer.from(result.stdout.replace(/[\r\n]+$/, ""));
-      if (token.length === 0 || token.length > MAX_CREDENTIAL_BYTES) {
-        throw new TargetError("TARGET_AUTH", "Secret-Command lieferte keinen g\xFCltigen Token", target.id);
-      }
-      try {
-        await target.loginAccessToken(strategy.codexHome ?? "~/.codex", token);
-      } finally {
-        token.fill(0);
-      }
-    }
-    return requireHealthy(await target.doctor(), target.id);
-  }
-};
-
-// src/execution/router.ts
-function healthError(health) {
-  const code = health.errorCode ?? (health.auth.state === "authenticated" ? "TARGET_VERSION" : "TARGET_AUTH");
-  return new TargetError(code, health.message, health.targetId, false);
-}
-var ExecutionTargetRouter = class {
-  constructor(options) {
-    this.options = options;
-  }
-  options;
-  async select(repoPath) {
-    if (this.options.mode === "local-only") {
-      const repository = await this.requireHealthy(this.options.local, repoPath);
-      return { target: this.options.local, repository, reason: "local-only", fallbackFrom: null };
-    }
-    const remote = this.options.remote;
-    if (!remote) throw new TargetError("TARGET_POLICY", "Remote-Ausf\xFChrung ist nicht konfiguriert", "remote");
-    try {
-      const remoteRepository = await this.requireHealthy(remote, repoPath);
-      const localRepository = await this.requireHealthy(this.options.local, repoPath);
-      this.requireMatchingRepositories(localRepository, remoteRepository, remote.id);
-      return { target: remote, repository: remoteRepository, reason: "remote-healthy", fallbackFrom: null };
-    } catch (error2) {
-      const targetError = error2 instanceof TargetError ? error2 : new TargetError("TARGET_PROTOCOL", error2 instanceof Error ? error2.message : String(error2), remote.id);
-      const canFallback = this.options.mode === "remote-preferred" && this.options.fallback === "connectivity-only" && targetError.code === "TARGET_CONNECTIVITY" && targetError.retryable;
-      if (!canFallback) throw targetError;
-      const repository = await this.requireHealthy(this.options.local, repoPath);
-      if (!repository.clean) {
-        throw new TargetError("TARGET_REPOSITORY", "Lokales Fallback-Repository enth\xE4lt uncommittierte \xC4nderungen", "local");
-      }
-      return {
-        target: this.options.local,
-        repository,
-        reason: "remote-connectivity-fallback",
-        fallbackFrom: remote.id
-      };
-    }
-  }
-  async requireHealthy(target, repoPath) {
-    const health = await target.doctor();
-    if (health.state !== "healthy") throw healthError(health);
-    return target.repositoryIdentity(repoPath);
-  }
-  requireMatchingRepositories(local, remote, remoteTargetId) {
-    if (local.headCommit !== remote.headCommit) {
-      throw new TargetError("TARGET_REPOSITORY", "Lokaler und entfernter Git-Commit stimmen nicht \xFCberein", remoteTargetId);
-    }
-    if (!local.clean || !remote.clean) {
-      throw new TargetError("TARGET_REPOSITORY", "Remote-Routing erfordert saubere Repository-Zust\xE4nde", remoteTargetId);
-    }
-  }
-};
-
-// src/execution/ssh/target.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
-import { existsSync as existsSync6 } from "node:fs";
-import { dirname as dirname3, isAbsolute as isAbsolute3, relative, resolve as resolve5, sep as sep2 } from "node:path";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-
-// src/execution/ssh/client.ts
-function sshOptions(options) {
-  return [
-    ...options.configFile ? ["-F", options.configFile] : [],
-    "-T",
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "StrictHostKeyChecking=yes",
-    "-o",
-    `ConnectTimeout=${options.connectTimeoutSeconds ?? 10}`
-  ];
-}
-function scpOptions(options) {
-  return [
-    ...options.configFile ? ["-F", options.configFile] : [],
-    "-q",
-    "-o",
-    "BatchMode=yes",
-    "-o",
-    "StrictHostKeyChecking=yes"
-  ];
-}
-function startWorkerProcess(options, workerEntry, request, timeoutMs, onLine) {
-  return startManagedProcess({
-    command: options.sshBin ?? "ssh",
-    args: [...sshOptions(options), options.host, "node", workerEntry],
-    env: buildChildEnvironment(process.env, "ssh"),
-    input: JSON.stringify(request),
-    timeoutMs,
-    killGraceMs: config2.limits.sliceKillGraceMs,
-    maxStdoutBytes: 12 * 1024 * 1024,
-    maxStderrBytes: 64 * 1024,
-    onStdoutLine: onLine
-  });
-}
-
-// src/execution/ssh/deploy.ts
-import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync5, readFileSync as readFileSync4 } from "node:fs";
-
-// src/version.ts
-var ORCHESTRATOR_VERSION = "1.5.2";
-
-// src/execution/ssh/deploy.ts
-function safeRemotePath(path) {
-  if (!/^(?:~\/|\/)[A-Za-z0-9._/-]+$/.test(path) || path.includes("..")) {
-    throw new TargetError("TARGET_POLICY", "Unsicherer Remote-Worker-Pfad", "remote");
-  }
-}
-async function run(command, args, timeoutMs) {
-  const processResult = await startManagedProcess({
-    command,
-    args,
-    env: buildChildEnvironment(process.env, "ssh"),
-    timeoutMs,
-    killGraceMs: 2e3,
-    maxStdoutBytes: 64e3,
-    maxStderrBytes: 64e3
-  }).done;
-  return { code: processResult.code, output: `${processResult.stdout}${processResult.stderr}` };
-}
-var WorkerDeployer = class {
-  constructor(options) {
-    this.options = options;
-  }
-  options;
-  async ensure() {
-    if (!existsSync5(this.options.workerBundlePath)) {
-      throw new TargetError("TARGET_VERSION", "Remote-Worker-Bundle fehlt", this.options.host);
-    }
-    safeRemotePath(this.options.workerRoot);
-    const bytes = readFileSync4(this.options.workerBundlePath);
-    const hash = createHash2("sha256").update(bytes).digest("hex");
-    const directory = `${this.options.workerRoot}/${ORCHESTRATOR_VERSION}/${hash}`;
-    const destination = `${directory}/worker.mjs`;
-    const temporary = `${destination}.tmp`;
-    const common = sshOptions(this.options);
-    const present = await run(this.options.sshBin ?? "ssh", [
-      ...common,
-      this.options.host,
-      "test",
-      "-f",
-      destination
-    ], 15e3);
-    if (present.code === 0) return destination;
-    const created = await run(this.options.sshBin ?? "ssh", [
-      ...common,
-      this.options.host,
-      "mkdir",
-      "-p",
-      directory
-    ], 15e3);
-    if (created.code !== 0) {
-      throw new TargetError("TARGET_CONNECTIVITY", `Worker-Verzeichnis nicht erstellbar: ${created.output}`, this.options.host, true);
-    }
-    const copied = await run(this.options.scpBin ?? "scp", [
-      ...scpOptions(this.options),
-      this.options.workerBundlePath,
-      `${this.options.host}:${temporary}`
-    ], 6e4);
-    if (copied.code !== 0) {
-      throw new TargetError("TARGET_CONNECTIVITY", `Worker-Upload fehlgeschlagen: ${copied.output}`, this.options.host, true);
-    }
-    const activated = await run(this.options.sshBin ?? "ssh", [
-      ...common,
-      this.options.host,
-      "chmod",
-      "700",
-      temporary,
-      "&&",
-      "mv",
-      temporary,
-      destination
-    ], 15e3);
-    if (activated.code !== 0) {
-      throw new TargetError("TARGET_CONNECTIVITY", `Worker-Aktivierung fehlgeschlagen: ${activated.output}`, this.options.host, true);
-    }
-    return destination;
-  }
-};
-
-// src/execution/ssh/protocol.ts
-import { isAbsolute as isAbsolute2, resolve as resolve4, sep } from "node:path";
-var WORKER_PROTOCOL_VERSION = 1;
-var RequestBase = {
-  requestId: external_exports.string().uuid(),
-  protocol: external_exports.literal(WORKER_PROTOCOL_VERSION)
-};
-var RepositoryScope = external_exports.object({
-  allowedRoot: external_exports.string().min(1),
-  cwd: external_exports.string().min(1)
-}).strict().superRefine(({ allowedRoot, cwd }, context) => {
-  const root = resolve4(allowedRoot);
-  const candidate = resolve4(cwd);
-  if (candidate !== root && !candidate.startsWith(`${root}${sep}`)) {
-    context.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      path: ["cwd"],
-      message: "cwd must resolve within allowedRoot"
-    });
-  }
-});
-var ScopedShape = {
-  allowedRoot: external_exports.string().min(1),
-  cwd: external_exports.string().min(1)
-};
-var safeScope = (shape) => external_exports.object({
-  ...RequestBase,
-  ...ScopedShape,
-  ...shape
-}).strict().superRefine((value, context) => {
-  const result = RepositoryScope.safeParse({ allowedRoot: value.allowedRoot, cwd: value.cwd });
-  if (!result.success) {
-    for (const issue2 of result.error.issues) context.addIssue(issue2);
-  }
-});
-var GitArgumentsSchema = external_exports.array(external_exports.string().min(1).max(4096)).min(1).max(32).superRefine((args, context) => {
-  const allowed = /* @__PURE__ */ new Set(["rev-parse", "status", "diff", "ls-files", "worktree", "merge", "branch"]);
-  if (!allowed.has(args[0])) {
-    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "Git subcommand is not allowed" });
-  }
-  if (args.some((argument) => argument.includes("\0") || argument.includes("\n") || argument.includes("\r"))) {
-    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "Git args contain invalid control characters" });
-  }
-});
-var CheckNameSchema = external_exports.enum([
-  "git_diff_summary",
-  "git_status",
-  "mvn_test",
-  "npm_test",
-  "npm_build",
-  "lint",
-  "typecheck"
-]);
-var CodexHomeSchema = external_exports.string().superRefine((value, context) => {
-  if (!value.startsWith("~/") && !isAbsolute2(value)) {
-    context.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      message: "codexHome must be absolute or start with ~/"
-    });
-  }
-  if (/[\0\r\n`$;&|<>"']/.test(value)) {
-    context.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      message: "codexHome contains unsupported control or shell characters"
-    });
-  }
-  if (value.split(/[\\/]/).includes("..")) {
-    context.addIssue({ code: external_exports.ZodIssueCode.custom, message: "codexHome must not contain traversal" });
-  }
-});
-var WorkerRequestSchema = external_exports.union([
-  external_exports.object({ ...RequestBase, operation: external_exports.literal("handshake") }).strict(),
-  external_exports.object({
-    ...RequestBase,
-    operation: external_exports.literal("doctor"),
-    codexBin: external_exports.string().min(1).optional(),
-    codexHome: CodexHomeSchema
-  }).strict(),
-  safeScope({ operation: external_exports.literal("repository.identity") }),
-  safeScope({ operation: external_exports.literal("check.run"), checkName: CheckNameSchema }),
-  safeScope({ operation: external_exports.literal("git.run"), args: GitArgumentsSchema }),
-  safeScope({
-    operation: external_exports.literal("codex.run"),
-    codexBin: external_exports.string().min(1),
-    codexHome: CodexHomeSchema,
-    options: external_exports.object({
-      threadId: external_exports.string().nullable().optional(),
-      prompt: external_exports.string().max(2e6),
-      sandbox: external_exports.enum(["read-only", "workspace-write"]),
-      model: external_exports.string().min(1),
-      effort: external_exports.enum(["low", "medium", "high", "xhigh"]),
-      network: external_exports.boolean(),
-      timeoutMs: external_exports.number().int().positive().max(4 * 60 * 6e4),
-      extraConfig: external_exports.record(external_exports.string()).optional()
-    }).strict()
-  }),
-  external_exports.object({
-    ...RequestBase,
-    operation: external_exports.literal("auth.status"),
-    codexBin: external_exports.string().min(1),
-    codexHome: CodexHomeSchema
-  }).strict(),
-  external_exports.object({
-    ...RequestBase,
-    operation: external_exports.literal("auth.bootstrap"),
-    codexHome: CodexHomeSchema,
-    credentialBase64: external_exports.string().max(128 * 1024)
-  }).strict(),
-  external_exports.object({
-    ...RequestBase,
-    operation: external_exports.literal("auth.login-token"),
-    codexBin: external_exports.string().min(1),
-    codexHome: CodexHomeSchema,
-    tokenBase64: external_exports.string().max(128 * 1024)
-  }).strict()
-]);
-
-// src/execution/ssh/target.ts
-function defaultWorkerBundle() {
-  const directory = dirname3(fileURLToPath2(import.meta.url));
-  const candidates = [resolve5(directory, "worker.mjs"), resolve5(directory, "../../../bundle/worker.mjs")];
-  return candidates.find((candidate) => existsSync6(candidate)) ?? candidates[0];
-}
-function failedOutcome(message) {
-  return {
-    threadId: null,
-    agentMessages: [],
-    commands: [],
-    usage: null,
-    sliceResult: parseSliceResult(""),
-    status: "failed",
-    errorMessage: message,
-    rawEventCount: 0
-  };
-}
-var SshExecutionTarget = class {
-  constructor(options) {
-    this.options = options;
-    this.id = options.id;
-    this.workerEntry = options.workerEntry ?? "";
-    this.ready = options.skipDeploy === true;
-    if (!options.skipDeploy) {
-      this.deployer = new WorkerDeployer({
-        host: options.host,
-        sshBin: options.sshBin,
-        scpBin: options.scpBin,
-        configFile: options.configFile,
-        workerBundlePath: options.workerBundlePath ?? defaultWorkerBundle(),
-        workerRoot: options.workerRoot ?? "~/.cache/codex-orchestrator"
+        return ok({
+          ok: true,
+          plan_id: planId,
+          clusters: persisted.map((c) => ({ id: c.id, ordinal: c.ordinal, name: c.name, status: c.status }))
+        });
       });
     }
-  }
-  options;
-  kind = "ssh";
-  id;
-  deployer;
-  workerEntry;
-  ready;
-  mapRepository(localPath) {
-    const localRoot = resolve5(this.options.localRoot);
-    const candidate = resolve5(localPath);
-    const suffix = relative(localRoot, candidate);
-    if (suffix === ".." || suffix.startsWith(`..${sep2}`) || isAbsolute3(suffix)) {
-      throw new TargetError("TARGET_REPOSITORY", "Repository-Pfad liegt au\xDFerhalb des lokalen Mappings", this.id);
-    }
-    return resolve5(this.options.remoteRoot, suffix);
-  }
-  async doctor() {
-    await this.prepare();
-    const data = await this.invoke({
-      requestId: randomUUID2(),
-      protocol: WORKER_PROTOCOL_VERSION,
-      operation: "doctor",
-      codexBin: this.options.codexBin,
-      codexHome: this.options.codexHome
-    }, 2e4);
-    return { ...data, targetId: this.id, kind: this.kind };
-  }
-  startCodex(request) {
-    if (!this.ready) throw new TargetError("TARGET_CONNECTIVITY", "Remote-Target wurde nicht vorbereitet", this.id, true);
-    const requestId = randomUUID2();
-    let final;
-    const process3 = startWorkerProcess(
-      { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
-      this.workerEntry,
-      {
-        requestId,
-        protocol: WORKER_PROTOCOL_VERSION,
-        operation: "codex.run",
-        allowedRoot: this.options.remoteRoot,
-        cwd: this.mapRepository(request.repoPath),
-        codexBin: this.options.codexBin,
-        codexHome: this.options.codexHome,
-        options: {
-          threadId: request.threadId,
-          prompt: request.prompt,
-          sandbox: request.sandbox,
-          model: request.model,
-          effort: request.effort,
-          network: request.network,
-          timeoutMs: request.timeoutMs,
-          extraConfig: request.extraConfig
+  );
+  server2.registerTool(
+    "cluster_transition",
+    {
+      title: "Cluster-Status\xFCbergang (servererzwungen)",
+      description: "start|submit|review|request_changes|confirm|block|retro|replan. confirm scheitert ohne REVIEW_RESULT=confirmed UND gr\xFCne deklarierte Checks. review f\xFChrt deklarierte Checks aus (run_checks=false zum Abschalten).",
+      inputSchema: {
+        cluster_id: external_exports.string(),
+        action: external_exports.enum(["start", "submit", "review", "request_changes", "confirm", "block", "retro", "replan"]),
+        payload: external_exports.record(external_exports.any()).optional()
+      }
+    },
+    async (a) => {
+      const payload = a.payload ?? {};
+      if (a.action === "review" && payload.run_checks !== false) {
+        const cluster = store.getCluster(a.cluster_id);
+        const repo = repoPathForCluster(store, a.cluster_id);
+        if (cluster && repo) {
+          const strategy = JSON.parse(cluster.review_strategy_json || "{}");
+          const declared = strategy.checks ?? [];
+          if (declared.length) {
+            const scope = latestWorktreeForCluster(store, a.cluster_id) || repo;
+            const res = await runChecks(store, a.cluster_id, scope, declared, executionTargetForCluster(a.cluster_id));
+            payload.checks_run = res.runs;
+          }
         }
-      },
-      request.timeoutMs + config2.limits.sliceKillGraceMs + 15e3,
-      (line) => {
-        const frame = parseFrame(line);
-        if (!frame || frame.requestId !== requestId) return;
-        if (frame.frame === "event") request.onLine?.(frame.line);
-        else final = frame;
       }
-    );
-    const done = process3.done.then(() => {
-      if (!final || final.frame !== "result") return failedOutcome("Remote-Worker lieferte kein Ergebnis");
-      if (!final.ok) return failedOutcome(final.error.message);
-      return final.data;
-    });
-    return { child: process3.child, done };
-  }
-  async repositoryIdentity(repoPath) {
-    await this.prepare();
-    return this.invoke({
-      requestId: randomUUID2(),
-      protocol: WORKER_PROTOCOL_VERSION,
-      operation: "repository.identity",
-      allowedRoot: this.options.remoteRoot,
-      cwd: this.mapRepository(repoPath)
-    }, 2e4);
-  }
-  async runCheck(request) {
-    await this.prepare();
-    const checkName = Object.entries(config2.checks).find(([, check2]) => check2.argv.length === request.argv.length && check2.argv.every((value, index) => value === request.argv[index]))?.[0];
-    if (!checkName) throw new TargetError("TARGET_POLICY", "Check ist nicht allowlisted", this.id);
-    return this.invoke({
-      requestId: randomUUID2(),
-      protocol: WORKER_PROTOCOL_VERSION,
-      operation: "check.run",
-      allowedRoot: this.options.remoteRoot,
-      cwd: this.mapRepository(request.cwd),
-      checkName
-    }, request.timeoutMs ?? 15 * 6e4);
-  }
-  async runGit(request) {
-    await this.prepare();
-    return this.invoke({
-      requestId: randomUUID2(),
-      protocol: WORKER_PROTOCOL_VERSION,
-      operation: "git.run",
-      allowedRoot: this.options.remoteRoot,
-      cwd: this.mapRepository(request.cwd),
-      args: request.argv
-    }, request.timeoutMs ?? 6e4);
-  }
-  async createWorktree(repoPath, taskId) {
-    const worktree = resolve5(this.options.localRoot, ".codex-orchestrator-worktrees", taskId);
-    const remoteWorktree = this.mapRepository(worktree);
-    const branch = `codex/${taskId}`;
-    const result = await this.runGit({
-      cwd: repoPath,
-      argv: ["worktree", "add", "-b", branch, remoteWorktree, "HEAD"],
-      timeoutMs: 6e4
-    });
-    if (result.code !== 0) {
-      throw new TargetError("TARGET_REPOSITORY", result.stderr || "Remote-Worktree konnte nicht erstellt werden", this.id);
+      const r = machine.transition(a.cluster_id, a.action, payload);
+      return r.ok ? ok(r) : err(r);
     }
-    return { worktree, branch };
-  }
-  async mergeWorktree(repoPath, branch, options) {
-    const args = ["merge"];
-    if (options.noFf) args.push("--no-ff");
-    if (options.noGpgSign) args.push("--no-gpg-sign");
-    args.push(branch);
-    const result = await this.runGit({ cwd: repoPath, argv: args, timeoutMs: 12e4 });
-    const output = `${result.stdout}${result.stderr}`;
-    if (result.code === 0) return { ok: true, conflict: false, output };
-    const conflict = /CONFLICT|automatic merge failed/i.test(output);
-    if (conflict) await this.runGit({ cwd: repoPath, argv: ["merge", "--abort"], timeoutMs: 3e4 });
-    return { ok: false, conflict, output };
-  }
-  async removeWorktree(repoPath, worktree, branch) {
-    const removed = await this.runGit({
-      cwd: repoPath,
-      argv: ["worktree", "remove", "--force", this.mapRepository(worktree)],
-      timeoutMs: 6e4
-    });
-    if (removed.code !== 0) throw new TargetError("TARGET_REPOSITORY", removed.stderr, this.id);
-    const deleted = await this.runGit({ cwd: repoPath, argv: ["branch", "-D", branch], timeoutMs: 3e4 });
-    if (deleted.code !== 0) throw new TargetError("TARGET_REPOSITORY", deleted.stderr, this.id);
-  }
-  async bootstrapAuth(codexHome, credentials) {
-    await this.prepare();
-    return this.invoke({
-      requestId: randomUUID2(),
-      protocol: WORKER_PROTOCOL_VERSION,
-      operation: "auth.bootstrap",
-      codexHome,
-      credentialBase64: credentials.toString("base64")
-    }, 2e4);
-  }
-  async loginAccessToken(codexHome, token) {
-    await this.prepare();
-    return this.invoke({
-      requestId: randomUUID2(),
-      protocol: WORKER_PROTOCOL_VERSION,
-      operation: "auth.login-token",
-      codexBin: this.options.codexBin,
-      codexHome,
-      tokenBase64: token.toString("base64")
-    }, 75e3);
-  }
-  async prepare() {
-    if (this.ready) return;
-    if (!this.deployer) throw new TargetError("TARGET_VERSION", "Remote-Worker-Deployer fehlt", this.id);
-    this.workerEntry = await this.deployer.ensure();
-    this.ready = true;
-    const handshake = await this.invoke({
-      requestId: randomUUID2(),
-      protocol: WORKER_PROTOCOL_VERSION,
-      operation: "handshake"
-    }, 2e4);
-    if (handshake.protocol !== WORKER_PROTOCOL_VERSION) {
-      this.ready = false;
-      throw new TargetError("TARGET_VERSION", "Remote-Worker-Protokoll ist inkompatibel", this.id);
-    }
-  }
-  async invoke(request, timeoutMs) {
-    let final;
-    const process3 = startWorkerProcess(
-      { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
-      this.workerEntry,
-      request,
-      timeoutMs,
-      (line) => {
-        const frame = parseFrame(line);
-        if (frame?.frame === "result" && frame.requestId === request.requestId) final = frame;
+  );
+  server2.registerTool(
+    "cluster_merge",
+    {
+      title: "Worktree-Branch mergen (M3, sequenziell nach Review)",
+      description: "Merged den Branch eines parallelen Tasks erst nach confirmed Cluster/Review und gr\xFCnen Checks. Konflikt -> Merge wird abgebrochen.",
+      inputSchema: {
+        cluster_id: external_exports.string(),
+        task_id: external_exports.string(),
+        no_ff: external_exports.boolean().default(true),
+        sign: external_exports.boolean().optional().describe("Merge-Commit signieren. Default: Server-Policy (ORCH_SIGN_MERGE)."),
+        cleanup: external_exports.boolean().default(false).describe("Worktree + Branch nach erfolgreichem Merge entfernen.")
       }
-    );
-    const result = await process3.done;
-    if (!final || final.frame !== "result") {
-      throw classifySshFailure(this.id, result.code, result.stderr);
+    },
+    async (a) => {
+      const repo = repoPathForCluster(store, a.cluster_id);
+      if (!repo) return err({ ok: false, error: "Plan-Repo nicht gefunden" });
+      const cluster = store.getCluster(a.cluster_id);
+      if (!cluster) return err({ ok: false, error: "Cluster nicht gefunden" });
+      const task = store.getTask(a.task_id);
+      if (!task || !task.branch) return err({ ok: false, error: "Task ohne Worktree-Branch" });
+      const review = store.latestReview(a.cluster_id);
+      const strategy = JSON.parse(cluster.review_strategy_json || "{}");
+      const checks = store.checksForCluster(a.cluster_id);
+      const checksGreen = (strategy.checks ?? []).every((name) => {
+        const latest = [...checks].reverse().find((check2) => check2.cmd === name);
+        return latest?.exit_code === 0;
+      });
+      const eligibility = mergeEligibility({
+        clusterId: cluster.id,
+        taskClusterId: task.cluster_id,
+        taskStatus: task.status,
+        clusterStatus: cluster.status,
+        reviewStatus: review?.status ?? null,
+        checksGreen
+      });
+      if (!eligibility.ok) {
+        return err({ ok: false, error: "Merge-Gates nicht erf\xFCllt", reasons: eligibility.reasons });
+      }
+      const sign = a.sign ?? config2.signMergeCommits;
+      const target = execution.registry.get(task.target_id);
+      const r = target.kind === "ssh" && target.mergeWorktree ? await target.mergeWorktree(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign }) : worktrees.merge(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign });
+      if (!r.ok) {
+        return err({ ok: false, conflict: r.conflict, error: "Merge fehlgeschlagen", output: r.output.slice(-1500) });
+      }
+      let cleaned = false;
+      if (a.cleanup && task.worktree) {
+        try {
+          if (target.kind === "ssh" && target.removeWorktree) {
+            await target.removeWorktree(repo, task.worktree, task.branch);
+          } else {
+            worktrees.remove(repo, task.worktree, task.branch);
+          }
+          store.updateTask(task.id, { worktree: null });
+          cleaned = true;
+        } catch {
+        }
+      }
+      return ok({ ok: true, merged: task.branch, cleaned, output: r.output.slice(-1e3) });
     }
-    if (!final.ok) throw new TargetError(parseTargetErrorCode(final.error.code), final.error.message, this.id);
-    return final.data;
-  }
-};
-var TARGET_ERROR_CODES = /* @__PURE__ */ new Set([
-  "TARGET_CONNECTIVITY",
-  "TARGET_HOST_KEY",
-  "TARGET_AUTH",
-  "TARGET_POLICY",
-  "TARGET_VERSION",
-  "TARGET_PROTOCOL",
-  "TARGET_REPOSITORY",
-  "TARGET_CANCELLED",
-  "TARGET_TIMEOUT"
-]);
-function parseTargetErrorCode(value) {
-  return TARGET_ERROR_CODES.has(value) ? value : "TARGET_PROTOCOL";
-}
-function parseFrame(line) {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return void 0;
-  }
-}
-function classifySshFailure(targetId, code, stderr) {
-  if (/host key verification failed|remote host identification has changed/i.test(stderr)) {
-    return new TargetError("TARGET_HOST_KEY", "SSH-Host-Key-Pr\xFCfung fehlgeschlagen", targetId);
-  }
-  if (code === 255 || /timed out|connection refused|could not resolve hostname/i.test(stderr)) {
-    return new TargetError("TARGET_CONNECTIVITY", "SSH-Verbindung zum Remote-Target fehlgeschlagen", targetId, true);
-  }
-  return new TargetError("TARGET_PROTOCOL", "Remote-Worker lieferte keine g\xFCltige Antwort", targetId);
+  );
+  server2.registerTool(
+    "plan_snapshot",
+    {
+      title: "Plan-Zustand als durables Snapshot (TOON/JSON)",
+      description: "Schreibt Plan+Cluster+Hypothesen+Reviews+Checks als kompaktes, kompressionssicheres Artefakt (TOON default) nach ORCH_HOME/snapshots und gibt den Inhalt zur\xFCck. Gegen Kontext-Kompaktierung.",
+      inputSchema: {
+        plan_id: external_exports.string(),
+        format: external_exports.enum(["toon", "json"]).default("toon")
+      }
+    },
+    async (a) => {
+      const res = writePlanSnapshot(store, a.plan_id, a.format);
+      if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
+      return ok({ ok: true, format: res.format, path: res.path, content: res.content });
+    }
+  );
+  server2.registerTool(
+    "result_artifact",
+    {
+      title: "Finales Gesamtartefakt erzeugen (.toln)",
+      description: "Erzeugt am Ende eines Orchestrator-Laufs ein versioniertes, maschinenlesbares Ergebnisartefakt: TOML mit Endung .toln (+ summary.md). Enth\xE4lt Plan, Cluster, Tasks, Agentenjobs, alle Hypothesen und ihre Aktualisierungen, Reviews, Nutzerentscheidungen, ge\xE4nderte Dateien, Tests, Findings, offene Punkte, Gesamtbewertung und Pr\xFCfsumme. Registriert das Artefakt in der DB.",
+      inputSchema: {
+        plan_id: external_exports.string(),
+        original_request: external_exports.string().optional(),
+        interpreted_goal: external_exports.string().optional(),
+        final_assessment: external_exports.string().optional(),
+        recommended_next_steps: external_exports.array(external_exports.string()).optional(),
+        git_commit_before: external_exports.string().optional().describe("Basis-Commit f\xFCr die Datei-Diff-Ermittlung (sonst HEAD~1).")
+      }
+    },
+    async (a) => {
+      const res = writeResultArtifact(store, a.plan_id, {
+        originalUserRequest: a.original_request,
+        interpretedGoal: a.interpreted_goal,
+        finalAssessment: a.final_assessment,
+        recommendedNextSteps: a.recommended_next_steps,
+        gitCommitBefore: a.git_commit_before ?? null
+      });
+      if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
+      store.addAuditEvent({
+        actor: "claude",
+        action: "result_artifact_generated",
+        resource: a.plan_id,
+        detail: { path: res.tolnPath, artifactVersion: res.artifact.artifactVersion, checksum: res.artifact.checksum },
+        redacted: false
+      });
+      return ok({
+        ok: true,
+        toln_path: res.tolnPath,
+        summary_path: res.summaryPath,
+        schema_version: res.artifact.schemaVersion,
+        artifact_version: res.artifact.artifactVersion,
+        checksum: res.artifact.checksum,
+        clusters: res.artifact.clusters.length,
+        hypotheses: res.artifact.hypotheses.length,
+        unresolved: res.artifact.unresolvedIssues.length
+      });
+    }
+  );
 }
 
-// src/execution/registry.ts
-var AuthenticatedExecutionTarget = class {
-  constructor(target, strategy, bootstrapper = new RemoteAuthBootstrapper()) {
-    this.target = target;
-    this.strategy = strategy;
-    this.bootstrapper = bootstrapper;
-    this.id = target.id;
-    this.kind = target.kind;
-  }
-  target;
-  strategy;
-  bootstrapper;
-  id;
-  kind;
-  doctor() {
-    return this.bootstrapper.ensure(this.target, this.strategy);
-  }
-  startCodex(request) {
-    return this.target.startCodex(request);
-  }
-  repositoryIdentity(repoPath) {
-    return this.target.repositoryIdentity(repoPath);
-  }
-  runCheck(request) {
-    return this.target.runCheck(request);
-  }
-  runGit(request) {
-    return this.target.runGit(request);
-  }
-  createWorktree(repoPath, taskId) {
-    return this.target.createWorktree(repoPath, taskId);
-  }
-  mergeWorktree(repoPath, branch, options) {
-    return this.target.mergeWorktree(repoPath, branch, options);
-  }
-  removeWorktree(repoPath, worktree, branch) {
-    return this.target.removeWorktree(repoPath, worktree, branch);
-  }
-};
-var ExecutionTargetRegistry = class {
-  targets = /* @__PURE__ */ new Map();
-  register(target) {
-    this.targets.set(target.id, target);
-  }
-  get(id) {
-    const target = this.targets.get(id);
-    if (!target) throw new Error(`Unbekanntes Execution-Target: ${id}`);
-    return target;
-  }
-  list() {
-    return [...this.targets.values()];
-  }
-};
-function createExecutionRuntime(configuration) {
-  const registry2 = new ExecutionTargetRegistry();
-  const local = new LocalExecutionTarget({ codexBin: configuration.codexBin });
-  registry2.register(local);
-  let remote;
-  if (configuration.execution.mode !== "local-only") {
-    const remoteConfig = configuration.execution.remote;
-    const raw = new SshExecutionTarget({
-      id: remoteConfig.id,
-      host: remoteConfig.host,
-      localRoot: remoteConfig.repository.localRoot,
-      remoteRoot: remoteConfig.repository.remoteRoot,
-      codexBin: remoteConfig.codexBin,
-      codexHome: remoteConfig.codexHome,
-      workerRoot: remoteConfig.workerRoot
-    });
-    const strategy = remoteConfig.auth.strategy === "existing" ? remoteConfig.auth : { ...remoteConfig.auth, codexHome: remoteConfig.codexHome };
-    remote = new AuthenticatedExecutionTarget(raw, strategy);
-    registry2.register(remote);
-  }
-  return {
-    registry: registry2,
-    router: new ExecutionTargetRouter({
-      mode: configuration.execution.mode,
-      fallback: configuration.execution.fallback,
-      local,
-      remote
-    })
-  };
+// src/app/tools/knowledge.ts
+function registerKnowledgeTools(server2, ctx2) {
+  const { store, hypRepo, ok, err, executionTargetForCluster } = ctx2;
+  server2.registerTool(
+    "hypotheses",
+    {
+      title: "Hypothesen f\xFChren (versioniert)",
+      description: "Legacy: list|add|confirm|reject|supersede (plan-weite Freitext-Hypothesen). Reiches, versioniertes Modell: create|update|get|versions. 'create' bildet die Pflicht-Hypothese VOR einer Aufgabe (initialAssumption + criticalQuestions + falsificationPlan). 'update' aktualisiert append-only NACH der Aufgabe (result + evidence + updatedAssumption).",
+      inputSchema: {
+        plan_id: external_exports.string().optional().describe("F\xFCr list/add/create (plan-weite Gruppierung)."),
+        action: external_exports.enum([
+          "list",
+          "add",
+          "confirm",
+          "reject",
+          "supersede",
+          "create",
+          "update",
+          "get",
+          "versions"
+        ]),
+        id: external_exports.string().optional(),
+        text: external_exports.string().optional().describe("Legacy add: Freitext."),
+        evidence: external_exports.string().optional().describe("Legacy: Provenienz."),
+        // --- reiches Modell ---
+        task_id: external_exports.string().optional(),
+        cluster_id: external_exports.string().optional(),
+        initial_assumption: external_exports.string().optional().describe("create: die Ausgangsannahme."),
+        confidence_before: external_exports.number().min(0).max(1).optional().describe("create: Konfidenz [0,1] vor der Aufgabe."),
+        critical_questions: external_exports.array(external_exports.string()).optional().describe("create: aktives Hinterfragen."),
+        falsification_plan: external_exports.array(external_exports.string()).optional().describe("create: wie k\xF6nnte die Annahme scheitern?"),
+        result: external_exports.enum(["open", "confirmed", "partially_confirmed", "refuted"]).optional().describe("update: Pr\xFCfergebnis."),
+        confidence_after: external_exports.number().min(0).max(1).optional().describe("update: Konfidenz [0,1] nach der Aufgabe."),
+        updated_assumption: external_exports.string().optional().describe("update: revidierte Annahme / Folgehypothese."),
+        add_evidence: external_exports.array(external_exports.string()).optional().describe("update: gefundene Evidenz."),
+        follow_up_questions: external_exports.array(external_exports.string()).optional().describe("update: PFLICHT bei partially_confirmed/refuted \u2014 was bleibt offen?"),
+        risks: external_exports.array(external_exports.string()).optional().describe("update: erkannte Risiken/Folgeprobleme."),
+        next_action: external_exports.string().optional().describe("update: n\xE4chste sinnvolle Aktion."),
+        status: external_exports.enum(["open", "confirmed", "rejected", "superseded"]).optional(),
+        version: external_exports.number().int().positive().optional().describe("get: konkrete Version (sonst neueste).")
+      }
+    },
+    async (a) => {
+      try {
+        switch (a.action) {
+          case "list":
+            if (!a.plan_id) return err({ ok: false, error: "list erfordert 'plan_id'" });
+            return ok({
+              plan_id: a.plan_id,
+              hypotheses: store.listHypotheses(a.plan_id),
+              rich: hypRepo.listByPlan(a.plan_id).map((h) => HypothesisRepo.serialize(h))
+            });
+          case "add": {
+            if (!a.plan_id) return err({ ok: false, error: "add erfordert 'plan_id'" });
+            if (!a.text) return err({ ok: false, error: "add erfordert 'text'" });
+            const id = store.addHypothesis(a.plan_id, a.text, a.evidence ?? null);
+            return ok({ ok: true, id });
+          }
+          case "confirm":
+          case "reject":
+          case "supersede": {
+            if (!a.id) return err({ ok: false, error: `${a.action} erfordert 'id'` });
+            const status = a.action === "confirm" ? "confirmed" : a.action === "reject" ? "rejected" : "superseded";
+            store.setHypothesis(a.id, status, a.evidence ?? null);
+            return ok({ ok: true, id: a.id, status });
+          }
+          case "create": {
+            if (!a.initial_assumption) return err({ ok: false, error: "create erfordert 'initial_assumption'" });
+            if (a.confidence_before === void 0) return err({ ok: false, error: "create erfordert 'confidence_before' [0,1]" });
+            const h = hypRepo.create({
+              planId: a.plan_id ?? null,
+              taskId: a.task_id ?? null,
+              clusterId: a.cluster_id ?? null,
+              initialAssumption: a.initial_assumption,
+              confidenceBefore: a.confidence_before,
+              criticalQuestions: a.critical_questions,
+              falsificationPlan: a.falsification_plan
+            });
+            return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
+          }
+          case "update": {
+            if (!a.id) return err({ ok: false, error: "update erfordert 'id'" });
+            const h = hypRepo.update(a.id, {
+              status: a.status,
+              result: a.result,
+              confidenceAfter: a.confidence_after,
+              updatedAssumption: a.updated_assumption,
+              addEvidence: a.add_evidence,
+              followUpQuestions: a.follow_up_questions,
+              risks: a.risks,
+              nextAction: a.next_action,
+              criticalQuestions: a.critical_questions,
+              falsificationPlan: a.falsification_plan,
+              taskId: a.task_id,
+              clusterId: a.cluster_id
+            });
+            return ok({ ok: true, needs_follow_up: needsFollowUp(h.result), hypothesis: HypothesisRepo.serialize(h) });
+          }
+          case "get": {
+            if (!a.id) return err({ ok: false, error: "get erfordert 'id'" });
+            const h = a.version ? hypRepo.getVersion(a.id, a.version) : hypRepo.get(a.id);
+            if (!h) return err({ ok: false, error: `Hypothese ${a.id} (v${a.version ?? "latest"}) nicht gefunden` });
+            return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
+          }
+          case "versions": {
+            if (!a.id) return err({ ok: false, error: "versions erfordert 'id'" });
+            return ok({ ok: true, id: a.id, versions: hypRepo.listVersions(a.id).map((h) => HypothesisRepo.serialize(h)) });
+          }
+        }
+      } catch (e) {
+        return err({ ok: false, error: e?.message ?? String(e) });
+      }
+    }
+  );
+  server2.registerTool(
+    "user_decision",
+    {
+      title: "Nutzerentscheidungen & Pr\xE4ferenzen (Cluster-Gate)",
+      description: "record|list|preference. Bei Review-Auff\xE4lligkeiten fragt Claude den Nutzer, ob nachgebessert werden soll; die Antwort wird hier persistiert. 'accept'/'proceed' gibt den Cluster-Abschluss trotz Findings frei, 'fix' fordert Nachbesserung. Mit remember=true wird die Antwort zur stehenden Pr\xE4ferenz (plan-weit).",
+      inputSchema: {
+        action: external_exports.enum(["record", "list", "preference"]),
+        plan_id: external_exports.string().optional(),
+        cluster_id: external_exports.string().optional(),
+        topic: external_exports.string().default("cluster_findings").describe("Entscheidungsthema. Default: Review-Auff\xE4lligkeiten."),
+        question: external_exports.string().optional().describe("Die dem Nutzer gestellte Frage (f\xFCr Audit)."),
+        decision: external_exports.enum(["accept", "proceed", "fix", "always_ask"]).optional(),
+        remember: external_exports.boolean().default(false).describe("Als stehende Pr\xE4ferenz merken (k\xFCnftig automatisch anwenden).")
+      }
+    },
+    async (a) => {
+      switch (a.action) {
+        case "record": {
+          if (!a.decision) return err({ ok: false, error: "record erfordert 'decision'" });
+          const id = store.recordDecision({
+            planId: a.plan_id ?? null,
+            clusterId: a.cluster_id ?? null,
+            topic: a.topic,
+            question: a.question ?? null,
+            decision: a.decision,
+            remember: a.remember
+          });
+          return ok({ ok: true, id, decision: a.decision, remember: a.remember });
+        }
+        case "list":
+          return ok({ ok: true, decisions: store.listDecisions({ clusterId: a.cluster_id, planId: a.plan_id }) });
+        case "preference": {
+          const pref = store.standingPreference(a.plan_id ?? null, a.topic);
+          return ok({ ok: true, topic: a.topic, preference: pref ?? null });
+        }
+      }
+    }
+  );
+  server2.registerTool(
+    "repo_check",
+    {
+      title: "Allowlisted Repo-Checks",
+      description: "F\xFChrt nur allowlisted Kommandos aus (keine freie Shell). Ergebnisse flie\xDFen in die confirm-Bedingung. Pr\xFCft zus\xE4tzlich Diff-Limits.",
+      inputSchema: {
+        cluster_id: external_exports.string(),
+        checks: external_exports.array(external_exports.string()),
+        scope: external_exports.enum(["worktree", "branch"]).default("branch")
+      }
+    },
+    async (a) => {
+      const repo = repoPathForCluster(store, a.cluster_id);
+      if (!repo) return err({ ok: false, error: "Plan-Repo f\xFCr Cluster nicht gefunden" });
+      const target = a.scope === "worktree" ? latestWorktreeForCluster(store, a.cluster_id) || repo : repo;
+      const executionTarget = executionTargetForCluster(a.cluster_id);
+      const res = await runChecks(store, a.cluster_id, target, a.checks, executionTarget);
+      let diff = { files: 0, lines: 0 };
+      try {
+        diff = await diffSize(target, executionTarget);
+      } catch {
+      }
+      return ok({
+        ok: true,
+        cluster_id: a.cluster_id,
+        scope: a.scope,
+        target,
+        runs: res.runs,
+        all_green: res.allGreen,
+        unknown_checks: res.unknown,
+        available_checks: Object.keys(config2.checks),
+        diff_summary: diff,
+        over_diff_limit: diff.lines > config2.limits.maxDiffLines || diff.files > config2.limits.maxDiffFiles
+      });
+    }
+  );
 }
 
 // src/server.ts
-var store = new Store(config2.dbPath);
-var execution = createExecutionRuntime(config2);
-var sessions = new SessionManager(store, (id) => execution.registry.get(id));
-var hypRepo = new HypothesisRepo(store);
-var machine = new ClusterStateMachine(store);
-var worktrees = new WorktreeManager();
+var ctx = createAppContext();
 (function instanceGuard() {
   try {
     _mkdirSync(config2.home, { recursive: true });
@@ -25787,863 +26662,20 @@ var worktrees = new WorktreeManager();
   }
 })();
 console.error(`[orchestrator] Store: ${config2.home} (cwd: ${process.cwd()})`);
-var reaped = sessions.reapOnStartup();
+var reaped = ctx.sessions.reapOnStartup();
 if (reaped > 0) console.error(`[orchestrator] Reaper: ${reaped} verwaiste Task(s) toter Prozesse auf 'failed' gesetzt.`);
 var server = new McpServer({ name: "codex-orchestrator", version: ORCHESTRATOR_VERSION });
-function ok(obj) {
-  return { content: [{ type: "text", text: JSON.stringify(obj, null, 2) }] };
-}
-function err(obj) {
-  return { content: [{ type: "text", text: JSON.stringify(obj, null, 2) }], isError: true };
-}
-function executionTargetForCluster(clusterId) {
-  const latest = store.listTasks({ clusterId }).at(-1);
-  return execution.registry.get(latest?.target_id ?? "local");
-}
-server.registerPrompt(
-  "codex_orchestrator",
-  {
-    title: "Codex Orchestrator",
-    description: "Plan and supervise a Codex implementation through gated clusters.",
-    argsSchema: {
-      request: external_exports.string().min(1).max(2e4),
-      repo_path: external_exports.string().min(1).optional().describe("Exact absolute Git repository root; omit only when Claude should ask the user.")
-    }
-  },
-  ({ request, repo_path }) => ({
-    messages: [{
-      role: "user",
-      content: {
-        type: "text",
-        text: "Run orchestrator_doctor first. Then decompose this request into gated clusters, form explicit hypotheses, delegate bounded slices to Codex, review every result and confirm only after declared checks pass. " + (repo_path ? `Use this exact absolute Git repository root for repo_path: ${repo_path}. ` : "Ask the user for the exact absolute Git repository root before calling cluster_plan; never infer it. ") + `Request: ${request}`
-      }
-    }]
-  })
-);
-server.registerPrompt(
-  "orchestrator_status",
-  {
-    title: "Orchestrator Status",
-    description: "Load the durable state of an orchestration plan.",
-    argsSchema: {
-      plan_id: external_exports.string().optional()
-    }
-  },
-  ({ plan_id }) => ({
-    messages: [{
-      role: "user",
-      content: {
-        type: "text",
-        text: plan_id ? `Call plan_snapshot for plan ${plan_id}, then summarize cluster, task, review and check status without changing state.` : "Identify the current plan from available task events, call plan_snapshot and summarize status without changing state."
-      }
-    }]
-  })
-);
-server.registerTool(
-  "orchestrator_doctor",
-  {
-    title: "Codex-Orchestrator Diagnose",
-    description: "Pr\xFCft alle konfigurierten Execution-Targets inklusive Codex-Version und Authentifizierung. Remote-Auth wird gem\xE4\xDF Serverkonfiguration sicher initialisiert und danach erneut gepr\xFCft.",
-    inputSchema: {}
-  },
-  async () => {
-    const targets = [];
-    for (const target of execution.registry.list()) {
-      try {
-        targets.push(await target.doctor());
-      } catch (e) {
-        targets.push({
-          targetId: target.id,
-          kind: target.kind,
-          state: "unhealthy",
-          codexVersion: null,
-          auth: { state: "error", message: e?.message ?? String(e) },
-          errorCode: e?.code ?? "TARGET_PROTOCOL",
-          message: e?.message ?? String(e)
-        });
-      }
-    }
-    const healthy = targets.every((target) => target.state === "healthy");
-    const local = targets.find((target) => target.targetId === "local");
-    const environment = buildDoctorReport({
-      codexVersion: local?.codexVersion ?? null,
-      loginStatus: local?.auth?.state === "authenticated" ? "Logged in" : "Not logged in"
-    });
-    return (healthy ? ok : err)({
-      ok: healthy,
-      version: ORCHESTRATOR_VERSION,
-      execution: config2.execution.mode,
-      project_mode: "per-request-git-root",
-      environment,
-      targets
-    });
-  }
-);
-server.registerTool(
-  "task_start",
-  {
-    title: "Codex-Task/Slice starten",
-    description: "Startet einen Codex-Auftrag als Slice-Folge. Kleine Aufgaben: wait_for='completed' (nur wenn Slice-Budget <= Sync-Limit). Gro\xDFe: 'started'/'first_checkpoint' + task_wait-Loop. danger-full-access ist unerreichbar.",
-    inputSchema: {
-      cluster_id: external_exports.string().optional().describe("Cluster, zu dem der Task geh\xF6rt (bestimmt Repo-Pfad)."),
-      repo_path: external_exports.string().optional().describe("Repo-Pfad, falls kein cluster_id angegeben ist."),
-      hypothesis_id: external_exports.string().optional().describe("PFLICHT: id der zuvor gebildeten Hypothese (hypotheses \u2192 create). Ohne verkn\xFCpfte Hypothese wird der Start blockiert."),
-      instructions: external_exports.string().describe("Konkrete Arbeitsanweisung f\xFCr Codex."),
-      acceptance_criteria: external_exports.array(external_exports.string()).optional(),
-      sandbox: external_exports.enum(["read-only", "workspace-write"]),
-      model: external_exports.string().default("auto").describe("'auto' oder konkreter Modellname aus models_list (z. B. gpt-5.5, gpt-5.4, gpt-5.4-mini)."),
-      effort: external_exports.enum(["low", "medium", "high", "xhigh"]).default("medium").describe("Reasoning effort: low|medium|high|xhigh (extra hoch)."),
-      slice_budget: external_exports.object({ max_minutes: external_exports.number().int().positive().default(8), stop_condition: external_exports.string().optional() }).optional(),
-      wait_for: external_exports.enum(["started", "first_checkpoint", "completed"]).default("started"),
-      worktree: external_exports.enum(["none", "auto"]).default("none").describe("'none' (Repo direkt) oder 'auto' (serververwaltetes isoliertes Worktree)."),
-      network: external_exports.boolean().optional().describe("Netzwerkzugriff f\xFCr den Slice (Default: Server-Policy, i.d.R. aus)."),
-      extra_config: external_exports.record(external_exports.string()).optional().describe("Zus\xE4tzliche codex -c key=value Overrides. Sicherheitskritische Keys (sandbox_mode, danger*, approval_policy, model, notify) werden ignoriert.")
-    }
-  },
-  async (a) => {
-    const effort = a.effort;
-    const sandboxCheck = checkSandboxPolicy(a.sandbox);
-    if (!sandboxCheck.ok) {
-      store.addAuditEvent({
-        actor: "claude",
-        action: sandboxCheck.dangerous ? "danger_mode_denied" : "sandbox_rejected",
-        resource: a.cluster_id ?? a.repo_path ?? null,
-        detail: { requested: a.sandbox },
-        redacted: false
-      });
-      return err({ ok: false, error: sandboxCheck.error });
-    }
-    const sandbox = sandboxCheck.sandbox;
-    const maxMinutes = a.slice_budget?.max_minutes ?? 8;
-    const stopCondition = a.slice_budget?.stop_condition ?? null;
-    const waitFor = a.wait_for;
-    let repoPath = null;
-    try {
-      if (a.cluster_id) {
-        repoPath = repoPathForCluster(store, a.cluster_id);
-        if (!repoPath) return err({ ok: false, error: `Cluster ${a.cluster_id} oder Plan-Repo nicht gefunden` });
-      } else if (a.repo_path !== void 0) {
-        repoPath = assertGitRepositoryRoot(a.repo_path);
-      } else {
-        return err({ ok: false, error: "cluster_id oder repo_path erforderlich" });
-      }
-    } catch (e) {
-      return err({ ok: false, error: e?.message ?? String(e) });
-    }
-    if (waitFor === "completed" && maxMinutes > config2.syncMaxMinutes) {
-      return err({
-        ok: false,
-        error: `wait_for='completed' nur bei slice_budget.max_minutes <= ${config2.syncMaxMinutes} zul\xE4ssig`
-      });
-    }
-    const gate = checkHypothesisGate(hypRepo, { hypothesisId: a.hypothesis_id }, config2.requireHypothesis);
-    if (!gate.ok) {
-      return err({ ok: false, error: gate.error, hint: "hypotheses \u2192 create, dann hypothesis_id an task_start \xFCbergeben." });
-    }
-    let selection;
-    try {
-      selection = await execution.router.select(repoPath);
-    } catch (e) {
-      return err({ ok: false, error: `Execution-Target nicht verf\xFCgbar: ${e?.message ?? e}`, code: e?.code });
-    }
-    const wantAutoWorktree = a.worktree === "auto";
-    let worktree = null;
-    let branch = null;
-    if (wantAutoWorktree) {
-      if (selection.target.kind === "local" && !isGitRepo(repoPath)) {
-        return err({ ok: false, error: `worktree:auto ben\xF6tigt ein git-Repo: ${repoPath}` });
-      }
-    }
-    const model = resolveModel(a.model ?? "auto", effort);
-    const known = config2.availableModels.find((m) => m.model === model);
-    if (known && !known.efforts.includes(effort)) {
-      return err({
-        ok: false,
-        error: `Effort '${effort}' f\xFCr Modell '${model}' nicht zul\xE4ssig. Erlaubt: ${known.efforts.join(", ")}`
-      });
-    }
-    const modelNote = known ? void 0 : `Hinweis: Modell '${model}' ist nicht im Katalog (models_list) \u2014 wird ungepr\xFCft an Codex \xFCbergeben.`;
-    let extraConfig;
-    const droppedConfig = [];
-    if (a.extra_config) {
-      extraConfig = {};
-      for (const [k, v] of Object.entries(a.extra_config)) {
-        if (isBlockedConfigKey(k)) droppedConfig.push(k);
-        else extraConfig[k] = String(v);
-      }
-      if (Object.keys(extraConfig).length === 0) extraConfig = void 0;
-    }
-    const task = sessions.createTask({
-      clusterId: a.cluster_id ?? null,
-      repoPath,
-      worktree,
-      branch,
-      instructions: a.instructions,
-      acceptance: a.acceptance_criteria ?? [],
-      sandbox,
-      model,
-      effort,
-      network: a.network ?? config2.networkDefault,
-      maxMinutes,
-      extraConfig,
-      targetId: selection.target.id,
-      targetKind: selection.target.kind,
-      repositoryCommit: selection.repository.headCommit,
-      routingReason: selection.reason,
-      fallbackFrom: selection.fallbackFrom,
-      hypothesisId: a.hypothesis_id ?? null
-    });
-    if (a.hypothesis_id) {
-      try {
-        hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null);
-      } catch {
-      }
-    }
-    try {
-      store.recordAgentJob({
-        taskId: task.id,
-        clusterId: a.cluster_id ?? null,
-        hypothesisId: a.hypothesis_id ?? null,
-        model,
-        effort,
-        sandbox,
-        status: "queued"
-      });
-    } catch {
-    }
-    try {
-      store.addAuditEvent({
-        actor: "claude",
-        action: "task_started",
-        resource: task.id,
-        detail: { sandbox, model, effort, network: a.network ?? config2.networkDefault, dropped_config_keys: droppedConfig },
-        redacted: false
-      });
-    } catch {
-    }
-    if (wantAutoWorktree) {
-      try {
-        const wt = selection.target.kind === "ssh" && selection.target.createWorktree ? await selection.target.createWorktree(repoPath, task.id) : worktrees.create(repoPath, task.id);
-        worktree = wt.worktree;
-        branch = wt.branch;
-        store.updateTask(task.id, { worktree, branch });
-      } catch (e) {
-        store.updateTask(task.id, { status: "failed", ended_at: (/* @__PURE__ */ new Date()).toISOString() });
-        return err({ ok: false, task_id: task.id, error: `Worktree-Erstellung fehlgeschlagen: ${e?.message ?? e}` });
-      }
-    }
-    sessions.startLoop(task.id, stopCondition);
-    const dropped = droppedConfig.length ? { dropped_config_keys: droppedConfig } : {};
-    if (waitFor === "started") {
-      return ok({
-        ok: true,
-        task_id: task.id,
-        status: "queued",
-        model,
-        effort,
-        worktree,
-        branch,
-        target: selection.target.id,
-        routing_reason: selection.reason,
-        fallback_from: selection.fallbackFrom,
-        note: modelNote,
-        ...dropped
-      });
-    }
-    if (waitFor === "first_checkpoint") {
-      await sessions.waitUntil(task.id, (_s, sawSlice) => sawSlice, config2.maxWaitSeconds);
-    } else {
-      await sessions.waitUntil(
-        task.id,
-        (s) => ["completed", "failed", "cancelled", "blocked"].includes(s),
-        maxMinutes * 60 + 30
-      );
-    }
-    const t = store.getTask(task.id);
-    const lastSlice = store.eventsAfter(task.id, 0, ["slice_result"], 50).map((e) => JSON.parse(e.payload_json)).at(-1);
-    return ok({ ok: true, task_id: task.id, status: t.status, model, effort, worktree, branch, last_slice_result: lastSlice ?? null, note: modelNote, ...dropped });
-  }
-);
-server.registerTool(
-  "task_wait",
-  {
-    title: "Long-Poll auf Task-Events",
-    description: "Kehrt zur\xFCck bei neuem Event (seq>cursor), Slice-Ende, Statuswechsel oder Timeout. Kernprimitive des Orchestrierungs-Loops (MCP ist pull-basiert).",
-    inputSchema: {
-      task_id: external_exports.string(),
-      cursor: external_exports.number().int().nonnegative().default(0),
-      timeout_seconds: external_exports.number().int().positive().default(50)
-    }
-  },
-  async (a) => {
-    const r = await sessions.wait(a.task_id, a.cursor, a.timeout_seconds);
-    return ok(r);
-  }
-);
-server.registerTool(
-  "task_events",
-  {
-    title: "Historische Events cursorbasiert abrufen",
-    description: "Ruft Events mit seq>cursor ab, optional gefiltert nach kind.",
-    inputSchema: {
-      task_id: external_exports.string(),
-      cursor: external_exports.number().int().nonnegative().default(0),
-      kinds: external_exports.array(external_exports.string()).optional(),
-      limit: external_exports.number().int().positive().max(500).default(200)
-    }
-  },
-  async (a) => {
-    const rows = store.eventsAfter(a.task_id, a.cursor, a.kinds, a.limit);
-    const events = rows.map((e) => ({ seq: e.seq, ts: e.ts, kind: e.kind, payload: JSON.parse(e.payload_json) }));
-    const cursor = events.length ? events[events.length - 1].seq : a.cursor;
-    return ok({ task_id: a.task_id, events, cursor });
-  }
-);
-server.registerTool(
-  "task_control",
-  {
-    title: "Task steuern",
-    description: "pause (kein Auto-Resume nach Slice), resume, cancel (SIGTERM->SIGKILL, Worktree bleibt), inject (Nachricht an n\xE4chster Slice-Grenze).",
-    inputSchema: {
-      task_id: external_exports.string(),
-      action: external_exports.enum(["pause", "resume", "cancel", "inject"]),
-      message: external_exports.string().optional(),
-      priority: external_exports.enum(["normal", "high"]).default("normal")
-    }
-  },
-  async (a) => {
-    switch (a.action) {
-      case "pause":
-        return ok({ action: "pause", ...sessions.pause(a.task_id) });
-      case "resume":
-        return ok({ action: "resume", ...sessions.resume(a.task_id) });
-      case "cancel":
-        return ok({ action: "cancel", ...sessions.cancel(a.task_id) });
-      case "inject": {
-        if (!a.message) return err({ ok: false, error: "inject erfordert 'message'" });
-        return ok({ action: "inject", ...sessions.inject(a.task_id, a.message, a.priority) });
-      }
-    }
-  }
-);
-server.registerTool(
-  "task_result",
-  {
-    title: "Konsolidierte Task-Abgabe",
-    description: "Diff-Zusammenfassung (Datei-Liste, Zeilenstatistik), Testresultate, letzte SLICE_RESULT-Bl\xF6cke, offene Punkte. Keine vollst\xE4ndigen Diffs/Logs.",
-    inputSchema: { task_id: external_exports.string(), max_slice_results: external_exports.number().int().positive().max(20).default(3) }
-  },
-  async (a) => {
-    const t = store.getTask(a.task_id);
-    if (!t) return err({ ok: false, error: "unbekannter Task" });
-    const sliceResults = store.eventsAfter(a.task_id, 0, ["slice_result"], 100).map((e) => JSON.parse(e.payload_json));
-    const recent = sliceResults.slice(-a.max_slice_results);
-    const repo = t.worktree || t.repo_path;
-    const target = execution.registry.get(t.target_id);
-    let diff = { files: 0, lines: 0 };
-    try {
-      diff = await diffSize(repo, target);
-    } catch {
-    }
-    const tests = recent.flatMap((r) => r.tests ?? []);
-    const openItems = recent.flatMap((r) => r.open_items ?? []);
-    const changed = [...new Set(recent.flatMap((r) => r.changed_files ?? []))];
-    return ok({
-      ok: true,
-      task_id: t.id,
-      status: t.status,
-      slice_count: t.slice_count,
-      last_slice_type: t.last_slice_type,
-      last_summary: t.last_summary,
-      diff_summary: diff,
-      changed_files: changed,
-      tests_run: tests,
-      open_items: openItems,
-      recent_slice_results: recent,
-      limits: {
-        max_diff_lines: config2.limits.maxDiffLines,
-        max_diff_files: config2.limits.maxDiffFiles,
-        over_diff_limit: diff.lines > config2.limits.maxDiffLines || diff.files > config2.limits.maxDiffFiles
-      }
-    });
-  }
-);
-server.registerTool(
-  "models_list",
-  {
-    title: "Verf\xFCgbare Modellklassen",
-    description: "Statische Routing-Tabelle (Plan \xA79). Claude w\xE4hlt Klasse+Effort pro Phase; Namen nie hartkodieren.",
-    inputSchema: {}
-  },
-  async () => ok({
-    available_models: config2.availableModels,
-    class_defaults: config2.models,
-    effort_ladder: EFFORT_LADDER,
-    usage: "task_start akzeptiert model=<konkreter Name> ODER 'auto', plus effort=low|medium|high|xhigh. Bei model:'auto' bestimmt der Effort die Klasse (low->fast, medium->balanced, high/xhigh->strong).",
-    escalation_rule: "Zwei fehlgeschlagene Korrektur-Slices in Folge -> n\xE4chste Effort-Stufe (low->medium->high->xhigh) oder st\xE4rkeres Modell. Im Event-Log dokumentieren.",
-    routing_table: [
-      { phase: "Analyse/Recherche", model: "gpt-5.4-mini", effort: "low", sandbox: "read-only" },
-      { phase: "Architekturpr\xFCfung", model: "gpt-5.5", effort: "high", sandbox: "read-only" },
-      { phase: "Implementierung", model: "gpt-5.5", effort: "medium", sandbox: "workspace-write" },
-      { phase: "Tests", model: "gpt-5.4", effort: "medium", sandbox: "workspace-write" },
-      { phase: "CI-Fix (komplex)", model: "gpt-5.5", effort: "high", sandbox: "workspace-write" },
-      { phase: "Review", model: "gpt-5.5", effort: "high", sandbox: "read-only" },
-      { phase: "kritische Analyse/Sparring", model: "gpt-5.5", effort: "xhigh", sandbox: "read-only" },
-      { phase: "Dokumentation", model: "gpt-5.4-mini", effort: "low", sandbox: "workspace-write" }
-    ]
-  })
-);
-server.registerTool(
-  "cluster_plan",
-  {
-    title: "Clusterplan anlegen/aktualisieren",
-    description: "Persistierter Plan mit Clustern (Gates, Acceptance, Risiken, Modellpolitik, Sandbox, Review-Strategie). Idempotent \xFCber plan_id.",
-    inputSchema: {
-      plan_id: external_exports.string().optional().describe("Weglassen f\xFCr neuen Plan."),
-      goal: external_exports.string(),
-      constraints: external_exports.string().optional(),
-      repo_path: external_exports.string(),
-      clusters: external_exports.array(
-        external_exports.object({
-          id: external_exports.string(),
-          name: external_exports.string(),
-          goal: external_exports.string(),
-          tasks: external_exports.array(external_exports.string()).default([]),
-          acceptance: external_exports.array(external_exports.string()).default([]),
-          risks: external_exports.array(external_exports.string()).optional(),
-          model_policy: external_exports.object({
-            class: external_exports.enum(["fast", "balanced", "strong"]).default("balanced"),
-            effort: external_exports.enum(["low", "medium", "high", "xhigh"]).default("medium"),
-            sandbox: external_exports.enum(["read-only", "workspace-write"]).default("workspace-write"),
-            model: external_exports.string().optional().describe("Konkreter Modellname f\xFCr diesen Cluster (sonst 'auto').")
-          }).default({ class: "balanced", effort: "medium", sandbox: "workspace-write" }),
-          review_strategy: external_exports.object({ checks: external_exports.array(external_exports.string()).default([]), codex_review: external_exports.boolean().default(false), notes: external_exports.string().optional() }).default({ checks: [], codex_review: false }),
-          parallel_ok: external_exports.boolean().default(false)
-        })
-      )
-    }
-  },
-  async (a) => {
-    let repoPath;
-    try {
-      repoPath = assertGitRepositoryRoot(a.repo_path);
-      if (!isGitRepo(repoPath)) {
-        return err({ ok: false, error: `Kein git-Repo: ${repoPath}` });
-      }
-      if (a.plan_id) {
-        const existing = store.getPlan(a.plan_id);
-        if (existing) {
-          const existingRepoPath = assertGitRepositoryRoot(existing.repo_path);
-          if (existingRepoPath !== repoPath) {
-            throw new Error("repo_path does not match the existing plan repository");
-          }
-        }
-      }
-    } catch (e) {
-      return err({ ok: false, error: e?.message ?? String(e) });
-    }
-    return store.tx(() => {
-      let planId = a.plan_id;
-      if (!planId || !store.getPlan(planId)) {
-        const p = store.createPlan(a.goal, a.constraints ?? null, repoPath);
-        planId = p.id;
-      }
-      const persisted = a.clusters.map(
-        (c, i) => store.upsertCluster({
-          id: c.id,
-          plan_id: planId,
-          ordinal: i,
-          name: c.name,
-          goal: c.goal,
-          tasks_json: JSON.stringify(c.tasks),
-          acceptance_json: JSON.stringify(c.acceptance),
-          risks_json: JSON.stringify(c.risks ?? []),
-          model_policy_json: JSON.stringify(c.model_policy),
-          review_strategy_json: JSON.stringify(c.review_strategy),
-          parallel_ok: c.parallel_ok ? 1 : 0
-        })
-      );
-      return ok({
-        ok: true,
-        plan_id: planId,
-        clusters: persisted.map((c) => ({ id: c.id, ordinal: c.ordinal, name: c.name, status: c.status }))
-      });
-    });
-  }
-);
-server.registerTool(
-  "cluster_transition",
-  {
-    title: "Cluster-Status\xFCbergang (servererzwungen)",
-    description: "start|submit|review|request_changes|confirm|block|retro|replan. confirm scheitert ohne REVIEW_RESULT=confirmed UND gr\xFCne deklarierte Checks. review f\xFChrt deklarierte Checks aus (run_checks=false zum Abschalten).",
-    inputSchema: {
-      cluster_id: external_exports.string(),
-      action: external_exports.enum(["start", "submit", "review", "request_changes", "confirm", "block", "retro", "replan"]),
-      payload: external_exports.record(external_exports.any()).optional()
-    }
-  },
-  async (a) => {
-    const payload = a.payload ?? {};
-    if (a.action === "review" && payload.run_checks !== false) {
-      const cluster = store.getCluster(a.cluster_id);
-      const repo = repoPathForCluster(store, a.cluster_id);
-      if (cluster && repo) {
-        const strategy = JSON.parse(cluster.review_strategy_json || "{}");
-        const declared = strategy.checks ?? [];
-        if (declared.length) {
-          const scope = latestWorktreeForCluster(store, a.cluster_id) || repo;
-          const res = await runChecks(store, a.cluster_id, scope, declared, executionTargetForCluster(a.cluster_id));
-          payload.checks_run = res.runs;
-        }
-      }
-    }
-    const r = machine.transition(a.cluster_id, a.action, payload);
-    return r.ok ? ok(r) : err(r);
-  }
-);
-server.registerTool(
-  "hypotheses",
-  {
-    title: "Hypothesen f\xFChren (versioniert)",
-    description: "Legacy: list|add|confirm|reject|supersede (plan-weite Freitext-Hypothesen). Reiches, versioniertes Modell: create|update|get|versions. 'create' bildet die Pflicht-Hypothese VOR einer Aufgabe (initialAssumption + criticalQuestions + falsificationPlan). 'update' aktualisiert append-only NACH der Aufgabe (result + evidence + updatedAssumption).",
-    inputSchema: {
-      plan_id: external_exports.string().optional().describe("F\xFCr list/add/create (plan-weite Gruppierung)."),
-      action: external_exports.enum([
-        "list",
-        "add",
-        "confirm",
-        "reject",
-        "supersede",
-        "create",
-        "update",
-        "get",
-        "versions"
-      ]),
-      id: external_exports.string().optional(),
-      text: external_exports.string().optional().describe("Legacy add: Freitext."),
-      evidence: external_exports.string().optional().describe("Legacy: Provenienz."),
-      // --- reiches Modell ---
-      task_id: external_exports.string().optional(),
-      cluster_id: external_exports.string().optional(),
-      initial_assumption: external_exports.string().optional().describe("create: die Ausgangsannahme."),
-      confidence_before: external_exports.number().min(0).max(1).optional().describe("create: Konfidenz [0,1] vor der Aufgabe."),
-      critical_questions: external_exports.array(external_exports.string()).optional().describe("create: aktives Hinterfragen."),
-      falsification_plan: external_exports.array(external_exports.string()).optional().describe("create: wie k\xF6nnte die Annahme scheitern?"),
-      result: external_exports.enum(["open", "confirmed", "partially_confirmed", "refuted"]).optional().describe("update: Pr\xFCfergebnis."),
-      confidence_after: external_exports.number().min(0).max(1).optional().describe("update: Konfidenz [0,1] nach der Aufgabe."),
-      updated_assumption: external_exports.string().optional().describe("update: revidierte Annahme / Folgehypothese."),
-      add_evidence: external_exports.array(external_exports.string()).optional().describe("update: gefundene Evidenz."),
-      follow_up_questions: external_exports.array(external_exports.string()).optional().describe("update: PFLICHT bei partially_confirmed/refuted \u2014 was bleibt offen?"),
-      risks: external_exports.array(external_exports.string()).optional().describe("update: erkannte Risiken/Folgeprobleme."),
-      next_action: external_exports.string().optional().describe("update: n\xE4chste sinnvolle Aktion."),
-      status: external_exports.enum(["open", "confirmed", "rejected", "superseded"]).optional(),
-      version: external_exports.number().int().positive().optional().describe("get: konkrete Version (sonst neueste).")
-    }
-  },
-  async (a) => {
-    try {
-      switch (a.action) {
-        case "list":
-          if (!a.plan_id) return err({ ok: false, error: "list erfordert 'plan_id'" });
-          return ok({
-            plan_id: a.plan_id,
-            hypotheses: store.listHypotheses(a.plan_id),
-            rich: hypRepo.listByPlan(a.plan_id).map((h) => HypothesisRepo.serialize(h))
-          });
-        case "add": {
-          if (!a.plan_id) return err({ ok: false, error: "add erfordert 'plan_id'" });
-          if (!a.text) return err({ ok: false, error: "add erfordert 'text'" });
-          const id = store.addHypothesis(a.plan_id, a.text, a.evidence ?? null);
-          return ok({ ok: true, id });
-        }
-        case "confirm":
-        case "reject":
-        case "supersede": {
-          if (!a.id) return err({ ok: false, error: `${a.action} erfordert 'id'` });
-          const status = a.action === "confirm" ? "confirmed" : a.action === "reject" ? "rejected" : "superseded";
-          store.setHypothesis(a.id, status, a.evidence ?? null);
-          return ok({ ok: true, id: a.id, status });
-        }
-        case "create": {
-          if (!a.initial_assumption) return err({ ok: false, error: "create erfordert 'initial_assumption'" });
-          if (a.confidence_before === void 0) return err({ ok: false, error: "create erfordert 'confidence_before' [0,1]" });
-          const h = hypRepo.create({
-            planId: a.plan_id ?? null,
-            taskId: a.task_id ?? null,
-            clusterId: a.cluster_id ?? null,
-            initialAssumption: a.initial_assumption,
-            confidenceBefore: a.confidence_before,
-            criticalQuestions: a.critical_questions,
-            falsificationPlan: a.falsification_plan
-          });
-          return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
-        }
-        case "update": {
-          if (!a.id) return err({ ok: false, error: "update erfordert 'id'" });
-          const h = hypRepo.update(a.id, {
-            status: a.status,
-            result: a.result,
-            confidenceAfter: a.confidence_after,
-            updatedAssumption: a.updated_assumption,
-            addEvidence: a.add_evidence,
-            followUpQuestions: a.follow_up_questions,
-            risks: a.risks,
-            nextAction: a.next_action,
-            criticalQuestions: a.critical_questions,
-            falsificationPlan: a.falsification_plan,
-            taskId: a.task_id,
-            clusterId: a.cluster_id
-          });
-          return ok({ ok: true, needs_follow_up: needsFollowUp(h.result), hypothesis: HypothesisRepo.serialize(h) });
-        }
-        case "get": {
-          if (!a.id) return err({ ok: false, error: "get erfordert 'id'" });
-          const h = a.version ? hypRepo.getVersion(a.id, a.version) : hypRepo.get(a.id);
-          if (!h) return err({ ok: false, error: `Hypothese ${a.id} (v${a.version ?? "latest"}) nicht gefunden` });
-          return ok({ ok: true, hypothesis: HypothesisRepo.serialize(h) });
-        }
-        case "versions": {
-          if (!a.id) return err({ ok: false, error: "versions erfordert 'id'" });
-          return ok({ ok: true, id: a.id, versions: hypRepo.listVersions(a.id).map((h) => HypothesisRepo.serialize(h)) });
-        }
-      }
-    } catch (e) {
-      return err({ ok: false, error: e?.message ?? String(e) });
-    }
-  }
-);
-server.registerTool(
-  "user_decision",
-  {
-    title: "Nutzerentscheidungen & Pr\xE4ferenzen (Cluster-Gate)",
-    description: "record|list|preference. Bei Review-Auff\xE4lligkeiten fragt Claude den Nutzer, ob nachgebessert werden soll; die Antwort wird hier persistiert. 'accept'/'proceed' gibt den Cluster-Abschluss trotz Findings frei, 'fix' fordert Nachbesserung. Mit remember=true wird die Antwort zur stehenden Pr\xE4ferenz (plan-weit).",
-    inputSchema: {
-      action: external_exports.enum(["record", "list", "preference"]),
-      plan_id: external_exports.string().optional(),
-      cluster_id: external_exports.string().optional(),
-      topic: external_exports.string().default("cluster_findings").describe("Entscheidungsthema. Default: Review-Auff\xE4lligkeiten."),
-      question: external_exports.string().optional().describe("Die dem Nutzer gestellte Frage (f\xFCr Audit)."),
-      decision: external_exports.enum(["accept", "proceed", "fix", "always_ask"]).optional(),
-      remember: external_exports.boolean().default(false).describe("Als stehende Pr\xE4ferenz merken (k\xFCnftig automatisch anwenden).")
-    }
-  },
-  async (a) => {
-    switch (a.action) {
-      case "record": {
-        if (!a.decision) return err({ ok: false, error: "record erfordert 'decision'" });
-        const id = store.recordDecision({
-          planId: a.plan_id ?? null,
-          clusterId: a.cluster_id ?? null,
-          topic: a.topic,
-          question: a.question ?? null,
-          decision: a.decision,
-          remember: a.remember
-        });
-        return ok({ ok: true, id, decision: a.decision, remember: a.remember });
-      }
-      case "list":
-        return ok({ ok: true, decisions: store.listDecisions({ clusterId: a.cluster_id, planId: a.plan_id }) });
-      case "preference": {
-        const pref = store.standingPreference(a.plan_id ?? null, a.topic);
-        return ok({ ok: true, topic: a.topic, preference: pref ?? null });
-      }
-    }
-  }
-);
-server.registerTool(
-  "audit_log",
-  {
-    title: "Sicherheitsrelevanter Audit-Trail",
-    description: "Liest die Audit-Events (Sandbox-Wahl, abgelehnte Gefahrmodi, verworfene Config-Keys, Artefakt-Erzeugung). Alle Details sind bereits Secret-redacted. F\xFCr Firmeneinsatz/Nachvollziehbarkeit.",
-    inputSchema: { limit: external_exports.number().int().positive().max(1e3).default(200) }
-  },
-  async (a) => ok({ ok: true, events: store.listAuditEvents(a.limit) })
-);
-server.registerTool(
-  "repo_check",
-  {
-    title: "Allowlisted Repo-Checks",
-    description: "F\xFChrt nur allowlisted Kommandos aus (keine freie Shell). Ergebnisse flie\xDFen in die confirm-Bedingung. Pr\xFCft zus\xE4tzlich Diff-Limits.",
-    inputSchema: {
-      cluster_id: external_exports.string(),
-      checks: external_exports.array(external_exports.string()),
-      scope: external_exports.enum(["worktree", "branch"]).default("branch")
-    }
-  },
-  async (a) => {
-    const repo = repoPathForCluster(store, a.cluster_id);
-    if (!repo) return err({ ok: false, error: "Plan-Repo f\xFCr Cluster nicht gefunden" });
-    const target = a.scope === "worktree" ? latestWorktreeForCluster(store, a.cluster_id) || repo : repo;
-    const executionTarget = executionTargetForCluster(a.cluster_id);
-    const res = await runChecks(store, a.cluster_id, target, a.checks, executionTarget);
-    let diff = { files: 0, lines: 0 };
-    try {
-      diff = await diffSize(target, executionTarget);
-    } catch {
-    }
-    return ok({
-      ok: true,
-      cluster_id: a.cluster_id,
-      scope: a.scope,
-      target,
-      runs: res.runs,
-      all_green: res.allGreen,
-      unknown_checks: res.unknown,
-      available_checks: Object.keys(config2.checks),
-      diff_summary: diff,
-      over_diff_limit: diff.lines > config2.limits.maxDiffLines || diff.files > config2.limits.maxDiffFiles
-    });
-  }
-);
-server.registerTool(
-  "cluster_merge",
-  {
-    title: "Worktree-Branch mergen (M3, sequenziell nach Review)",
-    description: "Merged den Branch eines parallelen Tasks erst nach confirmed Cluster/Review und gr\xFCnen Checks. Konflikt -> Merge wird abgebrochen.",
-    inputSchema: {
-      cluster_id: external_exports.string(),
-      task_id: external_exports.string(),
-      no_ff: external_exports.boolean().default(true),
-      sign: external_exports.boolean().optional().describe("Merge-Commit signieren. Default: Server-Policy (ORCH_SIGN_MERGE)."),
-      cleanup: external_exports.boolean().default(false).describe("Worktree + Branch nach erfolgreichem Merge entfernen.")
-    }
-  },
-  async (a) => {
-    const repo = repoPathForCluster(store, a.cluster_id);
-    if (!repo) return err({ ok: false, error: "Plan-Repo nicht gefunden" });
-    const cluster = store.getCluster(a.cluster_id);
-    if (!cluster) return err({ ok: false, error: "Cluster nicht gefunden" });
-    const task = store.getTask(a.task_id);
-    if (!task || !task.branch) return err({ ok: false, error: "Task ohne Worktree-Branch" });
-    const review = store.latestReview(a.cluster_id);
-    const strategy = JSON.parse(cluster.review_strategy_json || "{}");
-    const checks = store.checksForCluster(a.cluster_id);
-    const checksGreen = (strategy.checks ?? []).every((name) => {
-      const latest = [...checks].reverse().find((check2) => check2.cmd === name);
-      return latest?.exit_code === 0;
-    });
-    const eligibility = mergeEligibility({
-      clusterId: cluster.id,
-      taskClusterId: task.cluster_id,
-      taskStatus: task.status,
-      clusterStatus: cluster.status,
-      reviewStatus: review?.status ?? null,
-      checksGreen
-    });
-    if (!eligibility.ok) {
-      return err({ ok: false, error: "Merge-Gates nicht erf\xFCllt", reasons: eligibility.reasons });
-    }
-    const sign = a.sign ?? config2.signMergeCommits;
-    const target = execution.registry.get(task.target_id);
-    const r = target.kind === "ssh" && target.mergeWorktree ? await target.mergeWorktree(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign }) : worktrees.merge(repo, task.branch, { noFf: a.no_ff, noGpgSign: !sign });
-    if (!r.ok) {
-      return err({ ok: false, conflict: r.conflict, error: "Merge fehlgeschlagen", output: r.output.slice(-1500) });
-    }
-    let cleaned = false;
-    if (a.cleanup && task.worktree) {
-      try {
-        if (target.kind === "ssh" && target.removeWorktree) {
-          await target.removeWorktree(repo, task.worktree, task.branch);
-        } else {
-          worktrees.remove(repo, task.worktree, task.branch);
-        }
-        store.updateTask(task.id, { worktree: null });
-        cleaned = true;
-      } catch {
-      }
-    }
-    return ok({ ok: true, merged: task.branch, cleaned, output: r.output.slice(-1e3) });
-  }
-);
-server.registerTool(
-  "plan_snapshot",
-  {
-    title: "Plan-Zustand als durables Snapshot (TOON/JSON)",
-    description: "Schreibt Plan+Cluster+Hypothesen+Reviews+Checks als kompaktes, kompressionssicheres Artefakt (TOON default) nach ORCH_HOME/snapshots und gibt den Inhalt zur\xFCck. Gegen Kontext-Kompaktierung.",
-    inputSchema: {
-      plan_id: external_exports.string(),
-      format: external_exports.enum(["toon", "json"]).default("toon")
-    }
-  },
-  async (a) => {
-    const res = writePlanSnapshot(store, a.plan_id, a.format);
-    if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
-    return ok({ ok: true, format: res.format, path: res.path, content: res.content });
-  }
-);
-server.registerTool(
-  "result_artifact",
-  {
-    title: "Finales Gesamtartefakt erzeugen (.toln)",
-    description: "Erzeugt am Ende eines Orchestrator-Laufs ein versioniertes, maschinenlesbares Ergebnisartefakt: TOML mit Endung .toln (+ summary.md). Enth\xE4lt Plan, Cluster, Tasks, Agentenjobs, alle Hypothesen und ihre Aktualisierungen, Reviews, Nutzerentscheidungen, ge\xE4nderte Dateien, Tests, Findings, offene Punkte, Gesamtbewertung und Pr\xFCfsumme. Registriert das Artefakt in der DB.",
-    inputSchema: {
-      plan_id: external_exports.string(),
-      original_request: external_exports.string().optional(),
-      interpreted_goal: external_exports.string().optional(),
-      final_assessment: external_exports.string().optional(),
-      recommended_next_steps: external_exports.array(external_exports.string()).optional(),
-      git_commit_before: external_exports.string().optional().describe("Basis-Commit f\xFCr die Datei-Diff-Ermittlung (sonst HEAD~1).")
-    }
-  },
-  async (a) => {
-    const res = writeResultArtifact(store, a.plan_id, {
-      originalUserRequest: a.original_request,
-      interpretedGoal: a.interpreted_goal,
-      finalAssessment: a.final_assessment,
-      recommendedNextSteps: a.recommended_next_steps,
-      gitCommitBefore: a.git_commit_before ?? null
-    });
-    if (!res) return err({ ok: false, error: "Plan nicht gefunden" });
-    store.addAuditEvent({
-      actor: "claude",
-      action: "result_artifact_generated",
-      resource: a.plan_id,
-      detail: { path: res.tolnPath, artifactVersion: res.artifact.artifactVersion, checksum: res.artifact.checksum },
-      redacted: false
-    });
-    return ok({
-      ok: true,
-      toln_path: res.tolnPath,
-      summary_path: res.summaryPath,
-      schema_version: res.artifact.schemaVersion,
-      artifact_version: res.artifact.artifactVersion,
-      checksum: res.artifact.checksum,
-      clusters: res.artifact.clusters.length,
-      hypotheses: res.artifact.hypotheses.length,
-      unresolved: res.artifact.unresolvedIssues.length
-    });
-  }
-);
-server.registerTool(
-  "codex_update",
-  {
-    title: "Codex-CLI pr\xFCfen/aktualisieren",
-    description: "Pr\xFCft (check) oder installiert (apply) die neueste Codex-Version via npm. Kan\xE4le: latest (stabil), alpha/beta (prerelease, z. B. f\xFCr neue Modelle). Nicht anwenden, solange Tasks laufen.",
-    inputSchema: {
-      action: external_exports.enum(["check", "apply"]).default("check"),
-      channel: external_exports.enum(["latest", "alpha", "beta"]).default("latest")
-    }
-  },
-  async (a) => {
-    const channel = a.channel;
-    const running = store.listTasks({ status: "running" }).length + store.listTasks({ status: "awaiting_resume" }).length;
-    const chk = checkForUpdate(channel, config2.codexBin);
-    if (a.action === "check") return ok({ ok: true, ...chk, running_tasks: running });
-    if (running > 0) {
-      return err({ ok: false, error: `Update abgelehnt: ${running} Task(s) aktiv. Erst abschlie\xDFen/pausieren.`, ...chk });
-    }
-    if (!chk.updateAvailable) return ok({ ok: true, applied: false, reason: "bereits aktuell", ...chk });
-    const res = await runUpdate(channel);
-    return res.ok ? ok({ ok: true, applied: true, from: chk.installed, to: chk.latest, channel }) : err({ ok: false, applied: false, error: "npm install fehlgeschlagen", output: res.output });
-  }
-);
-centralAgentsMd();
+registerPrompts(server);
+registerDiagnosticsTools(server, ctx);
+registerTaskTools(server, ctx);
+registerPlanningTools(server, ctx);
+registerKnowledgeTools(server, ctx);
 var shuttingDown = false;
 function gracefulShutdown(sig) {
   if (shuttingDown) return;
   shuttingDown = true;
   try {
-    const n = sessions.shutdown();
+    const n = ctx.sessions.shutdown();
     console.error(`[orchestrator] ${sig}: ${n} laufende(n) Slice(s) terminiert.`);
   } catch {
   }

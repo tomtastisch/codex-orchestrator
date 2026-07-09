@@ -8,7 +8,9 @@
     "persistence": "src/db.ts",
     "clock": "src/system-clock.ts"
   },
-  "compositionRoots": ["src/server.ts"],
+  "compositionRoots": ["src/server.ts", "src/app/context.ts"],
+  "$compositionNote": "server.ts is the process entry/composition root: it holds no business logic and registers no tools directly — it builds the AppContext and delegates to the application layer (src/app/). context.ts is the wiring factory that constructs the concrete Store adapter. Both may import the adapter; the tool modules under src/app/tools/ may not.",
+  "toolModulesDir": "src/app/tools",
   "persistenceConsumers": [
     "src/artifact.ts",
     "src/checks.ts",

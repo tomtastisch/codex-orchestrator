@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { systemClock, systemIdGenerator, nowIso, newId } from "../dist/system-clock.js";
 import { extractImports } from "./helpers/imports.mjs";
 
@@ -137,6 +137,30 @@ test("the import scanner catches every re-introduction form (regression guard fo
         "./db.js", "node:sqlite", "node:fs", "../db.js", "node:child_process", "node:os",
     ]) {
         assert.ok(specs.includes(expected), `scanner missed ${expected}`);
+    }
+});
+
+test("server.ts is a composition root — no business logic, no tool registration", () => {
+    const src = readFileSync("src/server.ts", "utf8");
+    assert.doesNotMatch(
+        src,
+        /server\.register(?:Tool|Prompt)\(/,
+        "server.ts must delegate registrations to the application layer, not register tools itself",
+    );
+    const specs = importsOf("src/server.ts");
+    assert.ok(specs.some((s) => s.includes("app/context")), "server.ts must build the AppContext");
+    assert.ok(specs.some((s) => s.includes("app/tools/")), "server.ts must wire the tool modules");
+});
+
+test("application tool modules depend on the port, never the persistence adapter", () => {
+    const dir = manifest.toolModulesDir;
+    const files = readdirSync(dir).filter((f) => f.endsWith(".ts"));
+    assert.ok(files.length >= 4, "expected the extracted tool-use-case modules");
+    for (const file of [...files.map((f) => `${dir}/${f}`), "src/app/prompts.ts"]) {
+        for (const spec of importsOf(file)) {
+            assert.ok(!forbids(spec, "db"), `${file} must use the AppContext port, not the adapter (${spec})`);
+            assert.ok(!forbids(spec, "node:sqlite"), `${file} must not import node:sqlite (${spec})`);
+        }
     }
 });
 
