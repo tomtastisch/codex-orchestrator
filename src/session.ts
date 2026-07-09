@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { config } from "./config.js";
-import { Store, type TaskRow, newId } from "./db.js";
+import type { PersistenceStore, TaskRow } from "./ports/persistence.js";
+import { newId } from "./system-clock.js";
 import { LocalExecutionTarget } from "./execution/local-target.js";
 import type { ExecutionTarget } from "./execution/types.js";
 import { buildFirstSlicePrompt, buildResumeSlicePrompt } from "./prompts.js";
@@ -47,7 +48,7 @@ export class SessionManager {
   private waiters: (() => void)[] = [];
 
   constructor(
-    private store: Store,
+    private store: PersistenceStore,
     private readonly targetFor: (id: string) => ExecutionTarget = (() => {
       const local = new LocalExecutionTarget();
       return () => local;

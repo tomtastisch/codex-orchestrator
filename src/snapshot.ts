@@ -2,7 +2,7 @@ import { encode as toonEncode } from "@toon-format/toon";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config.js";
-import type { Store } from "./db.js";
+import type { PersistenceStore } from "./ports/persistence.js";
 
 function parse(json: string | null | undefined): unknown {
   if (!json) return null;
@@ -14,7 +14,7 @@ function parse(json: string | null | undefined): unknown {
  * Grundlage für TOON/JSON-Snapshots — ein durables Artefakt, das unabhängig
  * vom (komprimierbaren) Chat-Kontext existiert.
  */
-export function buildPlanSnapshot(store: Store, planId: string): any {
+export function buildPlanSnapshot(store: PersistenceStore, planId: string): any {
   const plan = store.getPlan(planId);
   if (!plan) return null;
   const clusters = store.listClusters(planId).map((c) => ({
@@ -51,7 +51,7 @@ export interface SnapshotResult {
   path: string;
 }
 
-export function writePlanSnapshot(store: Store, planId: string, format: "toon" | "json" = "toon"): SnapshotResult | null {
+export function writePlanSnapshot(store: PersistenceStore, planId: string, format: "toon" | "json" = "toon"): SnapshotResult | null {
   const snap = buildPlanSnapshot(store, planId);
   if (!snap) return null;
   const content = format === "toon" ? toonEncode(snap) : JSON.stringify(snap, null, 2);

@@ -17,7 +17,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { config } from "./config.js";
-import { SCHEMA_VERSION, type Store } from "./db.js";
+import { SCHEMA_VERSION, type PersistenceStore } from "./ports/persistence.js";
 import { HypothesisRepo } from "./hypotheses.js";
 import { redactDeep } from "./redact.js";
 
@@ -71,7 +71,7 @@ function parseJson(s: string | null | undefined): unknown {
 }
 
 /** Baut das vollständige Artefakt-Objekt (inkl. deterministischer Prüfsumme). */
-export function buildResultArtifact(store: Store, planId: string, opts: ArtifactOptions = {}): ResultArtifact | null {
+export function buildResultArtifact(store: PersistenceStore, planId: string, opts: ArtifactOptions = {}): ResultArtifact | null {
   const plan = store.getPlan(planId);
   if (!plan) return null;
   const repo = plan.repo_path;
@@ -298,7 +298,7 @@ export interface WriteArtifactResult {
 }
 
 /** Erzeugt Dateien, registriert das Artefakt in der DB und gibt die Pfade zurück. */
-export function writeResultArtifact(store: Store, planId: string, opts: ArtifactOptions = {}): WriteArtifactResult | null {
+export function writeResultArtifact(store: PersistenceStore, planId: string, opts: ArtifactOptions = {}): WriteArtifactResult | null {
   const artifact = buildResultArtifact(store, planId, opts);
   if (!artifact) return null;
   const dir = join(config.home, "artifacts");

@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 import { redact } from "./runtime/redaction.js";
-import type { Store } from "./db.js";
+import type { PersistenceStore } from "./ports/persistence.js";
 import { LocalExecutionTarget } from "./execution/local-target.js";
 import type { ExecutionTarget } from "./execution/types.js";
 
@@ -18,7 +18,7 @@ export interface CheckRun {
  * in die confirm-Bedingung ein.
  */
 export async function runChecks(
-  store: Store,
+  store: PersistenceStore,
   clusterId: string,
   repoPath: string,
   names: string[],

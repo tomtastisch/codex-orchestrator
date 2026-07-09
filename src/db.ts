@@ -1,7 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { randomUUID } from "node:crypto";
 import type {
   ClusterStatus,
   EventKind,
@@ -10,17 +9,21 @@ import type {
 } from "./types.js";
 import { runMigrations } from "./db/migrations.js";
 import { redactDeep, redactText } from "./redact.js";
+import { newId, nowIso } from "./system-clock.js";
+import {
+  SCHEMA_VERSION,
+  type ClusterRow,
+  type EventRow,
+  type PersistenceStore,
+  type PlanRow,
+  type TaskRow,
+} from "./ports/persistence.js";
 
-export function nowIso(): string {
-  return new Date().toISOString();
-}
-
-export function newId(prefix: string): string {
-  return `${prefix}_${randomUUID().slice(0, 12)}`;
-}
-
-/** Aktuelle Schema-Version. Bei additiven Migrationen hochzählen. */
-export const SCHEMA_VERSION = 4;
+// Row shapes and SCHEMA_VERSION now live with the persistence port so consumers
+// depend on the port, not the SQLite adapter. Re-exported here for the store's
+// own tests, which construct the adapter directly.
+export { SCHEMA_VERSION };
+export type { ClusterRow, EventRow, PlanRow, TaskRow };
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
@@ -127,34 +130,7 @@ CREATE TABLE IF NOT EXISTS checks (
 );
 `;
 
-export interface PlanRow {
-  id: string; goal: string; constraints: string | null;
-  repo_path: string; created_at: string; status: string;
-}
-export interface ClusterRow {
-  id: string; plan_id: string; ordinal: number; name: string; goal: string;
-  tasks_json: string; acceptance_json: string; risks_json: string | null;
-  model_policy_json: string; review_strategy_json: string;
-  parallel_ok: number; status: ClusterStatus;
-}
-export interface TaskRow {
-  id: string; cluster_id: string | null; codex_session_id: string | null;
-  worktree: string | null; branch: string | null; repo_path: string;
-  sandbox: string; model: string; effort: string; instructions: string;
-  acceptance_json: string | null; max_minutes: number; network: number;
-  status: TaskStatus; slice_count: number; started_at: string | null;
-  ended_at: string | null; last_slice_type: string | null; last_summary: string | null;
-  extra_config_json: string | null; owner_pid: number | null; codex_pid: number | null;
-  target_id: string; target_kind: "local" | "ssh";
-  repository_commit: string | null; worker_version: string | null;
-  routing_reason: string | null; fallback_from: string | null;
-  hypothesis_id: string | null;
-}
-export interface EventRow {
-  seq: number; task_id: string; ts: string; kind: string; payload_json: string;
-}
-
-export class Store {
+export class Store implements PersistenceStore {
   readonly db: DatabaseSync;
 
   constructor(dbPath: string) {

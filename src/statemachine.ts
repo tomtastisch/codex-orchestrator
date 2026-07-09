@@ -1,4 +1,4 @@
-import type { ClusterRow, Store } from "./db.js";
+import type { ClusterRow, PersistenceStore } from "./ports/persistence.js";
 import type { ClusterStatus } from "./types.js";
 
 export type TransitionAction =
@@ -72,7 +72,7 @@ const ALLOWED: Record<TransitionAction, ClusterStatus[]> = {
 };
 
 export class ClusterStateMachine {
-  constructor(private store: Store) {}
+  constructor(private store: PersistenceStore) {}
 
   /** Prüft, ob Cluster N gestartet werden darf (Vorgänger confirmed + Retro). */
   private predecessorsReady(cluster: ClusterRow): { ok: boolean; blocking: string[] } {

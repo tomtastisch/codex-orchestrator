@@ -49,3 +49,22 @@ consumers = [
   "package.json (scripts.test glob)",
 ]
 contract_test = "tests/quality-policy.test.mjs"
+
+[architecture]
+file = "ssot/architecture.json"
+owns = [
+  "ports",
+  "adapters",
+  "compositionRoots",
+  "persistenceConsumers",
+  "forbiddenPersistenceImports",
+  "domainPure",
+  "forbiddenDomainImports",
+]
+consumers = [
+  "src/ports/persistence.ts (PersistenceStore port)",
+  "src/ports/clock.ts (Clock/IdGenerator ports)",
+  "src/db.ts (Store implements PersistenceStore)",
+  "src/system-clock.ts (systemClock/systemIdGenerator adapters)",
+]
+contract_test = "tests/architecture-boundary.test.mjs"

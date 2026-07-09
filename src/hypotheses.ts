@@ -11,7 +11,8 @@
  * `hypothesis_versions`-Tabelle hält jede Version als serialisierten Snapshot.
  * Damit ist jede Änderung lückenlos nachvollziehbar.
  */
-import { newId, nowIso, type Store } from "./db.js";
+import { newId, nowIso } from "./system-clock.js";
+import type { PersistenceStore } from "./ports/persistence.js";
 import type { HypothesisStatus } from "./types.js";
 
 /** Ergebnis der Hypothesenprüfung nach Ausführung (Cluster 3). */
@@ -159,7 +160,7 @@ function normEvidence(es?: (EvidenceItem | string)[]): EvidenceItem[] {
  * Serialisierung. Statuswechsel/Versionierung laufen in Transaktionen.
  */
 export class HypothesisRepo {
-  constructor(private store: Store) {}
+  constructor(private store: PersistenceStore) {}
 
   private get db() {
     return this.store.db;

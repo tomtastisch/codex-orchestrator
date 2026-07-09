@@ -21822,7 +21822,6 @@ function modelForClass(cls) {
 import { DatabaseSync } from "node:sqlite";
 import { chmodSync, existsSync as existsSync2, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { randomUUID } from "node:crypto";
 
 // src/db/migrations.ts
 var TASK_COLUMNS = [
@@ -21897,14 +21896,19 @@ function redactDeep(value) {
   return value;
 }
 
-// src/db.ts
+// src/system-clock.ts
+import { randomUUID } from "node:crypto";
 function nowIso() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
 function newId(prefix) {
   return `${prefix}_${randomUUID().slice(0, 12)}`;
 }
+
+// src/ports/persistence.ts
 var SCHEMA_VERSION = 4;
+
+// src/db.ts
 var SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
   id TEXT PRIMARY KEY, goal TEXT NOT NULL, constraints TEXT,

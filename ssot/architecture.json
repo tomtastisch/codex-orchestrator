@@ -1,0 +1,34 @@
+{
+  "$comment": "Hexagonal layer manifest (Issue #32). Single source of truth for the persistence boundary. Consumed by tests/architecture-boundary.test.mjs, which scans import specifiers and fails if any layer's dependency direction rots. Paths are repo-relative POSIX. server.ts is the composition root and is intentionally allowed to import the concrete adapter; splitting it into use-cases is a later cluster.",
+  "ports": {
+    "persistence": "src/ports/persistence.ts",
+    "clock": "src/ports/clock.ts"
+  },
+  "adapters": {
+    "persistence": "src/db.ts",
+    "clock": "src/system-clock.ts"
+  },
+  "compositionRoots": ["src/server.ts"],
+  "persistenceConsumers": [
+    "src/artifact.ts",
+    "src/checks.ts",
+    "src/hypotheses.ts",
+    "src/prompts.ts",
+    "src/resolve.ts",
+    "src/session.ts",
+    "src/snapshot.ts",
+    "src/statemachine.ts"
+  ],
+  "forbiddenPersistenceImports": ["node:sqlite", "sqlite"],
+  "domainPure": ["src/statemachine.ts", "src/hypotheses.ts", "src/prompts.ts"],
+  "forbiddenDomainImports": [
+    "node:sqlite",
+    "sqlite",
+    "node:fs",
+    "fs",
+    "node:child_process",
+    "child_process",
+    "node:os",
+    "os"
+  ]
+}
