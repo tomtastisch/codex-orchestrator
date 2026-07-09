@@ -106,9 +106,7 @@ export function buildResultArtifact(store: PersistenceStore, planId: string, opt
   // Rich-Hypothesen dieses Plans: plan_id ODER an einen Cluster/Task des Plans gebunden.
   // Neueste Version = "Hypothese", volle Versionshistorie = "hypothesisUpdates".
   const richIds = new Set<string>();
-  const allHeaders = store.db.prepare(
-    "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
-  ).all() as { id: string; plan_id: string | null; cluster_id: string | null; task_id: string | null }[];
+  const allHeaders = store.listHypothesisHeaders();
   const headers = allHeaders.filter((h) =>
     h.plan_id === planId ||
     (h.cluster_id && clusterIds.has(h.cluster_id)) ||

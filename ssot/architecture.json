@@ -20,7 +20,8 @@
     "src/statemachine.ts"
   ],
   "forbiddenPersistenceImports": ["node:sqlite", "sqlite"],
-  "domainPure": ["src/statemachine.ts", "src/hypotheses.ts", "src/prompts.ts"],
+  "$domainPureNote": "Modules proven free of BOTH I/O imports AND raw store.db access, enforced by tests/architecture-boundary.test.mjs. hypotheses.ts is intentionally excluded: HypothesisRepo is a DAO that issues raw SQL via the transitional db gateway, so it is a persistence consumer, not domain-pure.",
+  "domainPure": ["src/statemachine.ts", "src/prompts.ts", "src/resolve.ts"],
   "forbiddenDomainImports": [
     "node:sqlite",
     "sqlite",

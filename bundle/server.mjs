@@ -22269,6 +22269,11 @@ var Store = class {
   listHypotheses(planId) {
     return this.db.prepare("SELECT * FROM hypotheses WHERE plan_id=? ORDER BY updated_at").all(planId);
   }
+  listHypothesisHeaders() {
+    return this.db.prepare(
+      "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
+    ).all();
+  }
   // ---- reviews / retros / checks ----
   addReview(clusterId, status, findings, fixes, impact) {
     const id = newId("R");
@@ -22292,6 +22297,10 @@ var Store = class {
     const id = newId("RT");
     this.db.prepare("INSERT INTO retros(id,cluster_id,ts,content) VALUES(?,?,?,?)").run(id, clusterId, nowIso(), content);
     return id;
+  }
+  countRetros(clusterId) {
+    const r = this.db.prepare("SELECT COUNT(*) AS n FROM retros WHERE cluster_id=?").get(clusterId);
+    return r?.n ?? 0;
   }
   addCheck(clusterId, cmd, exitCode, summary) {
     const id = newId("CK");
@@ -23515,8 +23524,7 @@ var ClusterStateMachine = class {
         blocking.push(`${c.id} ist ${c.status}, nicht confirmed`);
         continue;
       }
-      const retro = this.store.db.prepare("SELECT COUNT(*) AS n FROM retros WHERE cluster_id=?").get(c.id);
-      if (retro.n === 0) blocking.push(`${c.id} confirmed, aber Retrospektive fehlt`);
+      if (this.store.countRetros(c.id) === 0) blocking.push(`${c.id} confirmed, aber Retrospektive fehlt`);
     }
     return { ok: blocking.length === 0, blocking };
   }
@@ -24716,9 +24724,7 @@ function buildResultArtifact(store2, planId, opts = {}) {
     ended_at: j.ended_at
   }));
   const richIds = /* @__PURE__ */ new Set();
-  const allHeaders = store2.db.prepare(
-    "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
-  ).all();
+  const allHeaders = store2.listHypothesisHeaders();
   const headers = allHeaders.filter(
     (h) => h.plan_id === planId || h.cluster_id && clusterIds.has(h.cluster_id) || h.task_id && taskIds.has(h.task_id)
   );

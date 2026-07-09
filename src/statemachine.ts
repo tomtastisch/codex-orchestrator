@@ -85,10 +85,7 @@ export class ClusterStateMachine {
         blocking.push(`${c.id} ist ${c.status}, nicht confirmed`);
         continue;
       }
-      const retro = this.store.db
-        .prepare("SELECT COUNT(*) AS n FROM retros WHERE cluster_id=?")
-        .get(c.id) as { n: number };
-      if (retro.n === 0) blocking.push(`${c.id} confirmed, aber Retrospektive fehlt`);
+      if (this.store.countRetros(c.id) === 0) blocking.push(`${c.id} confirmed, aber Retrospektive fehlt`);
     }
     return { ok: blocking.length === 0, blocking };
   }

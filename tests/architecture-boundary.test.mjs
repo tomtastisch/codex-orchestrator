@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { systemClock, systemIdGenerator, nowIso, newId } from "../dist/system-clock.js";
+import { extractImports } from "./helpers/imports.mjs";
 
 // Issue #32 (Cluster 1 + 3): the persistence boundary of the hexagonal refactor.
 //
@@ -15,10 +16,9 @@ import { systemClock, systemIdGenerator, nowIso, newId } from "../dist/system-cl
 
 const manifest = JSON.parse(readFileSync("ssot/architecture.json", "utf8"));
 
-/** Relative/bare import specifiers used by a source module. */
+/** Every import specifier a source module uses, in any form (see helpers/imports.mjs). */
 function importsOf(srcPath) {
-    const source = readFileSync(srcPath, "utf8");
-    return [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]);
+    return extractImports(readFileSync(srcPath, "utf8"));
 }
 
 /** Turn a forbidden module name into a specifier matcher (bare or ./path form). */
@@ -92,6 +92,43 @@ test("domain-pure modules have no I/O imports at all", () => {
                 );
             }
         }
+    }
+});
+
+test("domain-pure modules never reach through the raw SQL gateway either", () => {
+    // Import purity is necessary but not sufficient: a module can be import-clean
+    // yet still execute SQL through the injected `store.db` escape hatch. A truly
+    // pure module touches neither. This guards the honesty of the `domainPure`
+    // claim against exactly the leak that would otherwise slip past an
+    // import-only scan (e.g. `store.db.prepare(...)`).
+    for (const pure of manifest.domainPure) {
+        const source = readFileSync(pure, "utf8");
+        assert.doesNotMatch(
+            source,
+            /\.db\s*\.\s*(?:prepare|exec)\b/,
+            `${pure} claims to be domain-pure but issues raw SQL via the .db gateway`,
+        );
+    }
+});
+
+test("the import scanner catches every re-introduction form (regression guard for the guard)", () => {
+    // If the scanner regresses to a naive `from "..."` match, the boundary tests
+    // above become bypassable. Pin every specifier form the extractor must see.
+    const sample = [
+        'import { Store } from "./db.js";',
+        "export { x } from './db.js';",
+        'import "node:sqlite";',
+        "import 'node:fs';",
+        'const m = await import("../db.js");',
+        "const n = import('node:child_process');",
+        'const r = require("node:os");',
+        'import type { T } from "./db.js";',
+    ].join("\n");
+    const specs = extractImports(sample);
+    for (const expected of [
+        "./db.js", "node:sqlite", "node:fs", "../db.js", "node:child_process", "node:os",
+    ]) {
+        assert.ok(specs.includes(expected), `scanner missed ${expected}`);
     }
 });
 

@@ -14,6 +14,7 @@ import {
   SCHEMA_VERSION,
   type ClusterRow,
   type EventRow,
+  type HypothesisHeaderRow,
   type PersistenceStore,
   type PlanRow,
   type TaskRow,
@@ -374,6 +375,11 @@ export class Store implements PersistenceStore {
   listHypotheses(planId: string): any[] {
     return this.db.prepare("SELECT * FROM hypotheses WHERE plan_id=? ORDER BY updated_at").all(planId);
   }
+  listHypothesisHeaders(): HypothesisHeaderRow[] {
+    return this.db.prepare(
+      "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
+    ).all() as unknown as HypothesisHeaderRow[];
+  }
 
   // ---- reviews / retros / checks ----
   addReview(clusterId: string, status: string, findings: unknown, fixes: unknown, impact: unknown): string {
@@ -392,6 +398,11 @@ export class Store implements PersistenceStore {
     this.db.prepare("INSERT INTO retros(id,cluster_id,ts,content) VALUES(?,?,?,?)")
       .run(id, clusterId, nowIso(), content);
     return id;
+  }
+  countRetros(clusterId: string): number {
+    const r = this.db.prepare("SELECT COUNT(*) AS n FROM retros WHERE cluster_id=?")
+      .get(clusterId) as unknown as { n: number };
+    return r?.n ?? 0;
   }
   addCheck(clusterId: string, cmd: string, exitCode: number | null, summary: string): string {
     const id = newId("CK");

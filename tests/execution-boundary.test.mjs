@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { extractImports } from "./helpers/imports.mjs";
 
 // src/execution/ is the one genuine ports-&-adapters (hexagonal) island in this
 // codebase: `types.ts` defines the ExecutionTarget port, `router.ts` is the
@@ -11,10 +12,9 @@ import { join } from "node:path";
 
 const DIR = "src/execution";
 
-/** Relative import specifiers used by an execution module. */
+/** Every import specifier an execution module uses, in any form (see helpers/imports.mjs). */
 function importsOf(relPath) {
-    const source = readFileSync(join(DIR, relPath), "utf8");
-    return [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]);
+    return extractImports(readFileSync(join(DIR, relPath), "utf8"));
 }
 
 // The top-level god-modules the execution layer must never couple to.

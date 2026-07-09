@@ -45,14 +45,21 @@ export interface TaskRow {
 export interface EventRow {
     seq: number; task_id: string; ts: string; kind: string; payload_json: string;
 }
+/** Identity columns of a hypothesis header, used to scope artifacts to a plan. */
+export interface HypothesisHeaderRow {
+    id: string; plan_id: string | null; cluster_id: string | null; task_id: string | null;
+}
 
-// ---- SQL gateway ----
+// ---- raw SQL gateway (transitional escape hatch — NOT technology-agnostic) ----
 //
-// A minimal, technology-agnostic prepared-statement surface. It exists so the
-// handful of callers that still issue their own statements do so through the
-// port rather than importing `node:sqlite`. It is structurally satisfied by
-// node:sqlite's DatabaseSync/StatementSync, so the SQLite adapter exposes its
-// raw handle without a wrapper.
+// This is a raw prepared-statement surface whose callers embed SQL-dialect
+// strings. It is deliberately *not* part of the technology-agnostic contract:
+// it exists only so the one remaining in-repo DAO (`HypothesisRepo` in
+// `src/hypotheses.ts`) can issue its statements without importing `node:sqlite`
+// directly. It is structurally satisfied by node:sqlite's DatabaseSync/
+// StatementSync so the SQLite adapter exposes its handle without a wrapper.
+// Slated for removal once `HypothesisRepo` is migrated to explicit typed
+// `PersistenceStore` methods (follow-up cluster of #32). Do not add new callers.
 
 export interface SqlStatement {
     get(...params: unknown[]): unknown;
@@ -68,7 +75,11 @@ export interface SqlDatabase {
 
 /** Durable state abstraction the domain/application layers depend on. */
 export interface PersistenceStore {
-    /** Raw SQL gateway for callers that still own their statements. */
+    /**
+     * Transitional raw SQL gateway — see the `SqlDatabase` note above. Used only
+     * by the co-located `HypothesisRepo` DAO; every other caller depends on the
+     * typed methods below. Not technology-agnostic; do not add new callers.
+     */
     readonly db: SqlDatabase;
 
     getSchemaVersion(): number;
@@ -110,11 +121,15 @@ export interface PersistenceStore {
     addHypothesis(planId: string, text: string, evidence: string | null): string;
     setHypothesis(id: string, status: HypothesisStatus, evidence: string | null): void;
     listHypotheses(planId: string): any[];
+    /** Identity columns of every hypothesis header, ordered by creation. */
+    listHypothesisHeaders(): HypothesisHeaderRow[];
 
     // reviews / retros / checks
     addReview(clusterId: string, status: string, findings: unknown, fixes: unknown, impact: unknown): string;
     latestReview(clusterId: string): any | undefined;
     addRetro(clusterId: string, content: string): string;
+    /** Number of retrospectives recorded for a cluster (cluster-gate predicate). */
+    countRetros(clusterId: string): number;
     addCheck(clusterId: string, cmd: string, exitCode: number | null, summary: string): string;
     checksForCluster(clusterId: string): any[];
 
