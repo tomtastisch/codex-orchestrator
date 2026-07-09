@@ -13,6 +13,7 @@ compaction, session switches and server restarts.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node 22.13–22.x or 24.x](https://img.shields.io/badge/node-22.13%E2%80%9322.x%20%7C%2024.x-brightgreen)
 ![Status: stable](https://img.shields.io/badge/status-stable-green)
+[![Listed on ClaudePluginHub](https://www.claudepluginhub.com/badge/tomtastisch-codex-orchestrator)](https://www.claudepluginhub.com/plugins/tomtastisch-codex-orchestrator?ref=badge)
 
 Current version: 1.6.0
 
