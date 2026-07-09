@@ -51,6 +51,19 @@ JavaScript/TypeScript and GitHub Actions workflow code.
 
 ---
 
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | Hexagonal layers, runtime flow, cluster lifecycle, security model |
+| [`docs/ports-and-adapters.md`](docs/ports-and-adapters.md) | Ports, adapters, composition root, enforced boundaries |
+| [`docs/module-reference.md`](docs/module-reference.md) | Source modules by layer and the test-to-concern mapping |
+| [`docs/review-policy.md`](docs/review-policy.md) | Copilot review layer, independent QA-agent fallback, merge gate, release policy |
+| [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | Binding rules for the orchestrator (Claude) and executor (Codex) |
+| [`.github/copilot-instructions.md`](.github/copilot-instructions.md) | GitHub Copilot review instructions |
+
+---
+
 ## Why
 
 Letting one model both implement and judge its own work does not scale. This
