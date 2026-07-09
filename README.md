@@ -634,6 +634,9 @@ the p95 MCP cold-start/Doctor latency exceeds its budget. Current limits are
 cold start and 1,500 ms for Doctor. Override only the sample count with
 `ORCH_BENCHMARK_ITERATIONS=5..50`; release budgets are intentionally fixed.
 
+## Publications
+[![Listed on ClaudePluginHub](https://www.claudepluginhub.com/badge/tomtastisch-codex-orchestrator)](https://www.claudepluginhub.com/plugins/tomtastisch-codex-orchestrator?ref=badge)
+
 ## License
 
 [MIT](LICENSE) © 2026 Tom Werner
