@@ -33,7 +33,7 @@
     "bundle:worker": "esbuild src/worker/server.ts --bundle --platform=node --target=node22 --format=esm --outfile=bundle/worker.mjs --external:node:* --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "start": "node dist/server.js",
     "pretest": "npm run build",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test tests/**/*.test.mjs",
     "test:coverage": "npm run build && node scripts/coverage.mjs",
     "verify:bundle": "node scripts/verify-bundle.mjs",
     "mcpb:build": "node scripts/build-mcpb.mjs",
