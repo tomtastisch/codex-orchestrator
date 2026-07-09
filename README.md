@@ -13,6 +13,7 @@ compaction, session switches and server restarts.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node 22.13–22.x or 24.x](https://img.shields.io/badge/node-22.13%E2%80%9322.x%20%7C%2024.x-brightgreen)
 ![Status: stable](https://img.shields.io/badge/status-stable-green)
+[![Listed on ClaudePluginHub](https://www.claudepluginhub.com/badge/tomtastisch-codex-orchestrator)](https://www.claudepluginhub.com/plugins/tomtastisch-codex-orchestrator?ref=badge)
 
 Current version: 1.5.2
 
@@ -633,9 +634,6 @@ the p95 MCP cold-start/Doctor latency exceeds its budget. Current limits are
 1.25 MiB for `bundle/server.mjs`, 256 KiB for `bundle/worker.mjs`, 2,500 ms for
 cold start and 1,500 ms for Doctor. Override only the sample count with
 `ORCH_BENCHMARK_ITERATIONS=5..50`; release budgets are intentionally fixed.
-
-## Publications
-[![Listed on ClaudePluginHub](https://www.claudepluginhub.com/badge/tomtastisch-codex-orchestrator)](https://www.claudepluginhub.com/plugins/tomtastisch-codex-orchestrator?ref=badge)
 
 ## License
 
