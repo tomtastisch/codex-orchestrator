@@ -150,9 +150,24 @@ server.registerTool(
     const warnings: { code: string; message: string }[] = [];
 
     // Hypothese provenienzhalber an Task/Cluster binden (Header-Update, keine neue Version).
+    // Autoritative Verknüpfung ist die Header-Spalte hypotheses.task_id; tasks.hypothesis_id
+    // ist der Rückverweis. Schlägt das Binden fehl, divergieren beide Richtungen —
+    // das darf nicht nur ephemer in der Antwort stehen, sondern braucht eine
+    // dauerhafte Audit-Spur für die spätere Provenienz-Rekonziliation.
     if (a.hypothesis_id) {
       try { hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null); }
-      catch (e: any) { warnings.push({ code: "provenance_bind_failed", message: String(e?.message ?? e) }); }
+      catch (e: any) {
+        warnings.push({ code: "provenance_bind_failed", message: String(e?.message ?? e) });
+        try {
+          store.addAuditEvent({
+            actor: "claude", action: "provenance_bind_failed", resource: task.id,
+            detail: { hypothesis_id: a.hypothesis_id, cluster_id: a.cluster_id ?? null, error: String(e?.message ?? e) },
+            redacted: false,
+          });
+        } catch (auditErr: any) {
+          console.error(`[orchestrator] provenance_bind_failed-Audit für ${task.id} nicht persistiert: ${auditErr?.message ?? auditErr}`);
+        }
+      }
     }
 
     // Cluster 5: auditierbaren agent_job-Datensatz anlegen (wird bei Task-Ende abgeschlossen).

@@ -395,9 +395,13 @@ export class Store implements PersistenceStore {
   // ---- hypotheses ----
   addHypothesis(planId: string, text: string, evidence: string | null): string {
     const id = this.ids.newId("H");
+    // created_at is stamped here too (not only on the versioned path via
+    // insertHypothesisHeader): a NULL created_at would sort first and make the
+    // created_at ordering below non-deterministic across the legacy/rich split.
+    const ts = this.clock.now();
     this.db.prepare(
-      "INSERT INTO hypotheses(id,plan_id,text,status,evidence,updated_at) VALUES(?,?,?,?,?,?)"
-    ).run(id, planId, text, "open", evidence, this.clock.now());
+      "INSERT INTO hypotheses(id,plan_id,text,status,evidence,created_at,updated_at) VALUES(?,?,?,?,?,?,?)"
+    ).run(id, planId, text, "open", evidence, ts, ts);
     return id;
   }
   setHypothesis(id: string, status: HypothesisStatus, evidence: string | null): void {
@@ -409,7 +413,9 @@ export class Store implements PersistenceStore {
   }
   listHypothesisHeaders(): HypothesisHeaderRow[] {
     return this.db.prepare(
-      "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
+      // `, id` is a stable tiebreaker: legacy rows may share or lack created_at,
+      // and SQLite leaves equal/NULL sort keys in undefined order otherwise.
+      "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at, id"
     ).all() as unknown as HypothesisHeaderRow[];
   }
 
@@ -458,10 +464,12 @@ export class Store implements PersistenceStore {
   hypothesisIdsByColumn(column: "task_id" | "cluster_id" | "plan_id", value: string): string[] {
     // Fixed, fully-literal SQL per scope column — no string interpolation into
     // the statement, so there is no SQL-injection surface even in principle.
+    // `, id` is a stable tiebreaker so latestForTask() ("last element") stays
+    // deterministic even when created_at is equal or NULL on legacy rows.
     const SQL = {
-      task_id: "SELECT id FROM hypotheses WHERE task_id=? ORDER BY created_at",
-      cluster_id: "SELECT id FROM hypotheses WHERE cluster_id=? ORDER BY created_at",
-      plan_id: "SELECT id FROM hypotheses WHERE plan_id=? ORDER BY created_at",
+      task_id: "SELECT id FROM hypotheses WHERE task_id=? ORDER BY created_at, id",
+      cluster_id: "SELECT id FROM hypotheses WHERE cluster_id=? ORDER BY created_at, id",
+      plan_id: "SELECT id FROM hypotheses WHERE plan_id=? ORDER BY created_at, id",
     } as const;
     const rows = this.db.prepare(SQL[column]).all(value) as unknown as { id: string }[];
     return rows.map((r) => r.id);

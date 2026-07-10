@@ -359,10 +359,17 @@ export class HypothesisRepo {
   }
 
   private listByColumn(column: "task_id" | "cluster_id" | "plan_id", value: string): Hypothesis[] {
+    // The header columns (hypotheses.task_id/cluster_id/plan_id) are the
+    // AUTHORITATIVE provenance source; the immutable version snapshot keeps the
+    // creation-state value (often null, since bindToTask only updates the
+    // header — see its doc). Overlay the queried provenance onto the returned
+    // object so it never contradicts the predicate it was found by.
+    const field = column === "task_id" ? "taskId" : column === "cluster_id" ? "clusterId" : "planId";
     return this.store
       .hypothesisIdsByColumn(column, value)
       .map((hid) => this.get(hid))
-      .filter((h): h is Hypothesis => !!h);
+      .filter((h): h is Hypothesis => !!h)
+      .map((h) => ({ ...h, [field]: value }));
   }
 
   listByTask(taskId: string): Hypothesis[] {
@@ -382,6 +389,12 @@ export class HypothesisRepo {
    * Aktualisiert NUR die Header-Spalten (für listByTask/listByCluster) und lässt
    * die versionierten Snapshots unangetastet — Binden ist Provenienz, keine
    * inhaltliche Revision, erzeugt daher keine neue Version.
+   *
+   * Die Header-Spalte `hypotheses.task_id`/`cluster_id` ist damit die
+   * AUTORITATIVE Verknüpfung; das `taskId`/`clusterId`-Feld im Snapshot bildet
+   * bewusst nur den Erstellungszustand ab. Konsumenten, die über die Bindung
+   * filtern, nutzen listByTask/listByCluster (die die autoritative Provenienz
+   * überlagern), nicht das rohe Snapshot-Feld.
    */
   bindToTask(id: string, taskId: string, clusterId: string | null): void {
     this.store.bindHypothesisToTask(id, taskId, clusterId);

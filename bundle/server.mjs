@@ -23335,9 +23335,10 @@ var Store = class {
   // ---- hypotheses ----
   addHypothesis(planId, text, evidence) {
     const id = this.ids.newId("H");
+    const ts = this.clock.now();
     this.db.prepare(
-      "INSERT INTO hypotheses(id,plan_id,text,status,evidence,updated_at) VALUES(?,?,?,?,?,?)"
-    ).run(id, planId, text, "open", evidence, this.clock.now());
+      "INSERT INTO hypotheses(id,plan_id,text,status,evidence,created_at,updated_at) VALUES(?,?,?,?,?,?,?)"
+    ).run(id, planId, text, "open", evidence, ts, ts);
     return id;
   }
   setHypothesis(id, status, evidence) {
@@ -23348,7 +23349,9 @@ var Store = class {
   }
   listHypothesisHeaders() {
     return this.db.prepare(
-      "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
+      // `, id` is a stable tiebreaker: legacy rows may share or lack created_at,
+      // and SQLite leaves equal/NULL sort keys in undefined order otherwise.
+      "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at, id"
     ).all();
   }
   // ---- hypothesis versioning (append-only snapshots; owns HypothesisRepo's SQL) ----
@@ -23406,9 +23409,9 @@ var Store = class {
   }
   hypothesisIdsByColumn(column, value) {
     const SQL = {
-      task_id: "SELECT id FROM hypotheses WHERE task_id=? ORDER BY created_at",
-      cluster_id: "SELECT id FROM hypotheses WHERE cluster_id=? ORDER BY created_at",
-      plan_id: "SELECT id FROM hypotheses WHERE plan_id=? ORDER BY created_at"
+      task_id: "SELECT id FROM hypotheses WHERE task_id=? ORDER BY created_at, id",
+      cluster_id: "SELECT id FROM hypotheses WHERE cluster_id=? ORDER BY created_at, id",
+      plan_id: "SELECT id FROM hypotheses WHERE plan_id=? ORDER BY created_at, id"
     };
     const rows = this.db.prepare(SQL[column]).all(value);
     return rows.map((r) => r.id);
@@ -24037,7 +24040,8 @@ var HypothesisRepo = class _HypothesisRepo {
     return this.store.hypothesisSnapshots(id).map((snapshot) => _HypothesisRepo.deserialize(JSON.parse(snapshot)));
   }
   listByColumn(column, value) {
-    return this.store.hypothesisIdsByColumn(column, value).map((hid) => this.get(hid)).filter((h) => !!h);
+    const field = column === "task_id" ? "taskId" : column === "cluster_id" ? "clusterId" : "planId";
+    return this.store.hypothesisIdsByColumn(column, value).map((hid) => this.get(hid)).filter((h) => !!h).map((h) => ({ ...h, [field]: value }));
   }
   listByTask(taskId) {
     return this.listByColumn("task_id", taskId);
@@ -24053,6 +24057,12 @@ var HypothesisRepo = class _HypothesisRepo {
    * Aktualisiert NUR die Header-Spalten (für listByTask/listByCluster) und lässt
    * die versionierten Snapshots unangetastet — Binden ist Provenienz, keine
    * inhaltliche Revision, erzeugt daher keine neue Version.
+   *
+   * Die Header-Spalte `hypotheses.task_id`/`cluster_id` ist damit die
+   * AUTORITATIVE Verknüpfung; das `taskId`/`clusterId`-Feld im Snapshot bildet
+   * bewusst nur den Erstellungszustand ab. Konsumenten, die über die Bindung
+   * filtern, nutzen listByTask/listByCluster (die die autoritative Provenienz
+   * überlagern), nicht das rohe Snapshot-Feld.
    */
   bindToTask(id, taskId, clusterId) {
     this.store.bindHypothesisToTask(id, taskId, clusterId);
@@ -25353,6 +25363,17 @@ function registerTaskTools(server2, ctx2) {
           hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null);
         } catch (e) {
           warnings.push({ code: "provenance_bind_failed", message: String(e?.message ?? e) });
+          try {
+            store.addAuditEvent({
+              actor: "claude",
+              action: "provenance_bind_failed",
+              resource: task.id,
+              detail: { hypothesis_id: a.hypothesis_id, cluster_id: a.cluster_id ?? null, error: String(e?.message ?? e) },
+              redacted: false
+            });
+          } catch (auditErr) {
+            console.error(`[orchestrator] provenance_bind_failed-Audit f\xFCr ${task.id} nicht persistiert: ${auditErr?.message ?? auditErr}`);
+          }
         }
       }
       try {
