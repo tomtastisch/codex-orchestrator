@@ -1,8 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { systemClock, systemIdGenerator, nowIso, newId } from "../dist/system-clock.js";
 import { extractImports } from "./helpers/imports.mjs";
+
+/** Every production TypeScript file under src/, discovered — not hand-listed. */
+function allSrcFiles(dir = "src") {
+    const out = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const p = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) out.push(...allSrcFiles(p));
+        else if (entry.name.endsWith(".ts")) out.push(p);
+    }
+    return out;
+}
 
 // Issue #32 (Cluster 1 + 3): the persistence boundary of the hexagonal refactor.
 //
@@ -53,6 +64,65 @@ test("no persistence consumer imports the concrete adapter or node:sqlite", () =
                 );
             }
         }
+    }
+});
+
+test("repo-wide: no un-allow-listed module imports the persistence adapter or node:sqlite", () => {
+    // Completeness guard. The consumer-list tests above only prove that the
+    // *known* members behave; they cannot catch a NEW file that reaches for the
+    // adapter and was never added to a list. This test discovers every
+    // src/**/*.ts and fails if any of them imports the persistence adapter
+    // (src/db.ts) or node:sqlite unless it is on the explicit allow-list. A
+    // barrel/re-export is caught too: re-exporting the adapter still requires
+    // importing it, so the importing file shows up here.
+    const allow = manifest.adapterImportAllowList;
+    const violations = [];
+    for (const file of allSrcFiles()) {
+        const specs = importsOf(file);
+        if (specs.some((s) => forbids(s, "db")) && !allow.persistenceAdapter.includes(file)) {
+            violations.push(`${file} imports the persistence adapter (db.js) but is not in adapterImportAllowList.persistenceAdapter`);
+        }
+        if (specs.some((s) => forbids(s, "node:sqlite") || forbids(s, "sqlite")) && !allow.sqlite.includes(file)) {
+            violations.push(`${file} imports node:sqlite but is not in adapterImportAllowList.sqlite`);
+        }
+    }
+    assert.deepEqual(violations, [], `repo-wide boundary violations:\n${violations.join("\n")}`);
+});
+
+test("the repo-wide adapter guard actually goes red on an unlisted violating file", () => {
+    // Meta-test: prove the guard above is not vacuous. A synthetic new module
+    // that imports the adapter and is absent from the allow-list must be
+    // detected by the same extractImports+forbids logic the guard uses.
+    const synthetic = `import { Store } from "./db.js";\nawait import('node:sqlite');\nexport const x = 1;\n`;
+    const specs = extractImports(synthetic);
+    assert.ok(specs.some((s) => forbids(s, "db")), "the scanner must detect the adapter import");
+    assert.ok(specs.some((s) => forbids(s, "node:sqlite")), "the scanner must detect the node:sqlite import");
+    assert.ok(
+        !manifest.adapterImportAllowList.persistenceAdapter.includes("src/synthetic-violation.ts"),
+        "an unlisted file is not allow-listed -> the completeness guard records a violation for it",
+    );
+});
+
+test("the manifest metadata matches the implemented composition-root state", () => {
+    // Claim consistency: the SSOT's own prose must not contradict the delivered
+    // state (the server split is done in this PR, not "a later cluster").
+    assert.doesNotMatch(manifest.$comment, /later cluster/i, "$comment must not describe the server split as future work");
+    for (const root of manifest.compositionRoots) assert.ok(existsSync(root), `composition root ${root} is missing`);
+    assert.ok(manifest.compositionRoots.includes("src/app/context.ts"), "context.ts is a composition root");
+    assert.ok(existsSync(manifest.toolModulesDir), "toolModulesDir must exist");
+});
+
+test("docs/architecture.md classifies modules consistently with the manifest", () => {
+    // The central architecture doc must not contradict ssot/architecture.json:
+    // hypotheses.ts is a persistence consumer (DAO), never domain-pure.
+    const doc = readFileSync("docs/architecture.md", "utf8");
+    const m = doc.match(/subgraph domain\[[^\]]*\]([\s\S]*?)\n\s*end/);
+    assert.ok(m, "the 'Domain — pure' subgraph was not found in docs/architecture.md");
+    const domainBlock = m[1];
+    assert.doesNotMatch(domainBlock, /hypotheses/i, "hypotheses.ts must not sit in the domain-pure subgraph (it is a persistence consumer)");
+    for (const pure of manifest.domainPure) {
+        const base = pure.replace(/^src\//, "").replace(/\.ts$/, "");
+        assert.match(domainBlock, new RegExp(base), `the domain-pure subgraph should mention ${base}`);
     }
 });
 

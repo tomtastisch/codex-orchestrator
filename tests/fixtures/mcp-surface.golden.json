@@ -1,806 +1,817 @@
 {
-  "tools": [
-    {
-      "name": "audit_log",
-      "description": "Liest die Audit-Events (Sandbox-Wahl, abgelehnte Gefahrmodi, verworfene Config-Keys, Artefakt-Erzeugung). Alle Details sind bereits Secret-redacted. Für Firmeneinsatz/Nachvollziehbarkeit.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 1000,
-            "default": 200
-          }
-        },
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "cluster_merge",
-      "description": "Merged den Branch eines parallelen Tasks erst nach confirmed Cluster/Review und grünen Checks. Konflikt -> Merge wird abgebrochen.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "cluster_id": {
-            "type": "string"
+  "$provenance": {
+    "note": "Reference MCP surface captured from the base branch (origin/main) bundle. base.commit + base.bundleSha256 pin the exact source; tests/mcp-surface.test.mjs verifies the surface was produced from THAT bundle (via git show) so code and golden cannot be silently co-edited.",
+    "base": {
+      "ref": "origin/main",
+      "commit": "9d7bb09a4f617db922a9e3aa0da475b5517eb0b1",
+      "bundlePath": "bundle/server.mjs",
+      "bundleSha256": "7007ec671b12e64a7b9d37fc52a476f3bfe5745d92d8d5e6a0bd30fdff981581"
+    }
+  },
+  "surface": {
+    "tools": [
+      {
+        "name": "audit_log",
+        "description": "Liest die Audit-Events (Sandbox-Wahl, abgelehnte Gefahrmodi, verworfene Config-Keys, Artefakt-Erzeugung). Alle Details sind bereits Secret-redacted. Für Firmeneinsatz/Nachvollziehbarkeit.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 1000,
+              "default": 200
+            }
           },
-          "task_id": {
-            "type": "string"
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "cluster_merge",
+        "description": "Merged den Branch eines parallelen Tasks erst nach confirmed Cluster/Review und grünen Checks. Konflikt -> Merge wird abgebrochen.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster_id": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "no_ff": {
+              "type": "boolean",
+              "default": true
+            },
+            "sign": {
+              "type": "boolean",
+              "description": "Merge-Commit signieren. Default: Server-Policy (ORCH_SIGN_MERGE)."
+            },
+            "cleanup": {
+              "type": "boolean",
+              "default": false,
+              "description": "Worktree + Branch nach erfolgreichem Merge entfernen."
+            }
           },
-          "no_ff": {
-            "type": "boolean",
-            "default": true
-          },
-          "sign": {
-            "type": "boolean",
-            "description": "Merge-Commit signieren. Default: Server-Policy (ORCH_SIGN_MERGE)."
-          },
-          "cleanup": {
-            "type": "boolean",
-            "default": false,
-            "description": "Worktree + Branch nach erfolgreichem Merge entfernen."
-          }
-        },
-        "required": [
-          "cluster_id",
-          "task_id"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "cluster_plan",
-      "description": "Persistierter Plan mit Clustern (Gates, Acceptance, Risiken, Modellpolitik, Sandbox, Review-Strategie). Idempotent über plan_id.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "plan_id": {
-            "type": "string",
-            "description": "Weglassen für neuen Plan."
-          },
-          "goal": {
-            "type": "string"
-          },
-          "constraints": {
-            "type": "string"
-          },
-          "repo_path": {
-            "type": "string"
-          },
-          "clusters": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "goal": {
-                  "type": "string"
-                },
-                "tasks": {
-                  "type": "array",
-                  "items": {
+          "required": [
+            "cluster_id",
+            "task_id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "cluster_plan",
+        "description": "Persistierter Plan mit Clustern (Gates, Acceptance, Risiken, Modellpolitik, Sandbox, Review-Strategie). Idempotent über plan_id.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "plan_id": {
+              "type": "string",
+              "description": "Weglassen für neuen Plan."
+            },
+            "goal": {
+              "type": "string"
+            },
+            "constraints": {
+              "type": "string"
+            },
+            "repo_path": {
+              "type": "string"
+            },
+            "clusters": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
                     "type": "string"
                   },
-                  "default": []
-                },
-                "acceptance": {
-                  "type": "array",
-                  "items": {
+                  "name": {
                     "type": "string"
                   },
-                  "default": []
-                },
-                "risks": {
-                  "type": "array",
-                  "items": {
+                  "goal": {
                     "type": "string"
-                  }
-                },
-                "model_policy": {
-                  "type": "object",
-                  "properties": {
-                    "class": {
-                      "type": "string",
-                      "enum": [
-                        "fast",
-                        "balanced",
-                        "strong"
-                      ],
-                      "default": "balanced"
-                    },
-                    "effort": {
-                      "type": "string",
-                      "enum": [
-                        "low",
-                        "medium",
-                        "high",
-                        "xhigh"
-                      ],
-                      "default": "medium"
-                    },
-                    "sandbox": {
-                      "type": "string",
-                      "enum": [
-                        "read-only",
-                        "workspace-write"
-                      ],
-                      "default": "workspace-write"
-                    },
-                    "model": {
-                      "type": "string",
-                      "description": "Konkreter Modellname für diesen Cluster (sonst 'auto')."
-                    }
                   },
-                  "additionalProperties": false,
-                  "default": {
-                    "class": "balanced",
-                    "effort": "medium",
-                    "sandbox": "workspace-write"
-                  }
-                },
-                "review_strategy": {
-                  "type": "object",
-                  "properties": {
-                    "checks": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "default": []
+                  "tasks": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
                     },
-                    "codex_review": {
-                      "type": "boolean",
-                      "default": false
+                    "default": []
+                  },
+                  "acceptance": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
                     },
-                    "notes": {
+                    "default": []
+                  },
+                  "risks": {
+                    "type": "array",
+                    "items": {
                       "type": "string"
                     }
                   },
-                  "additionalProperties": false,
-                  "default": {
-                    "checks": [],
-                    "codex_review": false
+                  "model_policy": {
+                    "type": "object",
+                    "properties": {
+                      "class": {
+                        "type": "string",
+                        "enum": [
+                          "fast",
+                          "balanced",
+                          "strong"
+                        ],
+                        "default": "balanced"
+                      },
+                      "effort": {
+                        "type": "string",
+                        "enum": [
+                          "low",
+                          "medium",
+                          "high",
+                          "xhigh"
+                        ],
+                        "default": "medium"
+                      },
+                      "sandbox": {
+                        "type": "string",
+                        "enum": [
+                          "read-only",
+                          "workspace-write"
+                        ],
+                        "default": "workspace-write"
+                      },
+                      "model": {
+                        "type": "string",
+                        "description": "Konkreter Modellname für diesen Cluster (sonst 'auto')."
+                      }
+                    },
+                    "additionalProperties": false,
+                    "default": {
+                      "class": "balanced",
+                      "effort": "medium",
+                      "sandbox": "workspace-write"
+                    }
+                  },
+                  "review_strategy": {
+                    "type": "object",
+                    "properties": {
+                      "checks": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "codex_review": {
+                        "type": "boolean",
+                        "default": false
+                      },
+                      "notes": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "default": {
+                      "checks": [],
+                      "codex_review": false
+                    }
+                  },
+                  "parallel_ok": {
+                    "type": "boolean",
+                    "default": false
                   }
                 },
-                "parallel_ok": {
-                  "type": "boolean",
-                  "default": false
-                }
-              },
-              "required": [
-                "id",
-                "name",
-                "goal"
+                "required": [
+                  "id",
+                  "name",
+                  "goal"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "goal",
+            "repo_path",
+            "clusters"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "cluster_transition",
+        "description": "start|submit|review|request_changes|confirm|block|retro|replan. confirm scheitert ohne REVIEW_RESULT=confirmed UND grüne deklarierte Checks. review führt deklarierte Checks aus (run_checks=false zum Abschalten).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster_id": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "start",
+                "submit",
+                "review",
+                "request_changes",
+                "confirm",
+                "block",
+                "retro",
+                "replan"
+              ]
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "cluster_id",
+            "action"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "codex_update",
+        "description": "Prüft (check) oder installiert (apply) die neueste Codex-Version via npm. Kanäle: latest (stabil), alpha/beta (prerelease, z. B. für neue Modelle). Nicht anwenden, solange Tasks laufen.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "check",
+                "apply"
               ],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": [
-          "goal",
-          "repo_path",
-          "clusters"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "cluster_transition",
-      "description": "start|submit|review|request_changes|confirm|block|retro|replan. confirm scheitert ohne REVIEW_RESULT=confirmed UND grüne deklarierte Checks. review führt deklarierte Checks aus (run_checks=false zum Abschalten).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "cluster_id": {
-            "type": "string"
-          },
-          "action": {
-            "type": "string",
-            "enum": [
-              "start",
-              "submit",
-              "review",
-              "request_changes",
-              "confirm",
-              "block",
-              "retro",
-              "replan"
-            ]
-          },
-          "payload": {
-            "type": "object",
-            "additionalProperties": {}
-          }
-        },
-        "required": [
-          "cluster_id",
-          "action"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "codex_update",
-      "description": "Prüft (check) oder installiert (apply) die neueste Codex-Version via npm. Kanäle: latest (stabil), alpha/beta (prerelease, z. B. für neue Modelle). Nicht anwenden, solange Tasks laufen.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "check",
-              "apply"
-            ],
-            "default": "check"
-          },
-          "channel": {
-            "type": "string",
-            "enum": [
-              "latest",
-              "alpha",
-              "beta"
-            ],
-            "default": "latest"
-          }
-        },
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "hypotheses",
-      "description": "Legacy: list|add|confirm|reject|supersede (plan-weite Freitext-Hypothesen). Reiches, versioniertes Modell: create|update|get|versions. 'create' bildet die Pflicht-Hypothese VOR einer Aufgabe (initialAssumption + criticalQuestions + falsificationPlan). 'update' aktualisiert append-only NACH der Aufgabe (result + evidence + updatedAssumption).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "plan_id": {
-            "type": "string",
-            "description": "Für list/add/create (plan-weite Gruppierung)."
-          },
-          "action": {
-            "type": "string",
-            "enum": [
-              "list",
-              "add",
-              "confirm",
-              "reject",
-              "supersede",
-              "create",
-              "update",
-              "get",
-              "versions"
-            ]
-          },
-          "id": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string",
-            "description": "Legacy add: Freitext."
-          },
-          "evidence": {
-            "type": "string",
-            "description": "Legacy: Provenienz."
-          },
-          "task_id": {
-            "type": "string"
-          },
-          "cluster_id": {
-            "type": "string"
-          },
-          "initial_assumption": {
-            "type": "string",
-            "description": "create: die Ausgangsannahme."
-          },
-          "confidence_before": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "description": "create: Konfidenz [0,1] vor der Aufgabe."
-          },
-          "critical_questions": {
-            "type": "array",
-            "items": {
-              "type": "string"
+              "default": "check"
             },
-            "description": "create: aktives Hinterfragen."
-          },
-          "falsification_plan": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "create: wie könnte die Annahme scheitern?"
-          },
-          "result": {
-            "type": "string",
-            "enum": [
-              "open",
-              "confirmed",
-              "partially_confirmed",
-              "refuted"
-            ],
-            "description": "update: Prüfergebnis."
-          },
-          "confidence_after": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "description": "update: Konfidenz [0,1] nach der Aufgabe."
-          },
-          "updated_assumption": {
-            "type": "string",
-            "description": "update: revidierte Annahme / Folgehypothese."
-          },
-          "add_evidence": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "update: gefundene Evidenz."
-          },
-          "follow_up_questions": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "update: PFLICHT bei partially_confirmed/refuted — was bleibt offen?"
-          },
-          "risks": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "update: erkannte Risiken/Folgeprobleme."
-          },
-          "next_action": {
-            "type": "string",
-            "description": "update: nächste sinnvolle Aktion."
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "open",
-              "confirmed",
-              "rejected",
-              "superseded"
-            ]
-          },
-          "version": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "description": "get: konkrete Version (sonst neueste)."
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "models_list",
-      "description": "Statische Routing-Tabelle (Plan §9). Claude wählt Klasse+Effort pro Phase; Namen nie hartkodieren.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "orchestrator_doctor",
-      "description": "Prüft alle konfigurierten Execution-Targets inklusive Codex-Version und Authentifizierung. Remote-Auth wird gemäß Serverkonfiguration sicher initialisiert und danach erneut geprüft.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "plan_snapshot",
-      "description": "Schreibt Plan+Cluster+Hypothesen+Reviews+Checks als kompaktes, kompressionssicheres Artefakt (TOON default) nach ORCH_HOME/snapshots und gibt den Inhalt zurück. Gegen Kontext-Kompaktierung.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "plan_id": {
-            "type": "string"
-          },
-          "format": {
-            "type": "string",
-            "enum": [
-              "toon",
-              "json"
-            ],
-            "default": "toon"
-          }
-        },
-        "required": [
-          "plan_id"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "repo_check",
-      "description": "Führt nur allowlisted Kommandos aus (keine freie Shell). Ergebnisse fließen in die confirm-Bedingung. Prüft zusätzlich Diff-Limits.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "cluster_id": {
-            "type": "string"
-          },
-          "checks": {
-            "type": "array",
-            "items": {
-              "type": "string"
+            "channel": {
+              "type": "string",
+              "enum": [
+                "latest",
+                "alpha",
+                "beta"
+              ],
+              "default": "latest"
             }
           },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "worktree",
-              "branch"
-            ],
-            "default": "branch"
-          }
-        },
-        "required": [
-          "cluster_id",
-          "checks"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "result_artifact",
-      "description": "Erzeugt am Ende eines Orchestrator-Laufs ein versioniertes, maschinenlesbares Ergebnisartefakt: TOML mit Endung .toln (+ summary.md). Enthält Plan, Cluster, Tasks, Agentenjobs, alle Hypothesen und ihre Aktualisierungen, Reviews, Nutzerentscheidungen, geänderte Dateien, Tests, Findings, offene Punkte, Gesamtbewertung und Prüfsumme. Registriert das Artefakt in der DB.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "plan_id": {
-            "type": "string"
-          },
-          "original_request": {
-            "type": "string"
-          },
-          "interpreted_goal": {
-            "type": "string"
-          },
-          "final_assessment": {
-            "type": "string"
-          },
-          "recommended_next_steps": {
-            "type": "array",
-            "items": {
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "hypotheses",
+        "description": "Legacy: list|add|confirm|reject|supersede (plan-weite Freitext-Hypothesen). Reiches, versioniertes Modell: create|update|get|versions. 'create' bildet die Pflicht-Hypothese VOR einer Aufgabe (initialAssumption + criticalQuestions + falsificationPlan). 'update' aktualisiert append-only NACH der Aufgabe (result + evidence + updatedAssumption).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "plan_id": {
+              "type": "string",
+              "description": "Für list/add/create (plan-weite Gruppierung)."
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "list",
+                "add",
+                "confirm",
+                "reject",
+                "supersede",
+                "create",
+                "update",
+                "get",
+                "versions"
+              ]
+            },
+            "id": {
               "type": "string"
-            }
-          },
-          "git_commit_before": {
-            "type": "string",
-            "description": "Basis-Commit für die Datei-Diff-Ermittlung (sonst HEAD~1)."
-          }
-        },
-        "required": [
-          "plan_id"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "task_control",
-      "description": "pause (kein Auto-Resume nach Slice), resume, cancel (SIGTERM->SIGKILL, Worktree bleibt), inject (Nachricht an nächster Slice-Grenze).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "task_id": {
-            "type": "string"
-          },
-          "action": {
-            "type": "string",
-            "enum": [
-              "pause",
-              "resume",
-              "cancel",
-              "inject"
-            ]
-          },
-          "message": {
-            "type": "string"
-          },
-          "priority": {
-            "type": "string",
-            "enum": [
-              "normal",
-              "high"
-            ],
-            "default": "normal"
-          }
-        },
-        "required": [
-          "task_id",
-          "action"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "task_events",
-      "description": "Ruft Events mit seq>cursor ab, optional gefiltert nach kind.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "task_id": {
-            "type": "string"
-          },
-          "cursor": {
-            "type": "integer",
-            "minimum": 0,
-            "default": 0
-          },
-          "kinds": {
-            "type": "array",
-            "items": {
+            },
+            "text": {
+              "type": "string",
+              "description": "Legacy add: Freitext."
+            },
+            "evidence": {
+              "type": "string",
+              "description": "Legacy: Provenienz."
+            },
+            "task_id": {
               "type": "string"
-            }
-          },
-          "limit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 500,
-            "default": 200
-          }
-        },
-        "required": [
-          "task_id"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "task_result",
-      "description": "Diff-Zusammenfassung (Datei-Liste, Zeilenstatistik), Testresultate, letzte SLICE_RESULT-Blöcke, offene Punkte. Keine vollständigen Diffs/Logs.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "task_id": {
-            "type": "string"
-          },
-          "max_slice_results": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 20,
-            "default": 3
-          }
-        },
-        "required": [
-          "task_id"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "task_start",
-      "description": "Startet einen Codex-Auftrag als Slice-Folge. Kleine Aufgaben: wait_for='completed' (nur wenn Slice-Budget <= Sync-Limit). Große: 'started'/'first_checkpoint' + task_wait-Loop. danger-full-access ist unerreichbar.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "cluster_id": {
-            "type": "string",
-            "description": "Cluster, zu dem der Task gehört (bestimmt Repo-Pfad)."
-          },
-          "repo_path": {
-            "type": "string",
-            "description": "Repo-Pfad, falls kein cluster_id angegeben ist."
-          },
-          "hypothesis_id": {
-            "type": "string",
-            "description": "PFLICHT: id der zuvor gebildeten Hypothese (hypotheses → create). Ohne verknüpfte Hypothese wird der Start blockiert."
-          },
-          "instructions": {
-            "type": "string",
-            "description": "Konkrete Arbeitsanweisung für Codex."
-          },
-          "acceptance_criteria": {
-            "type": "array",
-            "items": {
+            },
+            "cluster_id": {
               "type": "string"
-            }
-          },
-          "sandbox": {
-            "type": "string",
-            "enum": [
-              "read-only",
-              "workspace-write"
-            ]
-          },
-          "model": {
-            "type": "string",
-            "default": "auto",
-            "description": "'auto' oder konkreter Modellname aus models_list (z. B. gpt-5.5, gpt-5.4, gpt-5.4-mini)."
-          },
-          "effort": {
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high",
-              "xhigh"
-            ],
-            "default": "medium",
-            "description": "Reasoning effort: low|medium|high|xhigh (extra hoch)."
-          },
-          "slice_budget": {
-            "type": "object",
-            "properties": {
-              "max_minutes": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "default": 8
+            },
+            "initial_assumption": {
+              "type": "string",
+              "description": "create: die Ausgangsannahme."
+            },
+            "confidence_before": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "create: Konfidenz [0,1] vor der Aufgabe."
+            },
+            "critical_questions": {
+              "type": "array",
+              "items": {
+                "type": "string"
               },
-              "stop_condition": {
+              "description": "create: aktives Hinterfragen."
+            },
+            "falsification_plan": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "create: wie könnte die Annahme scheitern?"
+            },
+            "result": {
+              "type": "string",
+              "enum": [
+                "open",
+                "confirmed",
+                "partially_confirmed",
+                "refuted"
+              ],
+              "description": "update: Prüfergebnis."
+            },
+            "confidence_after": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "update: Konfidenz [0,1] nach der Aufgabe."
+            },
+            "updated_assumption": {
+              "type": "string",
+              "description": "update: revidierte Annahme / Folgehypothese."
+            },
+            "add_evidence": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "update: gefundene Evidenz."
+            },
+            "follow_up_questions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "update: PFLICHT bei partially_confirmed/refuted — was bleibt offen?"
+            },
+            "risks": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "update: erkannte Risiken/Folgeprobleme."
+            },
+            "next_action": {
+              "type": "string",
+              "description": "update: nächste sinnvolle Aktion."
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "confirmed",
+                "rejected",
+                "superseded"
+              ]
+            },
+            "version": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "get: konkrete Version (sonst neueste)."
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "models_list",
+        "description": "Statische Routing-Tabelle (Plan §9). Claude wählt Klasse+Effort pro Phase; Namen nie hartkodieren.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "orchestrator_doctor",
+        "description": "Prüft alle konfigurierten Execution-Targets inklusive Codex-Version und Authentifizierung. Remote-Auth wird gemäß Serverkonfiguration sicher initialisiert und danach erneut geprüft.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "plan_snapshot",
+        "description": "Schreibt Plan+Cluster+Hypothesen+Reviews+Checks als kompaktes, kompressionssicheres Artefakt (TOON default) nach ORCH_HOME/snapshots und gibt den Inhalt zurück. Gegen Kontext-Kompaktierung.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "plan_id": {
+              "type": "string"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "toon",
+                "json"
+              ],
+              "default": "toon"
+            }
+          },
+          "required": [
+            "plan_id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "repo_check",
+        "description": "Führt nur allowlisted Kommandos aus (keine freie Shell). Ergebnisse fließen in die confirm-Bedingung. Prüft zusätzlich Diff-Limits.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster_id": {
+              "type": "string"
+            },
+            "checks": {
+              "type": "array",
+              "items": {
                 "type": "string"
               }
             },
-            "additionalProperties": false
+            "scope": {
+              "type": "string",
+              "enum": [
+                "worktree",
+                "branch"
+              ],
+              "default": "branch"
+            }
           },
-          "wait_for": {
-            "type": "string",
-            "enum": [
-              "started",
-              "first_checkpoint",
-              "completed"
-            ],
-            "default": "started"
-          },
-          "worktree": {
-            "type": "string",
-            "enum": [
-              "none",
-              "auto"
-            ],
-            "default": "none",
-            "description": "'none' (Repo direkt) oder 'auto' (serververwaltetes isoliertes Worktree)."
-          },
-          "network": {
-            "type": "boolean",
-            "description": "Netzwerkzugriff für den Slice (Default: Server-Policy, i.d.R. aus)."
-          },
-          "extra_config": {
-            "type": "object",
-            "additionalProperties": {
+          "required": [
+            "cluster_id",
+            "checks"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "result_artifact",
+        "description": "Erzeugt am Ende eines Orchestrator-Laufs ein versioniertes, maschinenlesbares Ergebnisartefakt: TOML mit Endung .toln (+ summary.md). Enthält Plan, Cluster, Tasks, Agentenjobs, alle Hypothesen und ihre Aktualisierungen, Reviews, Nutzerentscheidungen, geänderte Dateien, Tests, Findings, offene Punkte, Gesamtbewertung und Prüfsumme. Registriert das Artefakt in der DB.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "plan_id": {
               "type": "string"
             },
-            "description": "Zusätzliche codex -c key=value Overrides. Sicherheitskritische Keys (sandbox_mode, danger*, approval_policy, model, notify) werden ignoriert."
-          }
-        },
-        "required": [
-          "instructions",
-          "sandbox"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "task_wait",
-      "description": "Kehrt zurück bei neuem Event (seq>cursor), Slice-Ende, Statuswechsel oder Timeout. Kernprimitive des Orchestrierungs-Loops (MCP ist pull-basiert).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "task_id": {
-            "type": "string"
+            "original_request": {
+              "type": "string"
+            },
+            "interpreted_goal": {
+              "type": "string"
+            },
+            "final_assessment": {
+              "type": "string"
+            },
+            "recommended_next_steps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "git_commit_before": {
+              "type": "string",
+              "description": "Basis-Commit für die Datei-Diff-Ermittlung (sonst HEAD~1)."
+            }
           },
-          "cursor": {
-            "type": "integer",
-            "minimum": 0,
-            "default": 0
-          },
-          "timeout_seconds": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "default": 50
-          }
-        },
-        "required": [
-          "task_id"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    },
-    {
-      "name": "user_decision",
-      "description": "record|list|preference. Bei Review-Auffälligkeiten fragt Claude den Nutzer, ob nachgebessert werden soll; die Antwort wird hier persistiert. 'accept'/'proceed' gibt den Cluster-Abschluss trotz Findings frei, 'fix' fordert Nachbesserung. Mit remember=true wird die Antwort zur stehenden Präferenz (plan-weit).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "record",
-              "list",
-              "preference"
-            ]
-          },
-          "plan_id": {
-            "type": "string"
-          },
-          "cluster_id": {
-            "type": "string"
-          },
-          "topic": {
-            "type": "string",
-            "default": "cluster_findings",
-            "description": "Entscheidungsthema. Default: Review-Auffälligkeiten."
-          },
-          "question": {
-            "type": "string",
-            "description": "Die dem Nutzer gestellte Frage (für Audit)."
-          },
-          "decision": {
-            "type": "string",
-            "enum": [
-              "accept",
-              "proceed",
-              "fix",
-              "always_ask"
-            ]
-          },
-          "remember": {
-            "type": "boolean",
-            "default": false,
-            "description": "Als stehende Präferenz merken (künftig automatisch anwenden)."
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      }
-    }
-  ],
-  "prompts": [
-    {
-      "name": "codex_orchestrator",
-      "description": "Plan and supervise a Codex implementation through gated clusters.",
-      "arguments": [
-        {
-          "name": "request",
-          "required": true
-        },
-        {
-          "name": "repo_path",
-          "description": "Exact absolute Git repository root; omit only when Claude should ask the user.",
-          "required": false
+          "required": [
+            "plan_id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
         }
-      ]
-    },
-    {
-      "name": "orchestrator_status",
-      "description": "Load the durable state of an orchestration plan.",
-      "arguments": [
-        {
-          "name": "plan_id",
-          "required": false
+      },
+      {
+        "name": "task_control",
+        "description": "pause (kein Auto-Resume nach Slice), resume, cancel (SIGTERM->SIGKILL, Worktree bleibt), inject (Nachricht an nächster Slice-Grenze).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "task_id": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "pause",
+                "resume",
+                "cancel",
+                "inject"
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "normal",
+                "high"
+              ],
+              "default": "normal"
+            }
+          },
+          "required": [
+            "task_id",
+            "action"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
         }
-      ]
-    }
-  ]
+      },
+      {
+        "name": "task_events",
+        "description": "Ruft Events mit seq>cursor ab, optional gefiltert nach kind.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "task_id": {
+              "type": "string"
+            },
+            "cursor": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "kinds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "limit": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 500,
+              "default": 200
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "task_result",
+        "description": "Diff-Zusammenfassung (Datei-Liste, Zeilenstatistik), Testresultate, letzte SLICE_RESULT-Blöcke, offene Punkte. Keine vollständigen Diffs/Logs.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "task_id": {
+              "type": "string"
+            },
+            "max_slice_results": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 20,
+              "default": 3
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "task_start",
+        "description": "Startet einen Codex-Auftrag als Slice-Folge. Kleine Aufgaben: wait_for='completed' (nur wenn Slice-Budget <= Sync-Limit). Große: 'started'/'first_checkpoint' + task_wait-Loop. danger-full-access ist unerreichbar.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster_id": {
+              "type": "string",
+              "description": "Cluster, zu dem der Task gehört (bestimmt Repo-Pfad)."
+            },
+            "repo_path": {
+              "type": "string",
+              "description": "Repo-Pfad, falls kein cluster_id angegeben ist."
+            },
+            "hypothesis_id": {
+              "type": "string",
+              "description": "PFLICHT: id der zuvor gebildeten Hypothese (hypotheses → create). Ohne verknüpfte Hypothese wird der Start blockiert."
+            },
+            "instructions": {
+              "type": "string",
+              "description": "Konkrete Arbeitsanweisung für Codex."
+            },
+            "acceptance_criteria": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sandbox": {
+              "type": "string",
+              "enum": [
+                "read-only",
+                "workspace-write"
+              ]
+            },
+            "model": {
+              "type": "string",
+              "default": "auto",
+              "description": "'auto' oder konkreter Modellname aus models_list (z. B. gpt-5.5, gpt-5.4, gpt-5.4-mini)."
+            },
+            "effort": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh"
+              ],
+              "default": "medium",
+              "description": "Reasoning effort: low|medium|high|xhigh (extra hoch)."
+            },
+            "slice_budget": {
+              "type": "object",
+              "properties": {
+                "max_minutes": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 8
+                },
+                "stop_condition": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "wait_for": {
+              "type": "string",
+              "enum": [
+                "started",
+                "first_checkpoint",
+                "completed"
+              ],
+              "default": "started"
+            },
+            "worktree": {
+              "type": "string",
+              "enum": [
+                "none",
+                "auto"
+              ],
+              "default": "none",
+              "description": "'none' (Repo direkt) oder 'auto' (serververwaltetes isoliertes Worktree)."
+            },
+            "network": {
+              "type": "boolean",
+              "description": "Netzwerkzugriff für den Slice (Default: Server-Policy, i.d.R. aus)."
+            },
+            "extra_config": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Zusätzliche codex -c key=value Overrides. Sicherheitskritische Keys (sandbox_mode, danger*, approval_policy, model, notify) werden ignoriert."
+            }
+          },
+          "required": [
+            "instructions",
+            "sandbox"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "task_wait",
+        "description": "Kehrt zurück bei neuem Event (seq>cursor), Slice-Ende, Statuswechsel oder Timeout. Kernprimitive des Orchestrierungs-Loops (MCP ist pull-basiert).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "task_id": {
+              "type": "string"
+            },
+            "cursor": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "timeout_seconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "default": 50
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "user_decision",
+        "description": "record|list|preference. Bei Review-Auffälligkeiten fragt Claude den Nutzer, ob nachgebessert werden soll; die Antwort wird hier persistiert. 'accept'/'proceed' gibt den Cluster-Abschluss trotz Findings frei, 'fix' fordert Nachbesserung. Mit remember=true wird die Antwort zur stehenden Präferenz (plan-weit).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "record",
+                "list",
+                "preference"
+              ]
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "cluster_id": {
+              "type": "string"
+            },
+            "topic": {
+              "type": "string",
+              "default": "cluster_findings",
+              "description": "Entscheidungsthema. Default: Review-Auffälligkeiten."
+            },
+            "question": {
+              "type": "string",
+              "description": "Die dem Nutzer gestellte Frage (für Audit)."
+            },
+            "decision": {
+              "type": "string",
+              "enum": [
+                "accept",
+                "proceed",
+                "fix",
+                "always_ask"
+              ]
+            },
+            "remember": {
+              "type": "boolean",
+              "default": false,
+              "description": "Als stehende Präferenz merken (künftig automatisch anwenden)."
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    ],
+    "prompts": [
+      {
+        "name": "codex_orchestrator",
+        "description": "Plan and supervise a Codex implementation through gated clusters.",
+        "arguments": [
+          {
+            "name": "request",
+            "required": true
+          },
+          {
+            "name": "repo_path",
+            "description": "Exact absolute Git repository root; omit only when Claude should ask the user.",
+            "required": false
+          }
+        ]
+      },
+      {
+        "name": "orchestrator_status",
+        "description": "Load the durable state of an orchestration plan.",
+        "arguments": [
+          {
+            "name": "plan_id",
+            "required": false
+          }
+        ]
+      }
+    ]
+  }
 }

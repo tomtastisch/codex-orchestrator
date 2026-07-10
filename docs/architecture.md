@@ -27,8 +27,13 @@ flowchart TD
 
     subgraph domain["Domain — pure business rules (no I/O)"]
         SM["statemachine.ts — cluster gate"]
-        HY["hypotheses.ts — versioned hypotheses"]
-        RS["resolve.ts / prompts.ts / gate.ts"]
+        RS["resolve.ts"]
+        PR["prompts.ts"]
+    end
+
+    subgraph repos["Persistence consumers — repositories / DAOs"]
+        HY["hypotheses.ts — HypothesisRepo (versioned hypotheses)"]
+        OTH["session.ts · artifact.ts · snapshot.ts · checks.ts"]
     end
 
     subgraph ports["Ports — src/ports/ + execution/types.ts"]
@@ -45,8 +50,10 @@ flowchart TD
     end
 
     Tools --> domain
+    Tools --> repos
     Tools --> ports
     domain --> ports
+    repos --> ports
     Ctx -->|injects| adapters
     DB -. implements .-> PS
     SC -. implements .-> CK

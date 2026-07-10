@@ -1,5 +1,5 @@
 {
-  "$comment": "Hexagonal layer manifest (Issue #32). Single source of truth for the persistence boundary. Consumed by tests/architecture-boundary.test.mjs, which scans import specifiers and fails if any layer's dependency direction rots. Paths are repo-relative POSIX. server.ts is the composition root and is intentionally allowed to import the concrete adapter; splitting it into use-cases is a later cluster.",
+  "$comment": "Hexagonal layer manifest (Issue #32). Single source of truth for the persistence boundary. Consumed by tests/architecture-boundary.test.mjs, which scans import specifiers repo-wide and fails if any layer's dependency direction rots. Paths are repo-relative POSIX. server.ts and app/context.ts are the composition roots and are intentionally allowed to import the concrete adapter; the god-module split into use-cases (src/app/tools/*, 73-line composition root) is done in this PR.",
   "ports": {
     "persistence": "src/ports/persistence.ts",
     "clock": "src/ports/clock.ts"
@@ -22,6 +22,11 @@
     "src/statemachine.ts"
   ],
   "forbiddenPersistenceImports": ["node:sqlite", "sqlite"],
+  "$adapterAllowListNote": "Completeness guard (repo-wide): tests/architecture-boundary.test.mjs scans EVERY src/**/*.ts (not just the hand-maintained consumer lists) and fails if any file imports the persistence adapter (src/db.ts) or node:sqlite unless it is listed here. A new unclassified module that reaches for the adapter — directly or by re-exporting it through a barrel, which still requires importing it — therefore cannot slip through. Keep these lists minimal.",
+  "adapterImportAllowList": {
+    "persistenceAdapter": ["src/app/context.ts"],
+    "sqlite": ["src/db.ts", "src/db/migrations.ts"]
+  },
   "clockConsumers": ["src/db.ts", "src/hypotheses.ts", "src/session.ts"],
   "$clockNote": "The Clock/IdGenerator ports (src/ports/clock.ts) are injected by the composition root (src/app/context.ts) into these consumers; each depends on the port, not on ambient nowIso/newId. Enforced by tests/architecture-boundary.test.mjs.",
   "$domainPureNote": "Modules proven free of BOTH I/O imports AND raw store.db access, enforced by tests/architecture-boundary.test.mjs. hypotheses.ts is intentionally excluded: HypothesisRepo is the hypothesis repository (DAO). It now orchestrates persistence exclusively through typed PersistenceStore methods (no raw SQL), but is classified a persistence consumer rather than domain-pure to reflect its repository role. The port exposes no raw SQL gateway; no consumer touches store.db.",
