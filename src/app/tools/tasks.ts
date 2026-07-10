@@ -144,9 +144,15 @@ server.registerTool(
       hypothesisId: a.hypothesis_id ?? null,
     });
 
+    // Governance-kritische Persistenz wird NICHT stumm verschluckt: schlägt sie
+    // fehl, sammeln wir eine Warnung und geben sie in der Tool-Antwort zurück, statt
+    // stillen Erfolg vorzutäuschen (Provenienz/Ledger/Audit müssen sichtbar bleiben).
+    const warnings: { code: string; message: string }[] = [];
+
     // Hypothese provenienzhalber an Task/Cluster binden (Header-Update, keine neue Version).
     if (a.hypothesis_id) {
-      try { hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null); } catch { /* best effort */ }
+      try { hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null); }
+      catch (e: any) { warnings.push({ code: "provenance_bind_failed", message: String(e?.message ?? e) }); }
     }
 
     // Cluster 5: auditierbaren agent_job-Datensatz anlegen (wird bei Task-Ende abgeschlossen).
@@ -155,7 +161,7 @@ server.registerTool(
         taskId: task.id, clusterId: a.cluster_id ?? null, hypothesisId: a.hypothesis_id ?? null,
         model, effort, sandbox, status: "queued",
       });
-    } catch { /* best effort */ }
+    } catch (e: any) { warnings.push({ code: "agent_job_persist_failed", message: String(e?.message ?? e) }); }
 
     // Cluster 7: sicherheitsrelevantes Audit-Event (gewählte Sandbox, verworfene Config-Keys).
     try {
@@ -164,7 +170,10 @@ server.registerTool(
         detail: { sandbox, model, effort, network: a.network ?? config.networkDefault, dropped_config_keys: droppedConfig },
         redacted: false,
       });
-    } catch { /* best effort */ }
+    } catch (e: any) {
+      warnings.push({ code: "audit_persist_failed", message: String(e?.message ?? e) });
+      console.error(`[orchestrator] Audit-Event 'task_started' für ${task.id} nicht persistiert: ${e?.message ?? e}`);
+    }
 
     // Auto-Worktree jetzt mit echter task.id anlegen -> Verzeichnis/Branch = task.id.
     if (wantAutoWorktree) {
@@ -176,18 +185,22 @@ server.registerTool(
         branch = wt.branch;
         store.updateTask(task.id, { worktree, branch });
       } catch (e: any) {
-        store.updateTask(task.id, { status: "failed", ended_at: new Date().toISOString() });
-        return err({ ok: false, task_id: task.id, error: `Worktree-Erstellung fehlgeschlagen: ${e?.message ?? e}` });
+        // Fail-closed: Task auf failed setzen (clock-gestempelt) UND den offenen
+        // agent_job schließen, damit kein Ledger-Eintrag als 'queued' hängen bleibt.
+        const reason = `Worktree-Erstellung fehlgeschlagen: ${e?.message ?? e}`;
+        store.failTask(task.id, reason);
+        return err({ ok: false, task_id: task.id, error: reason });
       }
     }
 
     sessions.startLoop(task.id, stopCondition);
     const dropped = droppedConfig.length ? { dropped_config_keys: droppedConfig } : {};
+    const warn = warnings.length ? { warnings } : {};
 
     if (waitFor === "started") {
       return ok({ ok: true, task_id: task.id, status: "queued", model, effort, worktree, branch,
         target: selection.target.id, routing_reason: selection.reason, fallback_from: selection.fallbackFrom,
-        note: modelNote, ...dropped });
+        note: modelNote, ...dropped, ...warn });
     }
     if (waitFor === "first_checkpoint") {
       await sessions.waitUntil(task.id, (_s, sawSlice) => sawSlice, config.maxWaitSeconds);
@@ -204,7 +217,7 @@ server.registerTool(
       .eventsAfter(task.id, 0, ["slice_result"], 50)
       .map((e) => JSON.parse(e.payload_json))
       .at(-1);
-    return ok({ ok: true, task_id: task.id, status: t.status, model, effort, worktree, branch, last_slice_result: lastSlice ?? null, note: modelNote, ...dropped });
+    return ok({ ok: true, task_id: task.id, status: t.status, model, effort, worktree, branch, last_slice_result: lastSlice ?? null, note: modelNote, ...dropped, ...warn });
   },
 );
 

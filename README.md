@@ -23,7 +23,7 @@ Current version: 1.6.0
 |---|---|---|
 | Claude Code CLI | Production ready | First-party GitHub marketplace |
 | Claude Desktop MCPB | Released; technical verification passed | Latest GitHub release, version 1.6.0 |
-| claude.ai Remote MCP | In development | Planned for release 1.6.0 |
+| claude.ai Remote MCP | In development | Planned for a future release |
 
 The repository ships a production-ready Claude Code plugin and the released
 Claude Desktop MCPB. Claude Desktop is not a prerequisite for the Claude Code
@@ -32,7 +32,7 @@ plugin. The Desktop artifact, checksum, startup, MCP handshake,
 The remaining conversation-level slash-prompt run is an operator acceptance
 check, not an unreleased implementation item. claude.ai cannot start this local
 stdio server; its separate HTTP/OAuth connector therefore remains in
-development for 1.6.0.
+development for a future release.
 
 The externally installed server runtime is continuously verified with
 Node.js 22.13–22.x and Node.js 24.x on Ubuntu, macOS and Windows. Claude Desktop's
@@ -294,7 +294,7 @@ and the bundle format is maintained in the
 
 ### claude.ai Remote MCP (in development)
 
-claude.ai cannot run this repository's local stdio plugin. Release 1.6.0 will
+claude.ai cannot run this repository's local stdio plugin. A future release will
 provide a self-hosted, OAuth-protected Streamable HTTP connector for an
 operator-controlled host. Do not expose the current stdio process through a
 public tunnel and do not upload local Codex credentials to claude.ai.

@@ -90,6 +90,8 @@ test("CodeQL scans application and workflow code with current actions", () => {
     assert.doesNotMatch(codeql, /packages: read/);
     assert.match(codeql, /schedule:/);
     assert.doesNotMatch(codeql, /continue-on-error:\s*true/);
+    // Generated bundle/ output is excluded from scanning recursively and explicitly.
+    assert.match(codeql, /paths-ignore:\s*\n\s*- 'bundle\/\*\*'/, "CodeQL must exclude bundle/** recursively");
 });
 
 test("every external GitHub Action is pinned to an immutable reviewed commit", () => {

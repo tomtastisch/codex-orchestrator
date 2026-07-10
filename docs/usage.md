@@ -1,8 +1,8 @@
 # Usage Guide
 
-This guide walks through using Codex Orchestrator once it is installed (see
-[`installation.md`](installation.md) — currently the Installation section of the
-[root README](../README.md)). The MCP prompts and tools reference lives in the
+This guide walks through using Codex Orchestrator once it is installed (see the
+[Installation section of the root README](../README.md#installation)). The MCP
+prompts and tools reference lives in the
 [README](../README.md#mcp-prompts-and-tools).
 
 ## From a goal to a confirmed change

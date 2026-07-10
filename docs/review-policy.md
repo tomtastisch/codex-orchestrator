@@ -35,9 +35,10 @@ executor). GitHub Copilot's review instructions live in
    review is never treated as quota evidence; the fail-closed default is
    `unavailable/unknown`.
 
-> Current operational state: the Copilot review limit is operator-attested as
-> reached, so the independent QA agent is the active review path for this
-> repository until the limit resets.
+   When the fallback is used, the pull request must record **why** (which of the
+   three triggers applied and the evidence). Transient state — e.g. "Copilot
+   quota is currently reached" — belongs in the pull request or a status issue,
+   **not** in this document, which states only the durable rules.
 
 ## The merge gate
 

@@ -21,16 +21,20 @@ infrastructure sits behind adapters wired in one composition root.
    any domain/application module that imports a concrete adapter (`db.js`,
    `node:sqlite`, `system-clock`), reaches a raw `store.db` gateway, or performs
    ambient I/O in a domain-pure module. New adapters must implement the relevant
-   port; new tools must depend on the injected `AppContext`, not on concretes.
-2. **Security (fail-closed).** `danger-full-access` stays unreachable; slice
+   port; new tools depend on the injected `AppContext` (plus read-only process
+   `config`), not on other concretes.
+3. **Security (fail-closed).** `danger-full-access` stays unreachable; slice
    network is off by default; `repo_check` runs allow-listed argv only; secrets
    (`auth.json`, tokens) are never logged, echoed in events/tool results, or
    committed. Per-task `extra_config` must stay behind its category blocklist.
-3. **Contracts & SSOT.** Central values live once under `ssot/` and are bound by
+   Governance-critical persistence (audit, agent-job ledger, hypothesis
+   provenance) must never be silently swallowed — fail closed or surface a
+   warning.
+4. **Contracts & SSOT.** Central values live once under `ssot/` and are bound by
    contract tests — never hard-code a value that `ssot/` owns. The external MCP
    tool surface (17 tools, 2 prompts) must stay byte-identical unless the PR
    explicitly changes it.
-4. **Tests.** Changes to production behaviour need tests; the coverage floors
+5. **Tests.** Changes to production behaviour need tests; the coverage floors
    (75 % lines / 70 % branches / 75 % functions) must hold; boundary contract
    tests must stay green.
 

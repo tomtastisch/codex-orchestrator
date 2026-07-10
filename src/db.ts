@@ -331,11 +331,16 @@ export class Store implements PersistenceStore {
 
   // ---- events (append-only) ----
   addEvent(taskId: string, kind: EventKind, payload: unknown): EventRow {
+    // Capture the timestamp and payload once so the persisted row and the
+    // returned object are always identical (a fake/advancing clock must not make
+    // the returned event drift from what was actually stored).
+    const ts = this.clock.now();
+    const payloadJson = JSON.stringify(payload ?? {});
     const info = this.db.prepare(
       "INSERT INTO events(task_id,ts,kind,payload_json) VALUES(?,?,?,?)"
-    ).run(taskId, this.clock.now(), kind, JSON.stringify(payload ?? {}));
+    ).run(taskId, ts, kind, payloadJson);
     const seq = Number(info.lastInsertRowid);
-    return { seq, task_id: taskId, ts: this.clock.now(), kind, payload_json: JSON.stringify(payload ?? {}) };
+    return { seq, task_id: taskId, ts, kind, payload_json: payloadJson };
   }
   eventsAfter(taskId: string, cursor: number, kinds?: string[], limit = 200): EventRow[] {
     let rows: EventRow[];
@@ -356,6 +361,17 @@ export class Store implements PersistenceStore {
     const r = this.db.prepare("SELECT MAX(seq) AS m FROM events WHERE task_id=?")
       .get(taskId) as unknown as { m: number | null };
     return r?.m ?? 0;
+  }
+  /**
+   * Fail a task and, in the same transaction, close its latest open agent job.
+   * Timestamps come from the injected clock (no ambient `new Date()`), and the
+   * agent-job ledger cannot be left stuck as `queued` behind a failed task.
+   */
+  failTask(taskId: string, summary: string): void {
+    this.tx(() => {
+      this.updateTask(taskId, { status: "failed", ended_at: this.clock.now() });
+      this.finishAgentJobByTask(taskId, "failed", summary);
+    });
   }
 
   // ---- injections ----

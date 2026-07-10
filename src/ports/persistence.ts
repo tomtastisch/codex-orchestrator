@@ -136,6 +136,8 @@ export interface PersistenceStore {
     getTask(id: string): TaskRow | undefined;
     listTasks(filter?: { status?: TaskStatus; clusterId?: string }): TaskRow[];
     updateTask(id: string, patch: Partial<TaskRow>): void;
+    /** Fail a task (clock-stamped) and close its latest open agent job atomically. */
+    failTask(taskId: string, summary: string): void;
 
     // events (append-only)
     addEvent(taskId: string, kind: EventKind, payload: unknown): EventRow;

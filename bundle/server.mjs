@@ -23277,11 +23277,13 @@ var Store = class {
   }
   // ---- events (append-only) ----
   addEvent(taskId, kind, payload) {
+    const ts = this.clock.now();
+    const payloadJson = JSON.stringify(payload ?? {});
     const info = this.db.prepare(
       "INSERT INTO events(task_id,ts,kind,payload_json) VALUES(?,?,?,?)"
-    ).run(taskId, this.clock.now(), kind, JSON.stringify(payload ?? {}));
+    ).run(taskId, ts, kind, payloadJson);
     const seq = Number(info.lastInsertRowid);
-    return { seq, task_id: taskId, ts: this.clock.now(), kind, payload_json: JSON.stringify(payload ?? {}) };
+    return { seq, task_id: taskId, ts, kind, payload_json: payloadJson };
   }
   eventsAfter(taskId, cursor, kinds, limit = 200) {
     let rows;
@@ -23301,6 +23303,17 @@ var Store = class {
   maxSeq(taskId) {
     const r = this.db.prepare("SELECT MAX(seq) AS m FROM events WHERE task_id=?").get(taskId);
     return r?.m ?? 0;
+  }
+  /**
+   * Fail a task and, in the same transaction, close its latest open agent job.
+   * Timestamps come from the injected clock (no ambient `new Date()`), and the
+   * agent-job ledger cannot be left stuck as `queued` behind a failed task.
+   */
+  failTask(taskId, summary) {
+    this.tx(() => {
+      this.updateTask(taskId, { status: "failed", ended_at: this.clock.now() });
+      this.finishAgentJobByTask(taskId, "failed", summary);
+    });
   }
   // ---- injections ----
   addInjection(taskId, message, priority) {
@@ -25334,10 +25347,12 @@ function registerTaskTools(server2, ctx2) {
         fallbackFrom: selection.fallbackFrom,
         hypothesisId: a.hypothesis_id ?? null
       });
+      const warnings = [];
       if (a.hypothesis_id) {
         try {
           hypRepo.bindToTask(a.hypothesis_id, task.id, a.cluster_id ?? null);
-        } catch {
+        } catch (e) {
+          warnings.push({ code: "provenance_bind_failed", message: String(e?.message ?? e) });
         }
       }
       try {
@@ -25350,7 +25365,8 @@ function registerTaskTools(server2, ctx2) {
           sandbox,
           status: "queued"
         });
-      } catch {
+      } catch (e) {
+        warnings.push({ code: "agent_job_persist_failed", message: String(e?.message ?? e) });
       }
       try {
         store.addAuditEvent({
@@ -25360,7 +25376,9 @@ function registerTaskTools(server2, ctx2) {
           detail: { sandbox, model, effort, network: a.network ?? config2.networkDefault, dropped_config_keys: droppedConfig },
           redacted: false
         });
-      } catch {
+      } catch (e) {
+        warnings.push({ code: "audit_persist_failed", message: String(e?.message ?? e) });
+        console.error(`[orchestrator] Audit-Event 'task_started' f\xFCr ${task.id} nicht persistiert: ${e?.message ?? e}`);
       }
       if (wantAutoWorktree) {
         try {
@@ -25369,12 +25387,14 @@ function registerTaskTools(server2, ctx2) {
           branch = wt.branch;
           store.updateTask(task.id, { worktree, branch });
         } catch (e) {
-          store.updateTask(task.id, { status: "failed", ended_at: (/* @__PURE__ */ new Date()).toISOString() });
-          return err({ ok: false, task_id: task.id, error: `Worktree-Erstellung fehlgeschlagen: ${e?.message ?? e}` });
+          const reason = `Worktree-Erstellung fehlgeschlagen: ${e?.message ?? e}`;
+          store.failTask(task.id, reason);
+          return err({ ok: false, task_id: task.id, error: reason });
         }
       }
       sessions.startLoop(task.id, stopCondition);
       const dropped = droppedConfig.length ? { dropped_config_keys: droppedConfig } : {};
+      const warn = warnings.length ? { warnings } : {};
       if (waitFor === "started") {
         return ok({
           ok: true,
@@ -25388,7 +25408,8 @@ function registerTaskTools(server2, ctx2) {
           routing_reason: selection.reason,
           fallback_from: selection.fallbackFrom,
           note: modelNote,
-          ...dropped
+          ...dropped,
+          ...warn
         });
       }
       if (waitFor === "first_checkpoint") {
@@ -25402,7 +25423,7 @@ function registerTaskTools(server2, ctx2) {
       }
       const t = store.getTask(task.id);
       const lastSlice = store.eventsAfter(task.id, 0, ["slice_result"], 50).map((e) => JSON.parse(e.payload_json)).at(-1);
-      return ok({ ok: true, task_id: task.id, status: t.status, model, effort, worktree, branch, last_slice_result: lastSlice ?? null, note: modelNote, ...dropped });
+      return ok({ ok: true, task_id: task.id, status: t.status, model, effort, worktree, branch, last_slice_result: lastSlice ?? null, note: modelNote, ...dropped, ...warn });
     }
   );
   server2.registerTool(

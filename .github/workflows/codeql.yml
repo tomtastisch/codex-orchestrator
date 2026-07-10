@@ -37,10 +37,11 @@ jobs:
           # dependencies), not authored source. The authored code is scanned via
           # src/, and dependency CVEs are covered by `npm audit`; scanning the
           # bundled vendor code only re-reports the same third-party findings and
-          # churns on every rebuild.
+          # churns on every rebuild. `bundle/**` excludes the directory
+          # recursively (pinned by tests/quality-policy.test.mjs).
           config: |
             paths-ignore:
-              - bundle
+              - 'bundle/**'
       - uses: github/codeql-action/analyze@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
         with:
           category: "/language:${{ matrix.language }}"

@@ -25,6 +25,20 @@ test("Store reads time and identity from the injected ports", () => {
     assert.match(plan.id, /^P_fixed\d+$/, "id must come from the injected IdGenerator");
 });
 
+test("addEvent persists exactly the timestamp it returns (no double clock read)", () => {
+    // Monotonic fake clock: every now() call returns a new, later value. If
+    // addEvent read the clock twice, the returned event would drift from the
+    // row actually stored.
+    let n = 0;
+    const clock = { now: () => `2020-01-01T00:00:${String(n++).padStart(2, "0")}.000Z` };
+    const store = freshStore(clock, { newId: (p) => `${p}_x` });
+
+    const returned = store.addEvent("T_test", "note", { hello: "world" });
+    const stored = store.eventsAfter("T_test", 0).at(-1);
+    assert.equal(returned.ts, stored.ts, "returned event.ts must equal the persisted row.ts");
+    assert.equal(returned.payload_json, stored.payload_json);
+});
+
 test("HypothesisRepo reads time and identity from the injected ports", () => {
     const fixed = "2021-06-15T12:00:00.000Z";
     let n = 0;
