@@ -218,9 +218,9 @@ schemas, then applies independent adoption, quality and editorial criteria.
 The first-party commands in this README remain valid independently of those
 external listings.
 
-### Claude Desktop MCPB (released in 1.6.0)
+### Claude Desktop MCPB
 
-Claude Desktop does not install Claude Code plugins. Release 1.6.0 provides a
+Claude Desktop does not install Claude Code plugins. The project provides a
 dedicated MCP Bundle (`.mcpb`, formerly `.dxt`) for local installation. It uses
 stdio and runs only on the local machine. It does not request, copy or bundle
 `auth.json`, OAuth tokens or API keys; the child Codex CLI uses the existing
