@@ -184,6 +184,21 @@ test("the clock/id port is actually consumed — no dead abstraction", () => {
             specs.some((spec) => spec.includes("ports/clock")),
             `${consumer} must depend on the Clock/IdGenerator port, not ambient time/identity`,
         );
+        // Importing the port is not enough — a consumer could import IdGenerator
+        // yet keep reading time via ambient `new Date()` (the bug this guards
+        // against). Require an actual injected-clock call, and forbid ambient
+        // wall-clock timestamp creation in these modules.
+        const source = readFileSync(consumer, "utf8");
+        assert.match(
+            source,
+            /\bclock\.now\(/,
+            `${consumer} must read time via the injected Clock (clock.now()), not ambient new Date()`,
+        );
+        assert.doesNotMatch(
+            source,
+            /new Date\(\)\.toISOString\(\)/,
+            `${consumer} must not create wall-clock timestamps ambiently; use clock.now()`,
+        );
     }
     // And the composition root must inject the concrete adapter.
     assert.ok(

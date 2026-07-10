@@ -22493,15 +22493,17 @@ var SessionManager = class {
   constructor(store, targetFor = (() => {
     const local = new LocalExecutionTarget();
     return () => local;
-  })(), ids = systemIdGenerator) {
+  })(), ids = systemIdGenerator, clock = systemClock) {
     this.store = store;
     this.targetFor = targetFor;
     this.ids = ids;
+    this.clock = clock;
     this.emitter.setMaxListeners(0);
   }
   store;
   targetFor;
   ids;
+  clock;
   controls = /* @__PURE__ */ new Map();
   emitter = new EventEmitter();
   active = 0;
@@ -22525,7 +22527,7 @@ var SessionManager = class {
         } catch {
         }
       }
-      this.store.updateTask(t.id, { status: "failed", ended_at: (/* @__PURE__ */ new Date()).toISOString(), codex_pid: null });
+      this.store.updateTask(t.id, { status: "failed", ended_at: this.clock.now(), codex_pid: null });
       this.store.addEvent(t.id, "task_status", {
         status: "failed",
         reason: `Reaper: verwaister Prozess (owner_pid=${t.owner_pid ?? "?"}, codex_pid=${t.codex_pid ?? "?"}) nach Restart/Crash. Resume via task_control.`
@@ -22617,7 +22619,7 @@ var SessionManager = class {
   }
   elapsedMinutes(task) {
     if (!task.started_at) return 0;
-    return (Date.now() - Date.parse(task.started_at)) / 6e4;
+    return (Date.parse(this.clock.now()) - Date.parse(task.started_at)) / 6e4;
   }
   async loop(taskId, stopCondition) {
     const c = this.ctrl(taskId);
@@ -22633,7 +22635,7 @@ var SessionManager = class {
         return;
       }
       if (!task.started_at) {
-        this.store.updateTask(taskId, { started_at: (/* @__PURE__ */ new Date()).toISOString() });
+        this.store.updateTask(taskId, { started_at: this.clock.now() });
         task = this.store.getTask(taskId);
       } else if (this.elapsedMinutes(task) > config2.limits.maxTaskMinutes) {
         this.limitBreach(taskId, `max_task_minutes (${config2.limits.maxTaskMinutes}) \xFCberschritten`);
@@ -22768,7 +22770,7 @@ var SessionManager = class {
     }
   }
   finish(taskId, status, reason) {
-    this.store.updateTask(taskId, { status, ended_at: (/* @__PURE__ */ new Date()).toISOString() });
+    this.store.updateTask(taskId, { status, ended_at: this.clock.now() });
     this.store.addEvent(taskId, "task_status", { status, reason });
     try {
       this.store.finishAgentJobByTask(taskId, status, reason);
@@ -22777,7 +22779,7 @@ var SessionManager = class {
     this.emit(taskId);
   }
   limitBreach(taskId, reason) {
-    this.store.updateTask(taskId, { status: "blocked", ended_at: (/* @__PURE__ */ new Date()).toISOString() });
+    this.store.updateTask(taskId, { status: "blocked", ended_at: this.clock.now() });
     this.store.addEvent(taskId, "limit_breach", { reason });
     this.store.addEvent(taskId, "task_status", { status: "blocked", reason });
     this.emit(taskId);
@@ -24813,7 +24815,7 @@ function createExecutionRuntime(configuration) {
 function createAppContext() {
   const store = new Store(config2.dbPath, systemClock, systemIdGenerator);
   const execution = createExecutionRuntime(config2);
-  const sessions = new SessionManager(store, (id) => execution.registry.get(id), systemIdGenerator);
+  const sessions = new SessionManager(store, (id) => execution.registry.get(id), systemIdGenerator, systemClock);
   const hypRepo = new HypothesisRepo(store, systemClock, systemIdGenerator);
   const machine = new ClusterStateMachine(store);
   const worktrees = new WorktreeManager();

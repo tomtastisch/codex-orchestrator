@@ -46,7 +46,7 @@ export function createAppContext(): AppContext {
     // implementations by constructing these adapters directly.
     const store = new Store(config.dbPath, systemClock, systemIdGenerator);
     const execution = createExecutionRuntime(config);
-    const sessions = new SessionManager(store, (id) => execution.registry.get(id), systemIdGenerator);
+    const sessions = new SessionManager(store, (id) => execution.registry.get(id), systemIdGenerator, systemClock);
     const hypRepo = new HypothesisRepo(store, systemClock, systemIdGenerator);
     const machine = new ClusterStateMachine(store);
     const worktrees = new WorktreeManager();

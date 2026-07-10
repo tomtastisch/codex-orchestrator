@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../dist/db.js";
 import { HypothesisRepo } from "../dist/hypotheses.js";
+import { SessionManager } from "../dist/session.js";
 
 // Proves the Clock/IdGenerator ports are a real seam, not decoration: injecting
 // deterministic implementations makes time and identity fully controllable —
@@ -37,6 +38,32 @@ test("addEvent persists exactly the timestamp it returns (no double clock read)"
     const stored = store.eventsAfter("T_test", 0).at(-1);
     assert.equal(returned.ts, stored.ts, "returned event.ts must equal the persisted row.ts");
     assert.equal(returned.payload_json, stored.payload_json);
+});
+
+test("SessionManager reads persisted lifecycle timestamps from the injected Clock", () => {
+    // Regression for the review finding that SessionManager received only the
+    // IdGenerator and kept reading time via ambient new Date(). The reaper's
+    // ended_at is a persisted lifecycle timestamp; it must come from the Clock.
+    const fixed = "2020-02-02T02:02:02.000Z";
+    const store = freshStore({ now: () => fixed }, { newId: (p) => `${p}_s` });
+    const sessions = new SessionManager(
+        store,
+        undefined,
+        { newId: (p) => `${p}_s` },
+        { now: () => fixed },
+    );
+    const task = sessions.createTask({
+        clusterId: null, repoPath: "/repo", worktree: null, branch: null,
+        instructions: "do", acceptance: [], sandbox: "read-only", model: "auto",
+        effort: "low", network: false, maxMinutes: 5,
+    });
+    // Orphaned (owner_pid null) running task -> the reaper marks it failed.
+    store.updateTask(task.id, { status: "running" });
+
+    assert.equal(sessions.reapOnStartup(), 1, "the orphaned running task must be reaped");
+    const reaped = store.getTask(task.id);
+    assert.equal(reaped.status, "failed");
+    assert.equal(reaped.ended_at, fixed, "ended_at must come from the injected Clock, not new Date()");
 });
 
 test("HypothesisRepo reads time and identity from the injected ports", () => {

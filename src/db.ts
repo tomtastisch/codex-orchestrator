@@ -161,6 +161,15 @@ export class Store implements PersistenceStore {
     // Schreibkonflikte gleichzeitiger Instanzen abfedern statt SQLITE_BUSY werfen.
     this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec(SCHEMA);
+    // Two migration runners with two independent markers, applied in order:
+    //   1. runMigrations(db): PRAGMA user_version -> CURRENT_SCHEMA_VERSION (task
+    //      routing columns);
+    //   2. this.runMigrations(): meta.schema_version -> SCHEMA_VERSION (hypothesis
+    //      versioning + Cluster-5 ledger tables).
+    // They cover disjoint concerns; both are idempotent and their terminal
+    // markers are pinned by tests/migrations.test.mjs so neither can drift
+    // silently. Consolidating them onto one runner/marker is tracked separately
+    // (follow-up issue) and is out of scope for the #32 ports/adapters refactor.
     runMigrations(this.db);
     this.runMigrations();
   }
