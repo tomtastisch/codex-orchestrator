@@ -49,3 +49,11 @@ consumers = [
   "package.json (scripts.test glob)",
 ]
 contract_test = "tests/quality-policy.test.mjs"
+
+[governance]
+file = "ssot/governance.json"
+owns = ["orchestratorRepo", "issueRouting"]
+consumers = [
+  "CLAUDE.md (verbindliches Issue-Routing — fail-closed)",
+]
+contract_test = "tests/governance-policy.test.mjs"

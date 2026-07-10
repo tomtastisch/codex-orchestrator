@@ -1,0 +1,27 @@
+{
+  "$comment": "Governance SSOT — orchestrator identity + issue routing. Single source of truth for WHERE issues about the codex-orchestrator itself must be filed. Consumed by CLAUDE.md (issue-routing rule) and bound by tests/governance-policy.test.mjs. Operator-facing issues about the orchestrator MUST target orchestratorRepo, never the target working project Codex operates on.",
+  "orchestratorRepo": {
+    "owner": "tomtastisch",
+    "repo": "codex-orchestrator",
+    "url": "https://github.com/tomtastisch/codex-orchestrator",
+    "issuesUrl": "https://github.com/tomtastisch/codex-orchestrator/issues"
+  },
+  "issueRouting": {
+    "policy": "fail-closed",
+    "scope": "Any issue reporting a defect, regression, limitation, security concern or improvement of the codex-orchestrator ITSELF — the plugin/MCP server, its governance documents, its adapters/ports, or its runtime behaviour — including problems noticed while it drives Codex on some other (target) project.",
+    "mustTarget": "orchestratorRepo",
+    "targetProjectIssues": "forbidden",
+    "onUncertainty": "If it cannot be positively confirmed that the intended repository IS orchestratorRepo (owner+repo above), do NOT create the issue in the working/target project. Route it to orchestratorRepo instead. Silence or an ambiguous working directory is never a licence to file into the target project.",
+    "beforeCreate": [
+      "Resolve the destination from ssot/governance.json orchestratorRepo — never from the current working directory or the target project's git remote.",
+      "Confirm owner+repo equal orchestratorRepo; if they differ, override the destination to orchestratorRepo.",
+      "Search existing issues in orchestratorRepo first to avoid duplicates (link related issues instead of re-filing)."
+    ],
+    "auth": {
+      "keyRequired": false,
+      "rationale": "codex-orchestrator is a public repository; the operator's existing GitHub session/integration already authorises issue creation there. No separate deploy/public key is needed for the operator to file issues.",
+      "publicKey": null,
+      "note": "A public/deploy key would only be needed to let a NON-operator identity file issues on the operator's behalf. That is out of scope today. If ever introduced, store the key reference here (never the private key) and document who may use it."
+    }
+  }
+}
