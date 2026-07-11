@@ -351,10 +351,8 @@ export class SessionManager {
   }
 
   private limitBreach(taskId: string, reason: string): void {
-    this.store.updateTask(taskId, { status: "blocked", ended_at: this.clock.now() });
     this.store.addEvent(taskId, "limit_breach", { reason });
-    this.store.addEvent(taskId, "task_status", { status: "blocked", reason });
-    this.emit(taskId);
+    this.finish(taskId, "blocked", reason);
   }
 
   // ---- Steuerung (task_control) ----
