@@ -277,6 +277,22 @@ test("the clock/id port is actually consumed — no dead abstraction", () => {
     );
 });
 
+test("core consumers cannot import concrete clock or execution adapters", () => {
+    for (const consumer of manifest.clockConsumers) {
+        for (const spec of importsOf(consumer)) {
+            assert.ok(
+                !forbids(spec, "system-clock"),
+                `${consumer} must receive Clock/IdGenerator from composition (${spec})`,
+            );
+        }
+    }
+    const sessionImports = importsOf("src/session.ts");
+    assert.ok(
+        sessionImports.every((spec) => !forbids(spec, "local-target")),
+        "SessionManager must receive ExecutionTarget lookup from composition",
+    );
+});
+
 test("the default Clock and IdGenerator adapters satisfy their contracts", () => {
     const stamp = systemClock.now();
     assert.equal(typeof stamp, "string");

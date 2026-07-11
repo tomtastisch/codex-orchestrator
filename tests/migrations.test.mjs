@@ -4,8 +4,9 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Store, SCHEMA_VERSION } from "../dist/db.js";
+import { SCHEMA_VERSION } from "../dist/db.js";
 import { CURRENT_SCHEMA_VERSION } from "../dist/db/migrations.js";
+import { createSystemStore } from "./helpers/system-deps.mjs";
 
 test("v1 task rows migrate to explicit local target provenance", () => {
     const directory = mkdtempSync(join(tmpdir(), "orch-migration-"));
@@ -31,7 +32,7 @@ test("v1 task rows migrate to explicit local target provenance", () => {
     `);
     legacy.close();
 
-    const store = new Store(path);
+    const store = createSystemStore(path);
     const task = store.getTask("T_legacy");
 
     assert.equal(task.target_id, "local");
@@ -49,14 +50,14 @@ test("both migration runners reach their terminal version and stay idempotent", 
     // and prove reopening the same DB is a no-op (idempotent).
     const path = join(mkdtempSync(join(tmpdir(), "orch-migsync-")), "state.sqlite");
 
-    const first = new Store(path);
+    const first = createSystemStore(path);
     assert.equal(first.db.prepare("PRAGMA user_version").get().user_version, CURRENT_SCHEMA_VERSION);
     assert.equal(first.getSchemaVersion(), SCHEMA_VERSION);
     first.db.close();
 
     // Second open re-runs both runners against an already-current DB: no throw,
     // markers unchanged.
-    const reopened = new Store(path);
+    const reopened = createSystemStore(path);
     assert.equal(reopened.db.prepare("PRAGMA user_version").get().user_version, CURRENT_SCHEMA_VERSION);
     assert.equal(reopened.getSchemaVersion(), SCHEMA_VERSION);
     reopened.db.close();
@@ -77,7 +78,7 @@ test("a legacy hypotheses table upgrades to the full versioned header shape", ()
     `);
     legacy.close();
 
-    const store = new Store(path);
+    const store = createSystemStore(path);
     const columns = new Set(
         store.db.prepare("PRAGMA table_info(hypotheses)").all().map((c) => c.name),
     );
@@ -94,7 +95,7 @@ test("a legacy hypotheses table upgrades to the full versioned header shape", ()
 test("store permissions are private on POSIX systems", () => {
     const directory = mkdtempSync(join(tmpdir(), "orch-permissions-"));
     const path = join(directory, "nested", "state.sqlite");
-    new Store(path);
+    createSystemStore(path);
 
     if (process.platform !== "win32") {
         assert.equal(statSync(join(directory, "nested")).mode & 0o777, 0o700);

@@ -48,7 +48,7 @@ test("SessionManager reads persisted lifecycle timestamps from the injected Cloc
     const store = freshStore({ now: () => fixed }, { newId: (p) => `${p}_s` });
     const sessions = new SessionManager(
         store,
-        undefined,
+        () => ({ id: "fake", kind: "local" }),
         { newId: (p) => `${p}_s` },
         { now: () => fixed },
     );

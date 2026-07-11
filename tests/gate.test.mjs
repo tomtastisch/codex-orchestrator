@@ -3,14 +3,13 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
-import { Store } from "../dist/db.js";
-import { HypothesisRepo } from "../dist/hypotheses.js";
 import { checkHypothesisGate } from "../dist/gate.js";
+import { createSystemHypothesisRepo, createSystemStore } from "./helpers/system-deps.mjs";
 
 function fresh() {
   const dir = mkdtempSync(join(tmpdir(), "orch-gate-"));
-  const store = new Store(join(dir, "s.sqlite"));
-  return { store, repo: new HypothesisRepo(store) };
+  const store = createSystemStore(join(dir, "s.sqlite"));
+  return { store, repo: createSystemHypothesisRepo(store) };
 }
 
 test("Gate blockiert Start ohne hypothesis_id", () => {

@@ -2,8 +2,6 @@ import { EventEmitter } from "node:events";
 import { config } from "./config.js";
 import type { PersistenceStore, TaskRow } from "./ports/persistence.js";
 import type { Clock, IdGenerator } from "./ports/clock.js";
-import { systemClock, systemIdGenerator } from "./system-clock.js";
-import { LocalExecutionTarget } from "./execution/local-target.js";
 import type { ExecutionTarget } from "./execution/types.js";
 import { buildFirstSlicePrompt, buildResumeSlicePrompt } from "./prompts.js";
 import { detectReportDiscrepancies } from "./events.js";
@@ -50,12 +48,9 @@ export class SessionManager {
 
   constructor(
     private store: PersistenceStore,
-    private readonly targetFor: (id: string) => ExecutionTarget = (() => {
-      const local = new LocalExecutionTarget();
-      return () => local;
-    })(),
-    private readonly ids: IdGenerator = systemIdGenerator,
-    private readonly clock: Clock = systemClock,
+    private readonly targetFor: (id: string) => ExecutionTarget,
+    private readonly ids: IdGenerator,
+    private readonly clock: Clock,
   ) {
     this.emitter.setMaxListeners(0);
   }

@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildCodexArgs, isBlockedConfigKey } from "../dist/codex.js";
-import { Store } from "../dist/db.js";
 import { buildPlanSnapshot } from "../dist/snapshot.js";
 import { buildFirstSlicePrompt, buildResumeSlicePrompt } from "../dist/prompts.js";
 import { encode as toonEncode } from "@toon-format/toon";
+import { createSystemStore } from "./helpers/system-deps.mjs";
 
 test("buildCodexArgs setzt Sandbox/Modell/Effort/Netzwerk deterministisch", () => {
   const { args } = buildCodexArgs({ sandbox: "workspace-write", model: "gpt-5.5", effort: "xhigh", network: false });
@@ -65,7 +65,7 @@ test("read-only executor instructions stay in the prompt and do not mutate AGENT
   const agentsPath = join(dir, "AGENTS.md");
   const original = "# Projektregeln\nBitte Tests grün halten.\n";
   writeFileSync(agentsPath, original);
-  const store = new Store(join(dir, "state.sqlite"));
+  const store = createSystemStore(join(dir, "state.sqlite"));
   const task = store.createTask({
     id: "T_prompt", cluster_id: null, codex_session_id: null, worktree: null, branch: null,
     repo_path: dir, sandbox: "read-only", model: "gpt-5.5", effort: "low",
@@ -101,7 +101,7 @@ test("resume prompt preserves injections, acceptance criteria and slice contract
 });
 
 test("Hypothesen-Lebenszyklus + Provenienz", () => {
-  const store = new Store(join(mkdtempSync(join(tmpdir(), "orch-h-")), "s.sqlite"));
+  const store = createSystemStore(join(mkdtempSync(join(tmpdir(), "orch-h-")), "s.sqlite"));
   const p = store.createPlan("g", null, "/tmp/r");
   const id = store.addHypothesis(p.id, "Annahme", null);
   assert.equal(store.listHypotheses(p.id)[0].status, "open");
@@ -115,7 +115,7 @@ test("Hypothesen-Lebenszyklus + Provenienz", () => {
 });
 
 test("Schema CHECK-Constraint lehnt ungültigen Hypothesen-Status ab", () => {
-  const store = new Store(join(mkdtempSync(join(tmpdir(), "orch-h2-")), "s.sqlite"));
+  const store = createSystemStore(join(mkdtempSync(join(tmpdir(), "orch-h2-")), "s.sqlite"));
   const p = store.createPlan("g", null, "/tmp/r");
   assert.throws(() => {
     store.db.prepare("INSERT INTO hypotheses(id,plan_id,text,status,evidence,updated_at) VALUES(?,?,?,?,?,?)")
@@ -124,7 +124,7 @@ test("Schema CHECK-Constraint lehnt ungültigen Hypothesen-Status ab", () => {
 });
 
 test("TOON-Snapshot enthält Plan/Cluster/Hypothesen und ist kompakt", () => {
-  const store = new Store(join(mkdtempSync(join(tmpdir(), "orch-snap-")), "s.sqlite"));
+  const store = createSystemStore(join(mkdtempSync(join(tmpdir(), "orch-snap-")), "s.sqlite"));
   const p = store.createPlan("Ziel X", "keine externen Deps", "/tmp/r");
   store.upsertCluster({
     id: "C1", plan_id: p.id, ordinal: 0, name: "core", goal: "g",

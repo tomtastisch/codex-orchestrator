@@ -12,7 +12,7 @@ import { type Sandbox } from "../../types.js";
 import { assertGitRepositoryRoot } from "../../project-boundary.js";
 
 export function registerPlanningTools(server: McpServer, ctx: AppContext): void {
-  const { store, execution, machine, worktrees, ok, err, executionTargetForCluster } = ctx;
+  const { store, execution, hypRepo, machine, worktrees, ok, err, executionTargetForCluster } = ctx;
 
 // ---------------------------------------------------------------- 7.7 cluster_plan
 server.registerTool(
@@ -239,7 +239,7 @@ server.registerTool(
     },
   },
   async (a) => {
-    const res = writeResultArtifact(store, a.plan_id, {
+    const res = writeResultArtifact(store, hypRepo, a.plan_id, {
       originalUserRequest: a.original_request,
       interpretedGoal: a.interpreted_goal,
       finalAssessment: a.final_assessment,

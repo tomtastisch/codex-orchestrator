@@ -5,11 +5,12 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { Store, SCHEMA_VERSION } from "../dist/db.js";
 import { HypothesisRepo } from "../dist/hypotheses.js";
+import { createSystemHypothesisRepo, createSystemStore } from "./helpers/system-deps.mjs";
 
 function freshRepo() {
   const dir = mkdtempSync(join(tmpdir(), "orch-hyp-"));
-  const store = new Store(join(dir, "s.sqlite"));
-  return { store, repo: new HypothesisRepo(store) };
+  const store = createSystemStore(join(dir, "s.sqlite"));
+  return { store, repo: createSystemHypothesisRepo(store) };
 }
 
 test("schema_version wird beim Öffnen gesetzt", () => {

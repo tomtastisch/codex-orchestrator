@@ -11,7 +11,6 @@
  * `hypothesis_versions`-Tabelle hält jede Version als serialisierten Snapshot.
  * Damit ist jede Änderung lückenlos nachvollziehbar.
  */
-import { systemClock, systemIdGenerator } from "./system-clock.js";
 import type { Clock, IdGenerator } from "./ports/clock.js";
 import type { PersistenceStore } from "./ports/persistence.js";
 import type { HypothesisStatus } from "./types.js";
@@ -163,8 +162,8 @@ function normEvidence(es: (EvidenceItem | string)[] | undefined, clock: Clock): 
 export class HypothesisRepo {
   constructor(
     private store: PersistenceStore,
-    private readonly clock: Clock = systemClock,
-    private readonly ids: IdGenerator = systemIdGenerator,
+    private readonly clock: Clock,
+    private readonly ids: IdGenerator,
   ) {}
 
   /** Serialisiert eine Hypothese in ein stabiles, maschinenlesbares Objekt. */

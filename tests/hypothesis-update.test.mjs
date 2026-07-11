@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
-import { Store } from "../dist/db.js";
-import { HypothesisRepo, needsFollowUp } from "../dist/hypotheses.js";
+import { needsFollowUp } from "../dist/hypotheses.js";
+import { createSystemHypothesisRepo, createSystemStore } from "./helpers/system-deps.mjs";
 
 function fresh() {
   const dir = mkdtempSync(join(tmpdir(), "orch-hu-"));
-  const store = new Store(join(dir, "s.sqlite"));
-  return new HypothesisRepo(store);
+  const store = createSystemStore(join(dir, "s.sqlite"));
+  return createSystemHypothesisRepo(store);
 }
 
 function seed(repo) {

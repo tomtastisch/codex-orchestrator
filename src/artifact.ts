@@ -71,11 +71,15 @@ function parseJson(s: string | null | undefined): unknown {
 }
 
 /** Baut das vollständige Artefakt-Objekt (inkl. deterministischer Prüfsumme). */
-export function buildResultArtifact(store: PersistenceStore, planId: string, opts: ArtifactOptions = {}): ResultArtifact | null {
+export function buildResultArtifact(
+  store: PersistenceStore,
+  hyp: HypothesisRepo,
+  planId: string,
+  opts: ArtifactOptions = {},
+): ResultArtifact | null {
   const plan = store.getPlan(planId);
   if (!plan) return null;
   const repo = plan.repo_path;
-  const hyp = new HypothesisRepo(store);
 
   const clusters = store.listClusters(planId).map((c) => ({
     id: c.id, ordinal: c.ordinal, name: c.name, status: c.status, goal: c.goal,
@@ -296,8 +300,13 @@ export interface WriteArtifactResult {
 }
 
 /** Erzeugt Dateien, registriert das Artefakt in der DB und gibt die Pfade zurück. */
-export function writeResultArtifact(store: PersistenceStore, planId: string, opts: ArtifactOptions = {}): WriteArtifactResult | null {
-  const artifact = buildResultArtifact(store, planId, opts);
+export function writeResultArtifact(
+  store: PersistenceStore,
+  hyp: HypothesisRepo,
+  planId: string,
+  opts: ArtifactOptions = {},
+): WriteArtifactResult | null {
+  const artifact = buildResultArtifact(store, hyp, planId, opts);
   if (!artifact) return null;
   const dir = join(config.home, "artifacts");
   mkdirSync(dir, { recursive: true });

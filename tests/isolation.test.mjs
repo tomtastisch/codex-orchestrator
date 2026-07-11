@@ -4,13 +4,13 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
-import { Store } from "../dist/db.js";
-import { SessionManager, isProcessAlive } from "../dist/session.js";
+import { isProcessAlive } from "../dist/session.js";
+import { createSystemSessionManager, createSystemStore } from "./helpers/system-deps.mjs";
 
 function freshMgr() {
   const dir = mkdtempSync(join(tmpdir(), "orch-iso-"));
-  const store = new Store(join(dir, "s.sqlite"));
-  return { store, mgr: new SessionManager(store) };
+  const store = createSystemStore(join(dir, "s.sqlite"));
+  return { store, mgr: createSystemSessionManager(store) };
 }
 
 function makeRunningTask(store, ownerPid) {

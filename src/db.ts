@@ -9,7 +9,6 @@ import type {
 } from "./types.js";
 import { runMigrations } from "./db/migrations.js";
 import { redactDeep, redactText } from "./redact.js";
-import { systemClock, systemIdGenerator } from "./system-clock.js";
 import type { Clock, IdGenerator } from "./ports/clock.js";
 import {
   SCHEMA_VERSION,
@@ -148,8 +147,8 @@ export class Store implements PersistenceStore {
 
   constructor(
     dbPath: string,
-    private readonly clock: Clock = systemClock,
-    private readonly ids: IdGenerator = systemIdGenerator,
+    private readonly clock: Clock,
+    private readonly ids: IdGenerator,
   ) {
     const directory = dirname(dbPath);
     mkdirSync(directory, { recursive: true });
