@@ -50,6 +50,45 @@ test("Artefakt enthält alle Hypothesen und deren Aktualisierungen", () => {
   assert.deepEqual(updates.map((u) => u.version), [1, 2]);
 });
 
+test("Artefakt projiziert nachträgliche Header-Provenienz nur auf die aktuelle Hypothese", () => {
+  const store = createSystemStore(join(mkdtempSync(join(tmpdir(), "orch-art-bind-")), "s.sqlite"));
+  const plan = store.createPlan("Bindungsprovenienz", null, "/tmp/demo-repo");
+  store.upsertCluster({
+    id: "C_BOUND", plan_id: plan.id, ordinal: 0, name: "binding", goal: "Provenienz",
+    tasks_json: "[]", acceptance_json: "[]", risks_json: "[]",
+    model_policy_json: "{}", review_strategy_json: "{}", parallel_ok: 0,
+  });
+  const hyp = createSystemHypothesisRepo(store);
+  const created = hyp.create({
+    planId: plan.id,
+    initialAssumption: "Bindung folgt nach der Erstellung",
+    confidenceBefore: 0.5,
+  });
+  hyp.bindToTask(created.id, "T_BOUND", "C_BOUND");
+
+  const header = store.listHypothesisHeaders().find((h) => h.id === created.id);
+  assert.deepEqual(
+    { taskId: header?.task_id, clusterId: header?.cluster_id },
+    { taskId: "T_BOUND", clusterId: "C_BOUND" },
+  );
+  assert.equal(hyp.listByTask("T_BOUND")[0].taskId, "T_BOUND");
+
+  const artifact = buildResultArtifact(store, hyp, plan.id);
+  const current = artifact.hypotheses.find((h) => h.id === created.id);
+  assert.deepEqual(
+    { taskId: current?.taskId, clusterId: current?.clusterId },
+    { taskId: "T_BOUND", clusterId: "C_BOUND" },
+    "die aktuelle Artefaktprojektion muss die autoritativen Headerfelder tragen",
+  );
+
+  const history = artifact.hypothesisUpdates.filter((h) => h.id === created.id);
+  assert.deepEqual(
+    history.map((h) => ({ taskId: h.taskId, clusterId: h.clusterId })),
+    [{ taskId: null, clusterId: null }],
+    "die append-only Historie muss den Erstellungszustand behalten",
+  );
+});
+
 test("Artefakt ist versioniert (artifactVersion zählt hoch)", () => {
   const { store, hyp, planId } = seed();
   const a1 = buildResultArtifact(store, hyp, planId);

@@ -118,11 +118,16 @@ export function buildResultArtifact(
   );
   const hypotheses: any[] = [];
   const hypothesisUpdates: any[] = [];
-  for (const { id } of headers) {
+  for (const header of headers) {
+    const { id } = header;
     const versions = hyp.listVersions(id);
     if (!versions.length) continue; // Legacy-Freitext-Hypothesen ohne Snapshot überspringen.
     richIds.add(id);
-    hypotheses.push(HypothesisRepo.serialize(versions[versions.length - 1]));
+    hypotheses.push(HypothesisRepo.serialize({
+      ...versions[versions.length - 1],
+      taskId: header.task_id,
+      clusterId: header.cluster_id,
+    }));
     for (const v of versions) hypothesisUpdates.push(HypothesisRepo.serialize(v));
   }
 
