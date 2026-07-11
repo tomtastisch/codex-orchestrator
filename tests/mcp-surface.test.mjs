@@ -31,14 +31,15 @@ const golden = fixture.surface;
 const provenance = fixture.$provenance.base;
 
 function baseBundle() {
-    // Returns the base branch's bundle bytes, or null if the base blob is not
-    // reachable (e.g. a shallow clone without the base commit).
     try {
         return execFileSync("git", ["show", `${provenance.commit}:${provenance.bundlePath}`], {
             maxBuffer: 64 * 1024 * 1024,
         });
-    } catch {
-        return null;
+    } catch (error) {
+        throw new Error(
+            `[mcp-surface] required base blob ${provenance.commit}:${provenance.bundlePath} is unavailable; cannot verify golden provenance`,
+            { cause: error },
+        );
     }
 }
 
@@ -63,15 +64,6 @@ test("the golden reference is provably derived from the base bundle (not co-edit
     assert.match(provenance.bundleSha256 ?? "", /^[0-9a-f]{64}$/, "fixture must record the base bundle sha256");
 
     const bytes = baseBundle();
-    if (bytes === null) {
-        // A shallow CI checkout may not have the base blob. The digest is still
-        // pinned in the fixture; the parity test above remains a hard gate. We
-        // don't silently pass off a missing check as verified — we assert the
-        // provenance fields exist (done above) and skip only the git re-derivation.
-        console.error(`[mcp-surface] base blob ${provenance.commit}:${provenance.bundlePath} unreachable; skipping git re-derivation (digest still pinned)`);
-        return;
-    }
-
     const digest = createHash("sha256").update(bytes).digest("hex");
     assert.equal(digest, provenance.bundleSha256, "base bundle content does not match the recorded sha256 — fixture provenance is stale or forged");
 

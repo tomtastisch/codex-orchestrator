@@ -59,6 +59,15 @@ test("CI requires the complete Node and operating-system matrix", () => {
     assert.doesNotMatch(ci, /continue-on-error:\s*true/);
 });
 
+test("CI checks out complete history wherever MCP provenance tests run", () => {
+    const portable = ci.slice(ci.indexOf("  portable:\n"), ci.indexOf("\n  quality:\n"));
+    const quality = ci.slice(ci.indexOf("  quality:\n"), ci.indexOf("\n  remote-acceptance:\n"));
+    const completeCheckout = /actions\/checkout@[0-9a-f]{40} # v7\.0\.0\n\s+with:\n\s+fetch-depth: 0/;
+
+    assert.match(portable, completeCheckout, "portable npm test jobs need the golden's base commit and blob");
+    assert.match(quality, completeCheckout, "quality coverage tests need the golden's base commit and blob");
+});
+
 test("canonical quality gate enforces coverage and release-candidate checks", () => {
     for (const command of [
         "npm run test:coverage",
