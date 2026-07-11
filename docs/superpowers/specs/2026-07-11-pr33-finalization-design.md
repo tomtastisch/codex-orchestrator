@@ -10,10 +10,11 @@ adapters baseline without absorbing the later dynamic capability-platform work
 tracked by issue #38.
 
 This issue is the first active unit of the wider production-readiness program.
-Finishing it does not redefine the whole project as complete. After its
-pre-merge checkpoint, the remaining issue graph must be reconciled and executed
-in dependency order until the repository's documented product, architecture,
-security, distribution, and operational acceptance criteria are all verified.
+Finishing it does not redefine the whole project as complete. After PR #33 is
+merged through its exact-head gate, the remaining issue graph must be reconciled
+and executed in dependency order until the repository's documented product,
+architecture, security, distribution, and operational acceptance criteria are
+all verified.
 
 ## Operator quality standard
 
@@ -39,10 +40,10 @@ The implementation is governed by these non-negotiable constraints:
 The finalization has three implementation concerns:
 
 1. Close the task and its `agent_jobs` ledger entry on a session limit breach.
-2. Make dependency inversion structural: core/application consumers receive
-   `Clock`, `IdGenerator`, and `ExecutionTarget` dependencies from composition;
-   they do not import or construct the concrete system/local adapters as hidden
-   constructor defaults.
+2. Make dependency inversion structural at the seven changed seams: the
+   `Store`, `HypothesisRepo`, and `SessionManager` constructors plus the
+   `buildResultArtifact()`, `writeResultArtifact()`, `runChecks()`, and
+   `diffSize()` helpers.
 3. Align the architecture SSOT, boundary contracts, and maintainer documents
    with the boundary the code actually enforces.
 
@@ -70,14 +71,23 @@ and fail before production code changes.
 
 ### Required dependency injection
 
+The structural dependency-inversion claim is limited to `Store`,
+`HypothesisRepo`, and `SessionManager` constructors plus
+`buildResultArtifact()`, `writeResultArtifact()`, `runChecks()`, and
+`diffSize()`.
+
 `Store`, `HypothesisRepo`, and `SessionManager` constructors must not import
 `systemClock`, `systemIdGenerator`, or `LocalExecutionTarget` to provide hidden
-defaults. Production wiring remains in `src/app/context.ts`. Tests must provide
-explicit fakes or the system adapters through test helpers.
+defaults. The artifact helpers receive an explicit `HypothesisRepo`. Production
+wiring remains in `src/app/context.ts`. Tests must provide explicit fakes or the
+system adapters through test helpers.
+
+In `checks.ts`, `runChecks()` and `diffSize()` require explicit `ExecutionTarget`
+arguments; they do not construct a hidden `LocalExecutionTarget` default.
 
 The boundary contract must scan the declared clock/id consumers and fail if a
 consumer imports the concrete clock/id adapter. It must also prevent
-`SessionManager` from constructing a concrete execution adapter.
+`SessionManager` and `checks.ts` from constructing a concrete execution adapter.
 
 This decision changes internal construction only. It must not change tool
 names, schemas, outputs, persisted data, or runtime selection semantics.
@@ -141,9 +151,9 @@ The PR body must state the exact current head, test evidence, and unresolved
 thread count. It must not claim zero unresolved threads before the GraphQL
 readback returns zero.
 
-## Completion and merge boundary
+## Completion, merge, and reconciliation boundary
 
-Issue #32 is ready for the operator checkpoint only when:
+PR #33 is ready to merge only when:
 
 - all three concerns above are implemented and independently reviewed;
 - the full local verification suite is green;
@@ -152,5 +162,6 @@ Issue #32 is ready for the operator checkpoint only when:
 - a fresh clean-context QA reviewer explicitly approves the exact head;
 - the unresolved-thread count is read back as zero.
 
-The branch is not merged at that point. Per operator instruction, Codex reports
-the complete issue-level status and waits at the pre-merge checkpoint.
+After exact-head CI is green, an independent reviewer approves that exact head,
+and the open review-thread count is zero, merge PR #33. After the merge,
+reconcile the remaining issues and execute them in dependency order.

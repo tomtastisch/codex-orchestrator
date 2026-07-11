@@ -218,6 +218,53 @@ test("the finalization design and plan classify resolve.ts as an application ser
     assert.doesNotMatch(plannedCore[1], /resolve\.ts/i, "the plan must not preserve the rejected core classification");
 });
 
+test("the finalization design and plan bound structural dependency inversion to the changed seams", () => {
+    const documents = [
+        readFileSync("docs/superpowers/specs/2026-07-11-pr33-finalization-design.md", "utf8"),
+        readFileSync("docs/superpowers/plans/2026-07-11-pr33-finalization-plan.md", "utf8"),
+    ];
+    for (const doc of documents) {
+        assert.doesNotMatch(doc, /core\/application consumers receive all concrete/i);
+        assert.doesNotMatch(doc, /No core\/application consumer imports `system-clock\.ts` or constructs `LocalExecutionTarget`/i);
+        assert.match(
+            doc,
+            /structural dependency-inversion claim is limited to[\s\S]{0,500}Store[\s\S]{0,100}HypothesisRepo[\s\S]{0,100}SessionManager[\s\S]{0,200}buildResultArtifact[\s\S]{0,100}writeResultArtifact[\s\S]{0,200}runChecks[\s\S]{0,100}diffSize/i,
+        );
+        assert.match(
+            doc,
+            /checks\.ts[\s\S]{0,250}runChecks[\s\S]{0,100}diffSize[\s\S]{0,250}require explicit `ExecutionTarget`/i,
+            "the documented scope must require explicit checks.ts target injection",
+        );
+        assert.doesNotMatch(doc, /checks\.ts[\s\S]{0,250}(?:keep|preserve)[\s\S]{0,100}LocalExecutionTarget[^.]*default/i);
+    }
+});
+
+test("the finalization design and plan merge after the exact-head gate and reconcile issues afterward", () => {
+    const documents = [
+        readFileSync("docs/superpowers/specs/2026-07-11-pr33-finalization-design.md", "utf8"),
+        readFileSync("docs/superpowers/plans/2026-07-11-pr33-finalization-plan.md", "utf8"),
+    ];
+    for (const doc of documents) {
+        assert.doesNotMatch(doc, /pre-merge checkpoint|Do not merge|branch is not merged|Stop at the issue-level pre-merge/i);
+        assert.match(
+            doc,
+            /After exact-head CI is green[\s\S]{0,300}independent reviewer approves[\s\S]{0,300}open review-thread count is zero[\s\S]{0,100}merge PR #33/i,
+        );
+        assert.match(doc, /After the merge[\s\S]{0,200}reconcile the remaining issues/i);
+    }
+});
+
+test("architecture diagram keeps the MCP tool and prompt inventories in separate nodes", () => {
+    const doc = readFileSync("docs/architecture.md", "utf8");
+    const toolLine = doc.split("\n").find((line) => /17 MCP tools/.test(line));
+    const promptLine = doc.split("\n").find((line) => /2 MCP prompts/.test(line));
+    assert.ok(toolLine, "the architecture diagram must name the 17 MCP tools");
+    assert.ok(promptLine, "the architecture diagram must name the 2 MCP prompts");
+    assert.notEqual(toolLine, promptLine, "tools and prompts are separate registered surfaces");
+    assert.match(toolLine, /tools\/\{diagnostics,tasks,planning,knowledge\}\.ts/);
+    assert.match(promptLine, /app\/prompts\.ts/);
+});
+
 test("every persistence consumer actually depends on the persistence port", () => {
     for (const consumer of manifest.persistenceConsumers) {
         const specs = importsOf(consumer);

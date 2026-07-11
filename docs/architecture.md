@@ -32,7 +32,8 @@ flowchart TD
     end
 
     subgraph application["Application services and MCP use cases"]
-        Tools["tools/{diagnostics,tasks,planning,knowledge}.ts<br/>17 MCP tools + 2 prompts"]
+        Tools["tools/{diagnostics,tasks,planning,knowledge}.ts — 17 MCP tools"]
+        Prompts["app/prompts.ts — 2 MCP prompts"]
         RS["resolve.ts — application service"]
         SS["session.ts · checks.ts — application services"]
         XR["execution/router.ts — execution application/router"]
@@ -73,6 +74,7 @@ flowchart TD
     Tools --> RS
     Tools --> SS
     Tools --> XR
+    Prompts --> PR
     core --> PS
     RS --> PS
     SS --> PS

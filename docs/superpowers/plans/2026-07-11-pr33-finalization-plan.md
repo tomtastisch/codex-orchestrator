@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Finalize PR #33 as the behaviour-preserving, accurately documented ports-and-adapters baseline for issue #32 and stop at the operator's pre-merge checkpoint.
+**Goal:** Finalize PR #33 as the behaviour-preserving, accurately documented ports-and-adapters baseline for issue #32, merge it after the exact-head gate, and then reconcile the remaining issues.
 
-**Architecture:** Core/application consumers receive all concrete clock, identity, execution, and hypothesis-repository dependencies from composition. Session terminalization uses one path so the task row, events, and agent-job ledger cannot diverge. The architecture SSOT and documents name only boundaries that are enforced today; dynamic capability/module routing remains owned by issue #38.
+**Architecture:** The structural dependency-inversion claim is limited to `Store`, `HypothesisRepo`, and `SessionManager` constructors plus `buildResultArtifact()`, `writeResultArtifact()`, `runChecks()`, and `diffSize()`. In `checks.ts`, `runChecks()` and `diffSize()` require explicit `ExecutionTarget` arguments. Session terminalization uses one path so the task row, events, and agent-job ledger cannot diverge. The architecture SSOT and documents name only boundaries that are enforced today; dynamic capability/module routing remains owned by issue #38.
 
 **Tech Stack:** TypeScript 5.9, Node.js 24, Node test runner, SQLite, GitHub CLI/GraphQL, esbuild, MCP SDK.
 
@@ -15,11 +15,11 @@
 - Preserve version `1.5.2`; no release or MCPB version bump.
 - No SQLite schema change and no product feature.
 - Every production-code change follows a witnessed RED → GREEN test cycle.
-- No core/application consumer imports `system-clock.ts` or constructs `LocalExecutionTarget` as a hidden default.
+- The three changed constructors import no concrete clock/execution adapter, the two changed artifact helpers receive `HypothesisRepo` explicitly, and the two `checks.ts` helpers require an explicit `ExecutionTarget`.
 - No plaintext secrets, weakened sandbox, network, audit, or review gates.
 - Every task receives a fresh implementer and independent QA review.
 - After every push, record exact head, hypothesis, counter-hypothesis, falsification check, and evidence on PR #33 before continuing.
-- Do not merge. Stop after issue #32 reaches the verified pre-merge gate and report to the operator.
+- After exact-head CI is green, an independent reviewer approves that exact head, and the open review-thread count is zero, merge PR #33. After the merge, reconcile the remaining issues and execute them in dependency order.
 
 ---
 
@@ -44,11 +44,14 @@
 - Modify: `src/hypotheses.ts`
 - Modify: `src/session.ts`
 - Modify: `src/artifact.ts`
+- Modify: `src/checks.ts`
 - Modify: `src/app/context.ts`
 - Modify: `src/app/tools/planning.ts`
 - Modify: `tests/architecture-boundary.test.mjs`
+- Modify: `tests/execution-boundary.test.mjs`
 - Modify: `tests/artifact.test.mjs`
 - Modify: `tests/clock-injection.test.mjs`
+- Modify: `tests/checks.test.mjs`
 - Modify: `tests/cluster-gate.test.mjs`
 - Modify: `tests/config-agents.test.mjs`
 - Modify: `tests/gate.test.mjs`
@@ -68,6 +71,8 @@
   - `new SessionManager(store: PersistenceStore, targetFor: (id: string) => ExecutionTarget, ids: IdGenerator, clock: Clock)`
   - `buildResultArtifact(store: PersistenceStore, hyp: HypothesisRepo, planId: string, opts?: ArtifactOptions)`
   - `writeResultArtifact(store: PersistenceStore, hyp: HypothesisRepo, planId: string, opts?: ArtifactOptions)`
+  - `runChecks(store: PersistenceStore, clusterId: string, repoPath: string, names: string[], target: ExecutionTarget)`
+  - `diffSize(repoPath: string, target: ExecutionTarget)`
 
 - [ ] **Step 1: Extend the boundary test so current hidden defaults fail**
 
@@ -143,7 +148,7 @@ export function createSystemSessionManager(store, targetFor) {
 
 Update direct test construction to use these helpers. Tests that inject fake clocks/IDs keep direct constructors so they continue proving the seam.
 
-- [ ] **Step 4: Remove concrete defaults and inject the artifact repository**
+- [ ] **Step 4: Remove concrete defaults from the changed constructors and inject the artifact repository**
 
 Change the constructors to required dependencies:
 
@@ -213,16 +218,22 @@ Update `tests/artifact.test.mjs` and `tests/security.test.mjs` to pass their
 explicitly composed `HypothesisRepo`. Keep production system adapter
 construction exclusively in `src/app/context.ts`.
 
+Remove the `LocalExecutionTarget` import and optional defaults from
+`runChecks()` and `diffSize()` in `src/checks.ts`; both helpers require an
+explicit `ExecutionTarget`. Update tests that omitted the target and verify that
+every production call site already passes its composed target explicitly. Bind
+the declared execution-port consumers through `tests/execution-boundary.test.mjs`.
+
 - [ ] **Step 5: Run targeted tests and witness GREEN**
 
 Run:
 
 ```bash
 npm run build
-node --test tests/architecture-boundary.test.mjs tests/clock-injection.test.mjs tests/artifact.test.mjs tests/hypotheses.test.mjs tests/isolation.test.mjs
+node --test tests/architecture-boundary.test.mjs tests/execution-boundary.test.mjs tests/clock-injection.test.mjs tests/checks.test.mjs tests/artifact.test.mjs tests/hypotheses.test.mjs tests/isolation.test.mjs
 ```
 
-Expected: all targeted tests pass; the boundary test reports no concrete adapter imports from the declared consumers.
+Expected: all targeted tests pass; the boundary test reports no concrete adapter imports from the declared changed consumers or `checks.ts`.
 
 - [ ] **Step 6: Run the complete suite**
 
@@ -504,7 +515,7 @@ git commit -m "docs: align architecture claims with enforced ports"
 
 **Interfaces:**
 - Consumes: reviewed commits from Tasks 1–3.
-- Produces: exact-head evidence, resolved threads, final QA disposition, and pre-merge report.
+- Produces: exact-head evidence, resolved threads, final QA disposition, merged PR #33, and a reconciled follow-up issue graph.
 
 - [ ] **Step 1: Run the complete local quality gate**
 
@@ -572,7 +583,7 @@ Update the PR body with exact head, current test/coverage counts, scope/non-goal
 QA review result, and truthful unresolved-thread count. Then query GraphQL and
 verify unresolved review threads equal zero.
 
-- [ ] **Step 8: Stop at the issue-level pre-merge checkpoint**
+- [ ] **Step 8: Merge PR #33 after the exact-head gate**
 
 Report:
 
@@ -585,4 +596,13 @@ Report:
 - issue #32 acceptance mapping;
 - remaining follow-up issues and dependencies.
 
-Do not merge until the operator receives this report.
+After exact-head CI is green, an independent reviewer approves that exact head,
+and the open review-thread count is zero, merge PR #33. Use the
+repository-approved merge method and read back the merged state and merge
+commit.
+
+- [ ] **Step 9: Reconcile the remaining issues after merge**
+
+After the merge, reconcile the remaining issues and execute them in dependency
+order. Record superseded, duplicate, blocked, and newly dependent work before
+starting the next implementation issue.
