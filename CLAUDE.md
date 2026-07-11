@@ -14,6 +14,62 @@ Never restate stored data at length; reference it. Never pull full diffs or
 logs into context unless a specific finding requires it; use summaries from
 `task_result` and `repo_check`.
 
+## Issue routing for orchestrator defects (fail-closed, binding)
+Problems in the codex-orchestrator **itself** — a defect, regression, limitation,
+security concern or improvement of the plugin/MCP server, its governance
+documents, its ports/adapters or its runtime behaviour — are reported as issues
+in the orchestrator's **own** repository, never in the target project Codex is
+operating on. The destination is fixed and owned by `ssot/governance.json`
+(`orchestratorRepo`):
+
+> **https://github.com/tomtastisch/codex-orchestrator** — issues:
+> **https://github.com/tomtastisch/codex-orchestrator/issues**
+
+Rules (fail-closed):
+1. Resolve the destination from `ssot/governance.json` `orchestratorRepo`, **not**
+   from the current working directory or the target project's git remote. A
+   working directory that happens to be some other repo is never the destination
+   for an orchestrator issue.
+2. `issueRouting.targetProjectIssues` is `forbidden`: do not open an
+   orchestrator issue in the target/working project under any circumstance.
+3. On any uncertainty about the destination, **fail closed** — route to
+   `orchestratorRepo`. Silence or an ambiguous directory is not licence to file
+   into the target project.
+4. Before creating, search existing issues in `orchestratorRepo` to avoid
+   duplicates; link related issues instead of re-filing.
+5. Authorization: no separate key is required — the operator's existing GitHub
+   session authorises issue creation in this public repository
+   (`issueRouting.auth.keyRequired = false`). A public/deploy key is only ever
+   needed to let a non-operator identity file on the operator's behalf; if
+   introduced it is recorded in `ssot/governance.json`, never here.
+
+## Continuous knowledge capture (binding)
+The models driving this project are capable but still need project-specific
+rules, feedback and continuous optimisation; a mistake or inconsistent working
+method ultimately reflects on the plugin and its author. The orchestrator MUST
+therefore learn from detected problems and persist that knowledge durably,
+auditably and across models. Owned by `ssot/governance.json`
+(`knowledgeCapture`).
+
+Binding rule — whenever, during any session (Claude orchestrator, Codex
+executor, or a reviewer), a defect, mistake or inconsistent working method is
+detected and the working method, a memory or an instruction is adjusted as a
+result:
+1. Evaluate whether a **generally-valid rule** for the codex-orchestrator can be
+   derived from the incident.
+2. If it can, add or update that rule in the **responsible** governance file so
+   other models do not repeat the mistake — routed by role:
+   orchestrator → `CLAUDE.md`, executor → `AGENTS.md`,
+   reviewer → `.github/copilot-instructions.md`. A lesson binding every role is
+   written once into its single owning source (`docs/review-policy.md`, else
+   `CLAUDE.md`) and referenced by the others — never duplicated.
+3. A chat-only or single-session fix does **not** satisfy this rule; the
+   knowledge must land in a governance file (traceable in Git history and, where
+   a pull request exists, in its review thread).
+4. Fail-closed: if it is unclear whether a lesson generalises, record it as an
+   explicit candidate rule and surface it for the operator's decision — never
+   silently drop a detected lesson.
+
 ## For every non-trivial coding task
 1. Analyse the requirement. Record assumptions as hypotheses (`hypotheses` add)
    before planning.
