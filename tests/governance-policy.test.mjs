@@ -50,6 +50,25 @@ test("CLAUDE.md carries the same fixed destination and the fail-closed rule", ()
     assert.match(claude, /ssot\/governance\.json/, "CLAUDE.md must reference the governance SSOT as owner");
 });
 
+test("knowledge capture is a binding, role-routed, fail-closed policy", () => {
+    const kc = gov.knowledgeCapture;
+    assert.equal(kc.policy, "binding");
+    assert.equal(kc.routingByRole.orchestrator, "CLAUDE.md");
+    assert.equal(kc.routingByRole.executor, "AGENTS.md");
+    assert.equal(kc.routingByRole.reviewer, ".github/copilot-instructions.md");
+    assert.match(kc.obligation, /must land in a governance file|governance file/i);
+    assert.match(kc.failClosed, /candidate rule|never silently drop/i);
+});
+
+test("CLAUDE.md carries the binding knowledge-capture rule", () => {
+    assert.match(claude, /Continuous knowledge capture \(binding\)/);
+    assert.match(claude, /generally-valid rule/i);
+    // The role routing must be stated so a model knows WHERE to persist a lesson.
+    assert.match(claude, /orchestrator → `CLAUDE\.md`/);
+    assert.match(claude, /executor → `AGENTS\.md`/);
+    assert.match(claude, /reviewer → `\.github\/copilot-instructions\.md`/);
+});
+
 test("the governance SSOT is registered in the index", () => {
     assert.match(index, /\[governance\]/, "ssot/index.toml must declare a [governance] concern");
     assert.ok(index.includes("ssot/governance.json"), "index must reference ssot/governance.json");

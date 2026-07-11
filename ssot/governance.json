@@ -23,5 +23,19 @@
       "publicKey": null,
       "note": "A public/deploy key would only be needed to let a NON-operator identity file issues on the operator's behalf. That is out of scope today. If ever introduced, store the key reference here (never the private key) and document who may use it."
     }
+  },
+  "knowledgeCapture": {
+    "policy": "binding",
+    "intent": "The models driving this project are capable but still need project-specific rules, feedback and continuous optimisation. A mistake or inconsistent working method ultimately reflects on the plugin and its author, so the orchestrator MUST learn from detected problems and persist that knowledge durably, auditably and across models.",
+    "trigger": "Whenever, during any session (Claude orchestrator, Codex executor, or a reviewer), a defect, mistake or inconsistent working method is detected and the working method, a memory or an instruction is adjusted as a result.",
+    "obligation": "Evaluate whether a generally-valid rule for the codex-orchestrator can be derived from the incident. If it can, the rule MUST be added or updated in the responsible governance file so other models do not repeat the mistake. A chat-only or single-session fix does NOT satisfy this rule; the knowledge must land in a governance file.",
+    "routingByRole": {
+      "orchestrator": "CLAUDE.md",
+      "executor": "AGENTS.md",
+      "reviewer": ".github/copilot-instructions.md"
+    },
+    "crossCutting": "A lesson that binds every role is written once into its single owning source (docs/review-policy.md, else CLAUDE.md) and referenced by the others — never duplicated (see issueRouting-style single-source discipline).",
+    "failClosed": "If it is unclear whether a lesson generalises, record it as an explicit candidate rule and surface it for the operator's decision. Never silently drop a detected lesson.",
+    "auditable": "Each captured rule is a normal governance-file edit under version control, so the origin incident and the resulting rule are traceable in Git history and, where a PR exists, in its review thread."
   }
 }
