@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, win32 } from "node:path";
 import { extractImports } from "./helpers/imports.mjs";
 
 // src/execution/ is the one genuine ports-&-adapters (hexagonal) island in this
@@ -24,16 +24,23 @@ function sourceImportsOf(srcPath) {
 }
 
 /** Resolve a relative source import to its repo-relative TypeScript path. */
-function importedSourcePath(srcPath, specifier) {
+function importedSourcePath(srcPath, specifier, pathApi = { dirname, join, relative }) {
     if (!specifier.startsWith(".")) return null;
-    const resolved = join(dirname(srcPath), specifier.replace(/\.js$/, ".ts"));
-    return relative(".", resolved);
+    const resolved = pathApi.join(pathApi.dirname(srcPath), specifier.replace(/\.js$/, ".ts"));
+    return pathApi.relative(".", resolved).replaceAll("\\", "/");
 }
 
 // The top-level god-modules the execution layer must never couple to.
 const FORBIDDEN_GOD_MODULES = /(?:^|\/)(?:db|server)\.js$/;
 const ADAPTER_FILES = ["local-target.ts", "ssh/target.ts", "ssh/client.ts", "ssh/deploy.ts", "ssh/protocol.ts"];
 const ALL_FILES = ["types.ts", "router.ts", "errors.ts", "registry.ts", ...ADAPTER_FILES];
+
+test("repo-relative import paths use POSIX separators on Windows", () => {
+    assert.equal(
+        importedSourcePath("src\\session.ts", "./execution/types.js", win32),
+        manifest.ports.execution,
+    );
+});
 
 test("no execution module couples to the db or server god-modules", () => {
     for (const file of ALL_FILES) {
