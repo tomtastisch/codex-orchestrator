@@ -15,14 +15,14 @@ compaction, session switches and server restarts.
 ![Status: stable](https://img.shields.io/badge/status-stable-green)
 [![Listed on ClaudePluginHub](https://www.claudepluginhub.com/badge/tomtastisch-codex-orchestrator)](https://www.claudepluginhub.com/plugins/tomtastisch-codex-orchestrator?ref=badge)
 
-Current version: 1.6.0
+Current version: 1.5.2
 
 ## Platform support
 
 | Runtime | Status | Distribution |
 |---|---|---|
 | Claude Code CLI | Production ready | First-party GitHub marketplace |
-| Claude Desktop MCPB | Released; technical verification passed | Latest GitHub release, version 1.6.0 |
+| Claude Desktop MCPB | Released; technical verification passed | Latest GitHub release, version 1.5.2 |
 | claude.ai Remote MCP | In development | Planned for a future release |
 
 The repository ships a production-ready Claude Code plugin and the released
@@ -232,12 +232,12 @@ installation can orchestrate multiple repositories.
 #### 1. Download and verify the release artifact
 
 Open the [latest release](https://github.com/tomtastisch/codex-orchestrator/releases/latest)
-and download both `codex-orchestrator-1.6.0.mcpb` and
-`codex-orchestrator-1.6.0.mcpb.sha256` into the same directory. On macOS or
+and download both `codex-orchestrator-1.5.2.mcpb` and
+`codex-orchestrator-1.5.2.mcpb.sha256` into the same directory. On macOS or
 Linux, verify the download before opening it:
 
 ```bash
-shasum -a 256 -c codex-orchestrator-1.6.0.mcpb.sha256
+shasum -a 256 -c codex-orchestrator-1.5.2.mcpb.sha256
 ```
 
 #### 2. Install in Claude Desktop
@@ -270,7 +270,7 @@ In a new Claude Desktop conversation:
 3. Select `orchestrator_status` to inspect an existing plan. These are MCP
    prompts; Claude Desktop controls their final visual prefix and menu
    presentation.
-4. Ask Claude to call `orchestrator_doctor`. Require `ok: true`, version `1.6.0`,
+4. Ask Claude to call `orchestrator_doctor`. Require `ok: true`, version `1.5.2`,
    `project_mode: "per-request-git-root"` and an authenticated local execution
    target before starting work.
 

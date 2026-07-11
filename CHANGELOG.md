@@ -4,8 +4,6 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
-## 1.6.0 - 2026-07-09
-
 ### Changed
 
 - Established a full hexagonal (ports & adapters) architecture across the core
