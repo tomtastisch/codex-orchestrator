@@ -74,11 +74,9 @@ export class SessionManager {
       if (t.codex_pid && isProcessAlive(t.codex_pid)) {
         try { process.kill(t.codex_pid, "SIGTERM"); } catch { /* schon weg */ }
       }
-      this.store.updateTask(t.id, { status: "failed", ended_at: this.clock.now(), codex_pid: null });
-      this.store.addEvent(t.id, "task_status", {
-        status: "failed",
-        reason: `Reaper: verwaister Prozess (owner_pid=${t.owner_pid ?? "?"}, codex_pid=${t.codex_pid ?? "?"}) nach Restart/Crash. Resume via task_control.`,
-      });
+      const reason = `Reaper: verwaister Prozess (owner_pid=${t.owner_pid ?? "?"}, codex_pid=${t.codex_pid ?? "?"}) nach Restart/Crash. Resume via task_control.`;
+      this.store.updateTask(t.id, { codex_pid: null });
+      this.finish(t.id, "failed", reason);
       n++;
     }
     return n;

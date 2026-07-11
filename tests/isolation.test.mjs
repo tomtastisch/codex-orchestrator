@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { isProcessAlive } from "../dist/session.js";
+import { Store } from "../dist/db.js";
+import { SessionManager } from "../dist/session.js";
 import { createSystemSessionManager, createSystemStore } from "./helpers/system-deps.mjs";
 
 function freshMgr() {
@@ -45,6 +47,50 @@ test("Reaper killt tote/legacy Tasks, verschont lebende Nachbar-Instanz", () => 
     assert.equal(n, 2);
   } finally {
     sibling.kill();
+  }
+});
+
+test("Reaper terminalisiert offene agent jobs für verwaiste aktive Tasks", () => {
+  const fixed = "2026-07-11T16:30:00.000Z";
+  const clock = { now: () => fixed };
+  let sequence = 0;
+  const ids = { newId: (prefix) => `${prefix}_reaper_${++sequence}` };
+  const dir = mkdtempSync(join(tmpdir(), "orch-reaper-job-"));
+  const store = new Store(join(dir, "s.sqlite"), clock, ids);
+  const target = { id: "fake", kind: "local" };
+  const mgr = new SessionManager(store, () => target, ids, clock);
+  const taskIds = [];
+
+  for (const status of ["running", "awaiting_resume"]) {
+    const taskId = makeRunningTask(store, 2147480000);
+    store.updateTask(taskId, { status });
+    store.recordAgentJob({
+      taskId,
+      clusterId: null,
+      hypothesisId: null,
+      model: "auto",
+      effort: "low",
+      sandbox: "read-only",
+      status,
+    });
+    taskIds.push(taskId);
+  }
+
+  assert.equal(mgr.reapOnStartup(), 2);
+
+  for (const taskId of taskIds) {
+    const task = store.getTask(taskId);
+    assert.equal(task.status, "failed");
+    assert.equal(task.ended_at, fixed);
+
+    const job = store.listAgentJobs({ taskId }).at(-1);
+    assert.equal(job.status, "failed");
+    assert.equal(job.ended_at, fixed);
+
+    const statusEvent = store.eventsAfter(taskId, 0).find((event) => event.kind === "task_status");
+    const payload = JSON.parse(statusEvent.payload_json);
+    assert.match(payload.reason, /^Reaper: verwaister Prozess/);
+    assert.equal(job.summary, payload.reason);
   }
 });
 
