@@ -60,6 +60,7 @@ owns = [
   "persistenceConsumers",
   "forbiddenPersistenceImports",
   "corePortConsumers",
+  "applicationServices",
   "forbiddenCoreImports",
 ]
 consumers = [

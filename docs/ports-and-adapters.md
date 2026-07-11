@@ -33,9 +33,9 @@ for adapter-level and migration tests.
 ### Clock / IdGenerator
 
 Reading the wall clock or generating identifiers are ambient side effects that
-make behaviour non-deterministic. `Store`, `HypothesisRepo` and `SessionManager`
-receive a `Clock` and an `IdGenerator` by constructor injection (defaulting to
-the system adapters). The application bootstrap composition root
+make behaviour non-deterministic.
+`Store`, `HypothesisRepo`, and `SessionManager` require explicit `Clock` and `IdGenerator` constructor arguments.
+The application bootstrap composition root
 (`src/app/context.ts`) injects the system adapters. `tests/clock-injection.test.mjs`
 proves the seam by injecting a fixed clock and a counter id-generator and
 asserting deterministic outputs.
@@ -89,7 +89,8 @@ flowchart LR
 - No persistence consumer imports `db.js` or `node:sqlite`; they depend on `PersistenceStore`.
 - The persistence port declares no `readonly db` / raw SQL gateway type.
 - No consumer reaches through a raw `.db` gateway (`store.db.prepare(...)`) anywhere outside the adapter.
-- Infrastructure-independent core services (`statemachine`, `prompts`, `resolve`) express infrastructure needs through a port and do not import the listed concrete I/O modules or adapters.
+- Infrastructure-independent core services (`statemachine`, `prompts`) express infrastructure needs through a port and do not import the listed concrete I/O modules or adapters.
+- `resolve.ts` is an application service because it combines the persistence port with concrete configuration and Git repository validation.
 - The clock/id ports have real consumers (`db.ts`, `hypotheses.ts`, `session.ts`) — the guard fails if the abstraction ever rots into dead code.
 - `server.ts` registers no tools directly and only wires the application layer; the tool modules never import the persistence adapter.
 - `server.ts` and `app/context.ts` are the application bootstrap composition roots; `execution/registry.ts` is the execution feature composition root.

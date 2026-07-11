@@ -40,6 +40,16 @@ function forbids(spec, name) {
 
 test("the manifest is internally consistent", () => {
     assert.ok(Array.isArray(manifest.corePortConsumers), "corePortConsumers must be an explicit list");
+    assert.deepEqual(
+        manifest.corePortConsumers,
+        ["src/statemachine.ts", "src/prompts.ts"],
+        "only the infrastructure-independent port consumers belong in corePortConsumers",
+    );
+    assert.deepEqual(
+        manifest.applicationServices,
+        ["src/resolve.ts", "src/session.ts", "src/checks.ts"],
+        "infrastructure-aware orchestration belongs in applicationServices",
+    );
     assert.equal(manifest.adapters.persistence, "src/db.ts");
     assert.equal(manifest.ports.persistence, "src/ports/persistence.ts");
     assert.equal(manifest.ports.execution, "src/execution/types.ts");
@@ -155,6 +165,57 @@ test("maintainer docs state the established boundaries without overstating port 
     const allMaintainerDocs = [architecture, portsAndAdapters, moduleReference].join("\n");
     assert.doesNotMatch(allMaintainerDocs, /every (?:infrastructure dependency|port) is (?:already )?interchangeable/i);
     assert.doesNotMatch(allMaintainerDocs, /filesystem[^\n]*sits behind (?:those )?ports as (?:an )?interchangeable adapter/i);
+});
+
+test("clock/id docs require explicit dependencies instead of hidden system defaults", () => {
+    const portsAndAdapters = readFileSync("docs/ports-and-adapters.md", "utf8");
+    assert.doesNotMatch(
+        portsAndAdapters,
+        /(?:Store|HypothesisRepo|SessionManager)[\s\S]{0,300}defaulting to\s+the system adapters/i,
+        "clock/id consumers must not be documented with removed system-adapter defaults",
+    );
+    assert.match(
+        portsAndAdapters,
+        /Store[^\n]*HypothesisRepo[^\n]*SessionManager[^\n]*require explicit[^\n]*Clock[^\n]*IdGenerator/i,
+        "clock/id consumers must be documented as requiring explicit constructor dependencies",
+    );
+});
+
+test("module reference assigns orchestration, contracts, and adapters to their actual roles", () => {
+    const doc = readFileSync("docs/module-reference.md", "utf8");
+    assert.match(doc, /\*\*Application services\*\*[^\n]*src\/resolve\.ts[^\n]*src\/session\.ts[^\n]*src\/checks\.ts/i);
+    assert.match(doc, /\*\*Execution application\*\*[^\n]*src\/execution\/router\.ts/i);
+    assert.match(doc, /\*\*Execution contracts\*\*[^\n]*src\/execution\/types\.ts[^\n]*src\/execution\/errors\.ts/i);
+    assert.match(doc, /\*\*Output adapters\*\*[^\n]*src\/snapshot\.ts[^\n]*src\/artifact\.ts/i);
+    assert.match(doc, /\*\*Infrastructure adapters\*\*[^\n]*src\/worktree\.ts/i);
+});
+
+test("architecture diagram separates application services, repositories, adapters, and composition", () => {
+    const doc = readFileSync("docs/architecture.md", "utf8");
+    const core = doc.match(/subgraph core\[[^\]]*\]([\s\S]*?)\n\s*end/);
+    const repositories = doc.match(/subgraph repos\[[^\]]*\]([\s\S]*?)\n\s*end/);
+    const adapters = doc.match(/subgraph adapters\[[^\]]*\]([\s\S]*?)\n\s*end/);
+    assert.ok(core && repositories && adapters, "the core, repository, and adapter subgraphs must exist");
+    assert.doesNotMatch(core[1], /resolve/i, "resolve.ts is an application service, not a core service");
+    assert.match(repositories[1], /hypotheses/i, "HypothesisRepo must be the documented repository/DAO");
+    assert.doesNotMatch(
+        repositories[1], /session|checks|snapshot|artifact/i,
+        "persistence consumers are not automatically repositories/DAOs",
+    );
+    assert.doesNotMatch(adapters[1], /execution\/registry|ER\[/i, "a composition root is not an adapter");
+    assert.match(doc, /resolve\.ts[^\n]*application service/i);
+    assert.match(doc, /session\.ts[^\n]*checks\.ts[^\n]*application services/i);
+});
+
+test("the finalization design and plan classify resolve.ts as an application service", () => {
+    const design = readFileSync("docs/superpowers/specs/2026-07-11-pr33-finalization-design.md", "utf8");
+    const plan = readFileSync("docs/superpowers/plans/2026-07-11-pr33-finalization-plan.md", "utf8");
+    assert.match(design, /resolve\.ts[^\n]*application service/i);
+    assert.match(plan, /resolve\.ts[^\n]*application service/i);
+
+    const plannedCore = plan.match(/"corePortConsumers": \[([\s\S]*?)\]/);
+    assert.ok(plannedCore, "the plan must retain the corePortConsumers example");
+    assert.doesNotMatch(plannedCore[1], /resolve\.ts/i, "the plan must not preserve the rejected core classification");
 });
 
 test("every persistence consumer actually depends on the persistence port", () => {

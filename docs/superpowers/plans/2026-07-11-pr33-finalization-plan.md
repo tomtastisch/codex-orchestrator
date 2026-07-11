@@ -436,8 +436,7 @@ In `ssot/architecture.json`:
 ```json
 "corePortConsumers": [
   "src/statemachine.ts",
-  "src/prompts.ts",
-  "src/resolve.ts"
+  "src/prompts.ts"
 ],
 "forbiddenCoreImports": [
   "node:sqlite",
@@ -462,7 +461,8 @@ roots.
 
 Use these exact distinctions consistently:
 
-- “infrastructure-independent core services” for `statemachine`, `prompts`, and `resolve`;
+- “infrastructure-independent core services” for `statemachine.ts` and `prompts.ts`;
+- `resolve.ts` as an “application service” because it imports concrete configuration and repository-boundary validation;
 - “repository/DAO” for `HypothesisRepo`;
 - “application bootstrap composition roots” for `server.ts` and `app/context.ts`;
 - “execution feature composition root” for `execution/registry.ts`;

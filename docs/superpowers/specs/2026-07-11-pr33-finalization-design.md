@@ -84,11 +84,11 @@ names, schemas, outputs, persisted data, or runtime selection semantics.
 
 ### Honest layer classification
 
-`statemachine.ts`, `prompts.ts`, and `resolve.ts` are infrastructure-independent
-core services that consume ports; they are not pure functions. The SSOT and
-documents must use one consistent term for that classification. The boundary
-contract must prove that these modules may import ports and domain types but do
-not import concrete I/O adapters or ambient I/O modules.
+`statemachine.ts` and `prompts.ts` are infrastructure-independent core services
+that consume the persistence port; they are not pure functions. `resolve.ts` is an application service because it also imports concrete configuration and Git repository-boundary validation. The SSOT and documents must use these
+classifications consistently. The boundary contract must prove that the core
+services may import ports and domain types but do not import concrete I/O
+adapters or ambient I/O modules.
 
 Documentation must distinguish:
 

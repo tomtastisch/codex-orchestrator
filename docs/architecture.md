@@ -14,53 +14,73 @@ as an interchangeable port.
 
 ## Layers
 
-The infrastructure-independent core services use established ports instead of
-concrete persistence, clock/id, or execution adapters. SQLite and configured
-execution targets implement those seams. Filesystem, MCP transport, worktree,
-review, updater, and other infrastructure concerns are not claimed to be ported
-or interchangeable unless a code contract enforces that boundary.
+`statemachine.ts` and `prompts.ts` are the infrastructure-independent core
+services declared by the SSOT. `resolve.ts`, `session.ts`, and `checks.ts` are
+application services: they coordinate ports with configuration, repository
+validation, or execution policy. `HypothesisRepo` is the repository/DAO.
+Snapshot and artifact writers are output adapters; worktree, runtime, and worker
+modules are concrete infrastructure adapters. Filesystem, MCP transport,
+review, updater, and other concerns are not claimed to be interchangeable ports
+unless a code contract enforces that boundary.
 
 ```mermaid
 flowchart TD
-    subgraph app["Application — src/app/ (use-cases)"]
+    subgraph composition["Composition roots"]
+        Server["server.ts — process bootstrap"]
+        Ctx["app/context.ts — application bootstrap"]
+        ER["execution/registry.ts — execution feature composition root"]
+    end
+
+    subgraph application["Application services and MCP use cases"]
         Tools["tools/{diagnostics,tasks,planning,knowledge}.ts<br/>17 MCP tools + 2 prompts"]
-        Ctx["context.ts — application bootstrap composition root"]
+        RS["resolve.ts — application service"]
+        SS["session.ts · checks.ts — application services"]
+        XR["execution/router.ts — execution application/router"]
     end
 
     subgraph core["Infrastructure-independent core services"]
         SM["statemachine.ts — cluster gate"]
-        RS["resolve.ts"]
         PR["prompts.ts"]
     end
 
-    subgraph repos["Persistence consumers — repositories / DAOs"]
-        HY["hypotheses.ts — HypothesisRepo (versioned hypotheses)"]
-        OTH["session.ts · artifact.ts · snapshot.ts · checks.ts"]
+    subgraph repos["Repository / DAO"]
+        HY["hypotheses.ts — HypothesisRepo"]
     end
 
-    subgraph ports["Ports — src/ports/ + execution/types.ts"]
+    subgraph contracts["Ports and execution contracts"]
         PS["PersistenceStore"]
         CK["Clock / IdGenerator"]
         ET["ExecutionTarget"]
+        EE["execution/errors.ts — execution errors"]
     end
 
-    subgraph adapters["Adapters (infrastructure)"]
+    subgraph adapters["Concrete output and infrastructure adapters"]
         DB["db.ts — SQLite Store"]
         SC["system-clock.ts"]
-        EX["execution/ — local + ssh targets"]
-        ER["execution/registry.ts — execution feature composition root"]
-        WK["worker/ · runtime/ — process spawn, worker protocol"]
+        EX["execution/local-target.ts · execution/ssh/*"]
+        OUT["snapshot.ts · artifact.ts — output adapters"]
+        INF["worktree.ts · runtime/* · worker/* — infrastructure adapters"]
     end
 
-    Tools --> core
-    Tools --> repos
-    Tools --> ports
-    core --> ports
-    repos --> ports
+    Server --> Ctx
+    Ctx --> ER
     Ctx -->|constructs + injects| DB
     Ctx -->|injects| SC
-    Ctx --> ER
     ER --> EX
+    Tools --> SM
+    Tools --> PR
+    Tools --> HY
+    Tools --> RS
+    Tools --> SS
+    Tools --> XR
+    core --> PS
+    RS --> PS
+    SS --> PS
+    SS --> ET
+    XR --> ET
+    XR --> EE
+    HY --> PS
+    OUT --> PS
     DB -. implements .-> PS
     SC -. implements .-> CK
     EX -. implements .-> ET
@@ -68,7 +88,7 @@ flowchart TD
 
 For the established boundaries, dependency arrows point from consumers to
 ports. `tests/architecture-boundary.test.mjs` enforces the declared persistence,
-clock/id, core-consumer, and composition-root contracts;
+clock/id, core-consumer, application-service, and composition-root contracts;
 `tests/execution-boundary.test.mjs` enforces the execution seam. A persistence
 consumer that reaches for `db.js`, `node:sqlite`, or a raw `store.db` gateway
 fails the build. See [`ports-and-adapters.md`](ports-and-adapters.md).
