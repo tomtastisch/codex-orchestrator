@@ -21821,16 +21821,74 @@ function modelForClass(cls) {
 // src/session.ts
 import { EventEmitter } from "node:events";
 
-// src/system-clock.ts
-import { randomUUID } from "node:crypto";
-function nowIso() {
-  return (/* @__PURE__ */ new Date()).toISOString();
+// src/prompts.ts
+var SLICE_RESULT_SPEC = `
+When you stop working for this slice, end your final message with EXACTLY this block
+(plain text, no code fences):
+
+SLICE_RESULT
+Type: checkpoint | submission | blocker
+Cluster: <cluster id or ->
+Done in this slice:
+- ...
+Changed files:
+- ...
+Tests run:
+- <cmd>: pass|fail|skipped
+Open items:
+- ...
+Next planned step:
+- ...
+
+Rules:
+- Type: submission ONLY when the acceptance criteria are fully met and verified.
+- Type: blocker when you are missing information or hit an obstacle you must not
+  improvise around. In that case append a full BLOCKER_OR_QUESTION section after the
+  block describing: context, the concrete question/blocker, options you see, and your
+  recommendation. Never guess around missing information.
+- Type: checkpoint otherwise (progress made, more work remains).
+- "Changed files" must list every file you created or modified in this slice.
+`.trim();
+function buildFirstSlicePrompt(task, acceptance, stopCondition) {
+  const acc = acceptance.length ? acceptance.map((a) => `- ${a}`).join("\n") : "- (none specified)";
+  return [
+    `You are Codex, the implementation executor in a supervised, cluster-based workflow.`,
+    `An orchestrator (Claude) delegates bounded work slices to you and reviews the result.`,
+    ``,
+    `Cluster: ${task.cluster_id ?? "-"}`,
+    `Slice budget: about ${task.max_minutes} minutes of focused work, then checkpoint.`,
+    task.sandbox === "read-only" ? `Sandbox: read-only. Do NOT modify files; analyse/investigate/review only.` : `Sandbox: workspace-write. You may modify files within the working directory.`,
+    stopCondition ? `Stop condition: ${stopCondition}` : ``,
+    ``,
+    `Task instructions:`,
+    task.instructions,
+    ``,
+    `Acceptance criteria:`,
+    acc,
+    ``,
+    SLICE_RESULT_SPEC
+  ].filter((l) => l !== void 0).join("\n");
 }
-function newId(prefix) {
-  return `${prefix}_${randomUUID().slice(0, 12)}`;
+function buildResumeSlicePrompt(task, injections, acceptance) {
+  const parts = [];
+  if (injections.length) {
+    parts.push(`## Orchestrator injections (highest priority \u2014 read first)`);
+    for (const inj of injections) {
+      parts.push(`- [${inj.priority}] ${inj.message}`);
+    }
+    parts.push(``);
+  }
+  parts.push(`Continue the task from where you left off. Respect the slice budget of`);
+  parts.push(`about ${task.max_minutes} minutes, then produce a SLICE_RESULT.`);
+  if (acceptance.length) {
+    parts.push(``);
+    parts.push(`Reminder \u2014 acceptance criteria:`);
+    parts.push(acceptance.map((a) => `- ${a}`).join("\n"));
+  }
+  parts.push(``);
+  parts.push(SLICE_RESULT_SPEC);
+  return parts.join("\n");
 }
-var systemClock = { now: nowIso };
-var systemIdGenerator = { newId };
 
 // src/events.ts
 function normalizeCommand(command) {
@@ -22028,472 +22086,9 @@ function parseSliceResult(agentText) {
   return result;
 }
 
-// src/runtime/environment.ts
-var COMMON_ENVIRONMENT = [
-  "PATH",
-  "HOME",
-  "USER",
-  "LOGNAME",
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "TMPDIR",
-  "TEMP",
-  "TMP"
-];
-var CODEX_ENVIRONMENT = ["CODEX_HOME", "CODEX_CA_CERTIFICATE", "SSL_CERT_FILE"];
-var SSH_ENVIRONMENT = ["SSH_AUTH_SOCK"];
-function buildChildEnvironment(source, purpose) {
-  const allowed = purpose === "codex" ? [...COMMON_ENVIRONMENT, ...CODEX_ENVIRONMENT] : purpose === "ssh" ? [...COMMON_ENVIRONMENT, ...SSH_ENVIRONMENT] : COMMON_ENVIRONMENT;
-  const result = {};
-  for (const key of allowed) {
-    const value = source[key];
-    if (value !== void 0) result[key] = value;
-  }
-  return result;
-}
-
-// src/runtime/process.ts
-var import_cross_spawn = __toESM(require_cross_spawn(), 1);
-
-// src/redact.ts
-var PLACEHOLDER = "\xABredacted\xBB";
-var PATTERNS = [
-  // Private-Key-Blöcke (PEM).
-  { re: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----/g },
-  // OpenAI-Keys (sk-..., inkl. sk-proj-).
-  { re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b/g },
-  // GitHub-Tokens (ghp_, gho_, ghu_, ghs_, ghr_, github_pat_).
-  { re: /\bgh[posru]_[A-Za-z0-9]{20,}\b/g },
-  { re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
-  // AWS Access Key IDs.
-  { re: /\bAKIA[0-9A-Z]{16}\b/g },
-  // Slack-Tokens.
-  { re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
-  // Google API keys.
-  { re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
-  // JWTs (header.payload.signature).
-  { re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
-  // Bearer-Header.
-  { re: /\bBearer\s+[A-Za-z0-9._-]{12,}/gi, replace: () => `Bearer ${PLACEHOLDER}` },
-  // key=value / key: value für sensible Schlüsselnamen (Env-Vars, Passwörter, Tokens).
-  // Werte-Klasse schließt Backslash aus: verhindert das Fressen von JSON-Escapes
-  // (z. B. in eingebettetem JSON des .toln) und hält die Redaction idempotent.
-  {
-    re: /\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|AUTH|CREDENTIAL)[A-Za-z0-9_]*)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s"'\\]+)/gi,
-    replace: (_m, key, sep3) => `${key}${sep3}${PLACEHOLDER}`
-  }
-];
-function redactText(input) {
-  let out = input;
-  for (const p of PATTERNS) {
-    out = p.replace ? out.replace(p.re, p.replace) : out.replace(p.re, PLACEHOLDER);
-  }
-  return out;
-}
-function redactDeep(value) {
-  if (typeof value === "string") return redactText(value);
-  if (Array.isArray(value)) return value.map((v) => redactDeep(v));
-  if (value && typeof value === "object") {
-    const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = redactDeep(v);
-    return out;
-  }
-  return value;
-}
-
-// src/runtime/redaction.ts
-function redact(value) {
-  return redactText(value);
-}
-
-// src/runtime/process.ts
-function resolveManagedCommand(command, args, platform = process.platform) {
-  if (platform === "win32" && /\.(?:c|m)?js$/i.test(command)) {
-    return { command: process.execPath, args: [command, ...args] };
-  }
-  return { command, args };
-}
-function appendBounded(current, chunk, maximum) {
-  const next = current + chunk.toString();
-  if (Buffer.byteLength(next) <= maximum) return { value: next, exceeded: false };
-  return { value: next.slice(-maximum), exceeded: true };
-}
-function startManagedProcess(options) {
-  const resolved = resolveManagedCommand(options.command, options.args);
-  const child = (0, import_cross_spawn.default)(resolved.command, resolved.args, {
-    cwd: options.cwd,
-    env: options.env,
-    stdio: ["pipe", "pipe", "pipe"]
-  });
-  let stdout = "";
-  let stderr = "";
-  let lineBuffer = "";
-  let termination = "normal";
-  let forceKillTimer;
-  let settled = false;
-  const terminate = (reason) => {
-    if (termination === "normal") termination = reason;
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    child.kill("SIGTERM");
-    forceKillTimer ??= setTimeout(() => {
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-    }, options.killGraceMs);
-  };
-  child.stdout.on("data", (chunk) => {
-    const appended = appendBounded(stdout, chunk, options.maxStdoutBytes);
-    stdout = appended.value;
-    lineBuffer += chunk.toString();
-    let newline = lineBuffer.indexOf("\n");
-    while (newline >= 0) {
-      options.onStdoutLine?.(lineBuffer.slice(0, newline));
-      lineBuffer = lineBuffer.slice(newline + 1);
-      newline = lineBuffer.indexOf("\n");
-    }
-    if (appended.exceeded) terminate("output_limit");
-  });
-  child.stderr.on("data", (chunk) => {
-    const appended = appendBounded(stderr, chunk, options.maxStderrBytes);
-    stderr = appended.value;
-    if (appended.exceeded) terminate("output_limit");
-  });
-  if (options.input !== void 0) child.stdin.end(options.input);
-  else child.stdin.end();
-  const timeout = setTimeout(() => terminate("timeout"), options.timeoutMs);
-  const onAbort = () => terminate("aborted");
-  if (options.signal?.aborted) onAbort();
-  else options.signal?.addEventListener("abort", onAbort, { once: true });
-  const done = new Promise((resolve6) => {
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      if (forceKillTimer) clearTimeout(forceKillTimer);
-      options.signal?.removeEventListener("abort", onAbort);
-      resolve6(result);
-    };
-    child.on("close", (code, signal) => {
-      if (lineBuffer) options.onStdoutLine?.(lineBuffer);
-      finish({
-        code,
-        signal,
-        termination,
-        stdout,
-        stderr: redact(stderr)
-      });
-    });
-    child.on("error", (error2) => {
-      termination = "spawn_error";
-      finish({
-        code: null,
-        signal: null,
-        termination,
-        stdout,
-        stderr: redact(stderr),
-        error: redact(error2.message)
-      });
-    });
-  });
-  return { child, done };
-}
-
-// src/codex.ts
-var BLOCKED_CONFIG_KEYS = /* @__PURE__ */ new Set([
-  "model",
-  "model_reasoning_effort",
-  "notify",
-  "approval_policy"
-]);
-var BLOCKED_CONFIG_PREFIXES = [
-  "sandbox",
-  // sandbox_mode, sandbox_permissions, sandbox_workspace_write.*
-  "mcp_servers",
-  // beliebige MCP-Server / Prozesse starten
-  "shell_environment_policy",
-  // Umgebungsvariablen/Secrets durchreichen
-  "hooks",
-  // beliebige Kommandos ausführen
-  "projects",
-  // Trust-Level / Freigaben
-  "trust",
-  "history",
-  "experimental",
-  "features"
-  // Feature-Flags server-seitig kontrolliert
-];
-var ALLOWED_EXTRA_CONFIG = /* @__PURE__ */ new Map([
-  ["model_verbosity", /^(low|medium|high|concise)$/],
-  ["model_reasoning_summary", /^(none|auto|concise|detailed)$/],
-  ["hide_agent_reasoning", /^(true|false)$/]
-]);
-function isBlockedConfigKey(key) {
-  const k = key.trim().toLowerCase();
-  if (!k || /[\s=]/.test(k)) return true;
-  if (k.includes("danger")) return true;
-  if (BLOCKED_CONFIG_KEYS.has(k)) return true;
-  return BLOCKED_CONFIG_PREFIXES.some((p) => k === p || k.startsWith(p + ".") || k.startsWith(p + "_"));
-}
-function validateExtraConfig(key, value) {
-  const normalized = key.trim().toLowerCase();
-  const valueSchema = ALLOWED_EXTRA_CONFIG.get(normalized);
-  if (!valueSchema) {
-    throw new Error(`extra_config-Schl\xFCssel '${key}' ist nicht erlaubt`);
-  }
-  if (!valueSchema.test(value.trim())) {
-    throw new Error(`extra_config-Wert f\xFCr '${key}' ist nicht erlaubt`);
-  }
-}
-function buildCodexArgs(opts) {
-  const dropped = [];
-  const cfg = [
-    "-c",
-    `sandbox_mode=${opts.sandbox}`,
-    "-c",
-    `model=${opts.model}`,
-    "-c",
-    `model_reasoning_effort=${opts.effort}`,
-    "-c",
-    "notify=[]",
-    "-c",
-    `sandbox_workspace_write.network_access=${opts.network ? "true" : "false"}`
-  ];
-  for (const [key, value] of Object.entries(opts.extraConfig ?? {})) {
-    if (isBlockedConfigKey(key)) {
-      dropped.push(key);
-      continue;
-    }
-    validateExtraConfig(key, value);
-    cfg.push("-c", `${key}=${value}`);
-  }
-  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", ...cfg];
-  const args = opts.threadId ? ["exec", "resume", opts.threadId, ...common, "-"] : ["exec", ...common, "-"];
-  return { args, droppedConfigKeys: dropped };
-}
-function startSlice(opts) {
-  if (!config2.allowedSandboxes.includes(opts.sandbox)) {
-    throw new Error(`Sandbox nicht erlaubt: ${opts.sandbox}`);
-  }
-  const { args } = buildCodexArgs(opts);
-  const lines = [];
-  const childEnvironment = buildChildEnvironment(process.env, "codex");
-  if (opts.codexHome) childEnvironment.CODEX_HOME = opts.codexHome;
-  const managed = startManagedProcess({
-    command: opts.codexBin ?? config2.codexBin,
-    args,
-    cwd: opts.repoPath,
-    env: childEnvironment,
-    input: opts.prompt,
-    timeoutMs: opts.timeoutMs,
-    killGraceMs: config2.limits.sliceKillGraceMs,
-    maxStdoutBytes: 10 * 1024 * 1024,
-    maxStderrBytes: 64 * 1024,
-    signal: opts.signal,
-    onStdoutLine: (line) => {
-      lines.push(line);
-      if (lines.length > 1e4) lines.shift();
-      opts.onLine?.(line);
-    }
-  });
-  const done = managed.done.then((processResult) => {
-    const parsed = parseStreamLines(lines);
-    const lastMsg = parsed.agentMessages[parsed.agentMessages.length - 1] ?? "";
-    const sliceResult = parseSliceResult(lastMsg);
-    let status = "normal";
-    let errorMessage = null;
-    if (processResult.termination === "aborted") {
-      status = "killed";
-      errorMessage = "abgebrochen (cancel)";
-    } else if (processResult.termination === "timeout") {
-      status = "killed";
-      errorMessage = "Slice-Budget \xFCberschritten (killed)";
-    } else if (processResult.termination === "output_limit") {
-      status = "failed";
-      errorMessage = "Codex-Ausgabe \xFCberschritt das Sicherheitslimit";
-    } else if (processResult.termination === "spawn_error") {
-      status = "failed";
-      errorMessage = `Prozessfehler: ${processResult.error ?? "unbekannter Fehler"}`;
-    } else if (parsed.turnFailed || parsed.errorMessage) {
-      status = "failed";
-      errorMessage = parsed.errorMessage || `Codex-Fehler (exit ${processResult.code}). stderr: ${processResult.stderr.slice(-500)}`;
-    } else if (processResult.code !== 0 && parsed.rawEventCount === 0) {
-      status = "failed";
-      errorMessage = `codex exit ${processResult.code}. stderr: ${processResult.stderr.slice(-500)}`;
-    }
-    return {
-      threadId: parsed.threadId ?? opts.threadId ?? null,
-      agentMessages: parsed.agentMessages,
-      commands: parsed.commands,
-      usage: parsed.usage,
-      sliceResult,
-      status,
-      errorMessage,
-      rawEventCount: parsed.rawEventCount
-    };
-  });
-  return { child: managed.child, done };
-}
-
-// src/execution/local-target.ts
-var LocalExecutionTarget = class {
-  id = "local";
-  kind = "local";
-  codexBin;
-  codexHome;
-  constructor(options = {}) {
-    this.codexBin = options.codexBin ?? config2.codexBin;
-    this.codexHome = options.codexHome;
-  }
-  async doctor() {
-    const version2 = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5e3, "codex", this.codexHome);
-    if (version2.code !== 0) {
-      return {
-        targetId: this.id,
-        kind: this.kind,
-        state: "unhealthy",
-        codexVersion: null,
-        auth: { state: "unavailable", message: "Codex CLI nicht verf\xFCgbar" },
-        errorCode: "TARGET_VERSION",
-        message: version2.stderr || "Codex CLI nicht verf\xFCgbar"
-      };
-    }
-    const match = version2.stdout.match(/(\d+\.\d+\.\d+[^\s]*)/);
-    const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5e3, "codex", this.codexHome);
-    const auth = parseAuthStatus(login.code, `${login.stdout}
-${login.stderr}`);
-    return {
-      targetId: this.id,
-      kind: this.kind,
-      state: auth.state === "authenticated" ? "healthy" : "unhealthy",
-      codexVersion: match?.[1] ?? null,
-      auth,
-      errorCode: auth.state === "authenticated" ? void 0 : "TARGET_AUTH",
-      message: auth.message
-    };
-  }
-  startCodex(request) {
-    return startSlice({ ...request, codexBin: this.codexBin, codexHome: this.codexHome });
-  }
-  async repositoryIdentity(repoPath) {
-    const result = await this.runGit({
-      cwd: repoPath,
-      argv: ["rev-parse", "--show-toplevel", "HEAD"],
-      timeoutMs: 1e4
-    });
-    if (result.code !== 0) throw new Error(result.stderr || "Git-Repository nicht verf\xFCgbar");
-    const [topLevel, headCommit] = result.stdout.trim().split(/\r?\n/);
-    const status = await this.runGit({ cwd: repoPath, argv: ["status", "--porcelain=v1"], timeoutMs: 1e4 });
-    return { topLevel, headCommit, clean: status.code === 0 && status.stdout.trim() === "" };
-  }
-  runCheck(request) {
-    const [command, ...args] = request.argv;
-    return this.runBinary(command, args, request.cwd, request.timeoutMs ?? 15 * 6e4, "repository-check");
-  }
-  runGit(request) {
-    return this.runBinary("git", request.argv, request.cwd, request.timeoutMs ?? 6e4, "repository-check");
-  }
-  async runBinary(command, args, cwd, timeoutMs, purpose, codexHome) {
-    const environment = buildChildEnvironment(process.env, purpose);
-    if (purpose === "codex" && codexHome) environment.CODEX_HOME = codexHome;
-    const running = startManagedProcess({
-      command,
-      args,
-      cwd,
-      env: environment,
-      timeoutMs,
-      killGraceMs: config2.limits.sliceKillGraceMs,
-      maxStdoutBytes: 4e5,
-      maxStderrBytes: 64e3
-    });
-    const result = await running.done;
-    return { code: result.code, stdout: result.stdout, stderr: result.error ?? result.stderr };
-  }
-};
-function parseAuthStatus(code, output) {
-  if (code !== 0) return { state: "unauthenticated", message: "Codex CLI ist nicht angemeldet" };
-  if (/logged in using chatgpt/i.test(output)) {
-    return { state: "authenticated", method: "chatgpt", message: "Codex CLI ist \xFCber ChatGPT angemeldet" };
-  }
-  if (/logged in using.*api/i.test(output)) {
-    return { state: "authenticated", method: "api-key", message: "Codex CLI ist \xFCber API-Key angemeldet" };
-  }
-  return { state: "authenticated", method: "unknown", message: "Codex CLI ist angemeldet" };
-}
-
-// src/prompts.ts
-var SLICE_RESULT_SPEC = `
-When you stop working for this slice, end your final message with EXACTLY this block
-(plain text, no code fences):
-
-SLICE_RESULT
-Type: checkpoint | submission | blocker
-Cluster: <cluster id or ->
-Done in this slice:
-- ...
-Changed files:
-- ...
-Tests run:
-- <cmd>: pass|fail|skipped
-Open items:
-- ...
-Next planned step:
-- ...
-
-Rules:
-- Type: submission ONLY when the acceptance criteria are fully met and verified.
-- Type: blocker when you are missing information or hit an obstacle you must not
-  improvise around. In that case append a full BLOCKER_OR_QUESTION section after the
-  block describing: context, the concrete question/blocker, options you see, and your
-  recommendation. Never guess around missing information.
-- Type: checkpoint otherwise (progress made, more work remains).
-- "Changed files" must list every file you created or modified in this slice.
-`.trim();
-function buildFirstSlicePrompt(task, acceptance, stopCondition) {
-  const acc = acceptance.length ? acceptance.map((a) => `- ${a}`).join("\n") : "- (none specified)";
-  return [
-    `You are Codex, the implementation executor in a supervised, cluster-based workflow.`,
-    `An orchestrator (Claude) delegates bounded work slices to you and reviews the result.`,
-    ``,
-    `Cluster: ${task.cluster_id ?? "-"}`,
-    `Slice budget: about ${task.max_minutes} minutes of focused work, then checkpoint.`,
-    task.sandbox === "read-only" ? `Sandbox: read-only. Do NOT modify files; analyse/investigate/review only.` : `Sandbox: workspace-write. You may modify files within the working directory.`,
-    stopCondition ? `Stop condition: ${stopCondition}` : ``,
-    ``,
-    `Task instructions:`,
-    task.instructions,
-    ``,
-    `Acceptance criteria:`,
-    acc,
-    ``,
-    SLICE_RESULT_SPEC
-  ].filter((l) => l !== void 0).join("\n");
-}
-function buildResumeSlicePrompt(task, injections, acceptance) {
-  const parts = [];
-  if (injections.length) {
-    parts.push(`## Orchestrator injections (highest priority \u2014 read first)`);
-    for (const inj of injections) {
-      parts.push(`- [${inj.priority}] ${inj.message}`);
-    }
-    parts.push(``);
-  }
-  parts.push(`Continue the task from where you left off. Respect the slice budget of`);
-  parts.push(`about ${task.max_minutes} minutes, then produce a SLICE_RESULT.`);
-  if (acceptance.length) {
-    parts.push(``);
-    parts.push(`Reminder \u2014 acceptance criteria:`);
-    parts.push(acceptance.map((a) => `- ${a}`).join("\n"));
-  }
-  parts.push(``);
-  parts.push(SLICE_RESULT_SPEC);
-  return parts.join("\n");
-}
-
 // src/session.ts
 var SessionManager = class {
-  constructor(store, targetFor = (() => {
-    const local = new LocalExecutionTarget();
-    return () => local;
-  })(), ids = systemIdGenerator, clock = systemClock) {
+  constructor(store, targetFor, ids, clock) {
     this.store = store;
     this.targetFor = targetFor;
     this.ids = ids;
@@ -22527,11 +22122,9 @@ var SessionManager = class {
         } catch {
         }
       }
-      this.store.updateTask(t.id, { status: "failed", ended_at: this.clock.now(), codex_pid: null });
-      this.store.addEvent(t.id, "task_status", {
-        status: "failed",
-        reason: `Reaper: verwaister Prozess (owner_pid=${t.owner_pid ?? "?"}, codex_pid=${t.codex_pid ?? "?"}) nach Restart/Crash. Resume via task_control.`
-      });
+      const reason = `Reaper: verwaister Prozess (owner_pid=${t.owner_pid ?? "?"}, codex_pid=${t.codex_pid ?? "?"}) nach Restart/Crash. Resume via task_control.`;
+      this.store.updateTask(t.id, { codex_pid: null });
+      this.finish(t.id, "failed", reason);
       n++;
     }
     return n;
@@ -22779,10 +22372,8 @@ var SessionManager = class {
     this.emit(taskId);
   }
   limitBreach(taskId, reason) {
-    this.store.updateTask(taskId, { status: "blocked", ended_at: this.clock.now() });
     this.store.addEvent(taskId, "limit_breach", { reason });
-    this.store.addEvent(taskId, "task_status", { status: "blocked", reason });
-    this.emit(taskId);
+    this.finish(taskId, "blocked", reason);
   }
   // ---- Steuerung (task_control) ----
   pause(taskId) {
@@ -22967,6 +22558,52 @@ function runMigrations(db) {
   }
 }
 
+// src/redact.ts
+var PLACEHOLDER = "\xABredacted\xBB";
+var PATTERNS = [
+  // Private-Key-Blöcke (PEM).
+  { re: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----/g },
+  // OpenAI-Keys (sk-..., inkl. sk-proj-).
+  { re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b/g },
+  // GitHub-Tokens (ghp_, gho_, ghu_, ghs_, ghr_, github_pat_).
+  { re: /\bgh[posru]_[A-Za-z0-9]{20,}\b/g },
+  { re: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g },
+  // AWS Access Key IDs.
+  { re: /\bAKIA[0-9A-Z]{16}\b/g },
+  // Slack-Tokens.
+  { re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
+  // Google API keys.
+  { re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  // JWTs (header.payload.signature).
+  { re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+  // Bearer-Header.
+  { re: /\bBearer\s+[A-Za-z0-9._-]{12,}/gi, replace: () => `Bearer ${PLACEHOLDER}` },
+  // key=value / key: value für sensible Schlüsselnamen (Env-Vars, Passwörter, Tokens).
+  // Werte-Klasse schließt Backslash aus: verhindert das Fressen von JSON-Escapes
+  // (z. B. in eingebettetem JSON des .toln) und hält die Redaction idempotent.
+  {
+    re: /\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|AUTH|CREDENTIAL)[A-Za-z0-9_]*)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s"'\\]+)/gi,
+    replace: (_m, key, sep3) => `${key}${sep3}${PLACEHOLDER}`
+  }
+];
+function redactText(input) {
+  let out = input;
+  for (const p of PATTERNS) {
+    out = p.replace ? out.replace(p.re, p.replace) : out.replace(p.re, PLACEHOLDER);
+  }
+  return out;
+}
+function redactDeep(value) {
+  if (typeof value === "string") return redactText(value);
+  if (Array.isArray(value)) return value.map((v) => redactDeep(v));
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = redactDeep(v);
+    return out;
+  }
+  return value;
+}
+
 // src/ports/persistence.ts
 var SCHEMA_VERSION = 4;
 
@@ -23076,7 +22713,7 @@ CREATE TABLE IF NOT EXISTS checks (
 );
 `;
 var Store = class {
-  constructor(dbPath, clock = systemClock, ids = systemIdGenerator) {
+  constructor(dbPath, clock, ids) {
     this.clock = clock;
     this.ids = ids;
     const directory = dirname(dbPath);
@@ -23866,7 +23503,7 @@ function normEvidence(es, clock) {
   );
 }
 var HypothesisRepo = class _HypothesisRepo {
-  constructor(store, clock = systemClock, ids = systemIdGenerator) {
+  constructor(store, clock, ids) {
     this.store = store;
     this.clock = clock;
     this.ids = ids;
@@ -24095,6 +23732,129 @@ var TargetError = class extends Error {
   retryable;
 };
 
+// src/runtime/environment.ts
+var COMMON_ENVIRONMENT = [
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TMPDIR",
+  "TEMP",
+  "TMP"
+];
+var CODEX_ENVIRONMENT = ["CODEX_HOME", "CODEX_CA_CERTIFICATE", "SSL_CERT_FILE"];
+var SSH_ENVIRONMENT = ["SSH_AUTH_SOCK"];
+function buildChildEnvironment(source, purpose) {
+  const allowed = purpose === "codex" ? [...COMMON_ENVIRONMENT, ...CODEX_ENVIRONMENT] : purpose === "ssh" ? [...COMMON_ENVIRONMENT, ...SSH_ENVIRONMENT] : COMMON_ENVIRONMENT;
+  const result = {};
+  for (const key of allowed) {
+    const value = source[key];
+    if (value !== void 0) result[key] = value;
+  }
+  return result;
+}
+
+// src/runtime/process.ts
+var import_cross_spawn = __toESM(require_cross_spawn(), 1);
+
+// src/runtime/redaction.ts
+function redact(value) {
+  return redactText(value);
+}
+
+// src/runtime/process.ts
+function resolveManagedCommand(command, args, platform = process.platform) {
+  if (platform === "win32" && /\.(?:c|m)?js$/i.test(command)) {
+    return { command: process.execPath, args: [command, ...args] };
+  }
+  return { command, args };
+}
+function appendBounded(current, chunk, maximum) {
+  const next = current + chunk.toString();
+  if (Buffer.byteLength(next) <= maximum) return { value: next, exceeded: false };
+  return { value: next.slice(-maximum), exceeded: true };
+}
+function startManagedProcess(options) {
+  const resolved = resolveManagedCommand(options.command, options.args);
+  const child = (0, import_cross_spawn.default)(resolved.command, resolved.args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  let stdout = "";
+  let stderr = "";
+  let lineBuffer = "";
+  let termination = "normal";
+  let forceKillTimer;
+  let settled = false;
+  const terminate = (reason) => {
+    if (termination === "normal") termination = reason;
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    child.kill("SIGTERM");
+    forceKillTimer ??= setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }, options.killGraceMs);
+  };
+  child.stdout.on("data", (chunk) => {
+    const appended = appendBounded(stdout, chunk, options.maxStdoutBytes);
+    stdout = appended.value;
+    lineBuffer += chunk.toString();
+    let newline = lineBuffer.indexOf("\n");
+    while (newline >= 0) {
+      options.onStdoutLine?.(lineBuffer.slice(0, newline));
+      lineBuffer = lineBuffer.slice(newline + 1);
+      newline = lineBuffer.indexOf("\n");
+    }
+    if (appended.exceeded) terminate("output_limit");
+  });
+  child.stderr.on("data", (chunk) => {
+    const appended = appendBounded(stderr, chunk, options.maxStderrBytes);
+    stderr = appended.value;
+    if (appended.exceeded) terminate("output_limit");
+  });
+  if (options.input !== void 0) child.stdin.end(options.input);
+  else child.stdin.end();
+  const timeout = setTimeout(() => terminate("timeout"), options.timeoutMs);
+  const onAbort = () => terminate("aborted");
+  if (options.signal?.aborted) onAbort();
+  else options.signal?.addEventListener("abort", onAbort, { once: true });
+  const done = new Promise((resolve6) => {
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      options.signal?.removeEventListener("abort", onAbort);
+      resolve6(result);
+    };
+    child.on("close", (code, signal) => {
+      if (lineBuffer) options.onStdoutLine?.(lineBuffer);
+      finish({
+        code,
+        signal,
+        termination,
+        stdout,
+        stderr: redact(stderr)
+      });
+    });
+    child.on("error", (error2) => {
+      termination = "spawn_error";
+      finish({
+        code: null,
+        signal: null,
+        termination,
+        stdout,
+        stderr: redact(stderr),
+        error: redact(error2.message)
+      });
+    });
+  });
+  return { child, done };
+}
+
 // src/auth/bootstrap.ts
 var MAX_CREDENTIAL_BYTES = 64 * 1024;
 function loadCredentialFile(path) {
@@ -24175,6 +23935,228 @@ var RemoteAuthBootstrapper = class {
   }
 };
 
+// src/codex.ts
+var BLOCKED_CONFIG_KEYS = /* @__PURE__ */ new Set([
+  "model",
+  "model_reasoning_effort",
+  "notify",
+  "approval_policy"
+]);
+var BLOCKED_CONFIG_PREFIXES = [
+  "sandbox",
+  // sandbox_mode, sandbox_permissions, sandbox_workspace_write.*
+  "mcp_servers",
+  // beliebige MCP-Server / Prozesse starten
+  "shell_environment_policy",
+  // Umgebungsvariablen/Secrets durchreichen
+  "hooks",
+  // beliebige Kommandos ausführen
+  "projects",
+  // Trust-Level / Freigaben
+  "trust",
+  "history",
+  "experimental",
+  "features"
+  // Feature-Flags server-seitig kontrolliert
+];
+var ALLOWED_EXTRA_CONFIG = /* @__PURE__ */ new Map([
+  ["model_verbosity", /^(low|medium|high|concise)$/],
+  ["model_reasoning_summary", /^(none|auto|concise|detailed)$/],
+  ["hide_agent_reasoning", /^(true|false)$/]
+]);
+function isBlockedConfigKey(key) {
+  const k = key.trim().toLowerCase();
+  if (!k || /[\s=]/.test(k)) return true;
+  if (k.includes("danger")) return true;
+  if (BLOCKED_CONFIG_KEYS.has(k)) return true;
+  return BLOCKED_CONFIG_PREFIXES.some((p) => k === p || k.startsWith(p + ".") || k.startsWith(p + "_"));
+}
+function validateExtraConfig(key, value) {
+  const normalized = key.trim().toLowerCase();
+  const valueSchema = ALLOWED_EXTRA_CONFIG.get(normalized);
+  if (!valueSchema) {
+    throw new Error(`extra_config-Schl\xFCssel '${key}' ist nicht erlaubt`);
+  }
+  if (!valueSchema.test(value.trim())) {
+    throw new Error(`extra_config-Wert f\xFCr '${key}' ist nicht erlaubt`);
+  }
+}
+function buildCodexArgs(opts) {
+  const dropped = [];
+  const cfg = [
+    "-c",
+    `sandbox_mode=${opts.sandbox}`,
+    "-c",
+    `model=${opts.model}`,
+    "-c",
+    `model_reasoning_effort=${opts.effort}`,
+    "-c",
+    "notify=[]",
+    "-c",
+    `sandbox_workspace_write.network_access=${opts.network ? "true" : "false"}`
+  ];
+  for (const [key, value] of Object.entries(opts.extraConfig ?? {})) {
+    if (isBlockedConfigKey(key)) {
+      dropped.push(key);
+      continue;
+    }
+    validateExtraConfig(key, value);
+    cfg.push("-c", `${key}=${value}`);
+  }
+  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", ...cfg];
+  const args = opts.threadId ? ["exec", "resume", opts.threadId, ...common, "-"] : ["exec", ...common, "-"];
+  return { args, droppedConfigKeys: dropped };
+}
+function startSlice(opts) {
+  if (!config2.allowedSandboxes.includes(opts.sandbox)) {
+    throw new Error(`Sandbox nicht erlaubt: ${opts.sandbox}`);
+  }
+  const { args } = buildCodexArgs(opts);
+  const lines = [];
+  const childEnvironment = buildChildEnvironment(process.env, "codex");
+  if (opts.codexHome) childEnvironment.CODEX_HOME = opts.codexHome;
+  const managed = startManagedProcess({
+    command: opts.codexBin ?? config2.codexBin,
+    args,
+    cwd: opts.repoPath,
+    env: childEnvironment,
+    input: opts.prompt,
+    timeoutMs: opts.timeoutMs,
+    killGraceMs: config2.limits.sliceKillGraceMs,
+    maxStdoutBytes: 10 * 1024 * 1024,
+    maxStderrBytes: 64 * 1024,
+    signal: opts.signal,
+    onStdoutLine: (line) => {
+      lines.push(line);
+      if (lines.length > 1e4) lines.shift();
+      opts.onLine?.(line);
+    }
+  });
+  const done = managed.done.then((processResult) => {
+    const parsed = parseStreamLines(lines);
+    const lastMsg = parsed.agentMessages[parsed.agentMessages.length - 1] ?? "";
+    const sliceResult = parseSliceResult(lastMsg);
+    let status = "normal";
+    let errorMessage = null;
+    if (processResult.termination === "aborted") {
+      status = "killed";
+      errorMessage = "abgebrochen (cancel)";
+    } else if (processResult.termination === "timeout") {
+      status = "killed";
+      errorMessage = "Slice-Budget \xFCberschritten (killed)";
+    } else if (processResult.termination === "output_limit") {
+      status = "failed";
+      errorMessage = "Codex-Ausgabe \xFCberschritt das Sicherheitslimit";
+    } else if (processResult.termination === "spawn_error") {
+      status = "failed";
+      errorMessage = `Prozessfehler: ${processResult.error ?? "unbekannter Fehler"}`;
+    } else if (parsed.turnFailed || parsed.errorMessage) {
+      status = "failed";
+      errorMessage = parsed.errorMessage || `Codex-Fehler (exit ${processResult.code}). stderr: ${processResult.stderr.slice(-500)}`;
+    } else if (processResult.code !== 0 && parsed.rawEventCount === 0) {
+      status = "failed";
+      errorMessage = `codex exit ${processResult.code}. stderr: ${processResult.stderr.slice(-500)}`;
+    }
+    return {
+      threadId: parsed.threadId ?? opts.threadId ?? null,
+      agentMessages: parsed.agentMessages,
+      commands: parsed.commands,
+      usage: parsed.usage,
+      sliceResult,
+      status,
+      errorMessage,
+      rawEventCount: parsed.rawEventCount
+    };
+  });
+  return { child: managed.child, done };
+}
+
+// src/execution/local-target.ts
+var LocalExecutionTarget = class {
+  id = "local";
+  kind = "local";
+  codexBin;
+  codexHome;
+  constructor(options = {}) {
+    this.codexBin = options.codexBin ?? config2.codexBin;
+    this.codexHome = options.codexHome;
+  }
+  async doctor() {
+    const version2 = await this.runBinary(this.codexBin, ["--version"], process.cwd(), 5e3, "codex", this.codexHome);
+    if (version2.code !== 0) {
+      return {
+        targetId: this.id,
+        kind: this.kind,
+        state: "unhealthy",
+        codexVersion: null,
+        auth: { state: "unavailable", message: "Codex CLI nicht verf\xFCgbar" },
+        errorCode: "TARGET_VERSION",
+        message: version2.stderr || "Codex CLI nicht verf\xFCgbar"
+      };
+    }
+    const match = version2.stdout.match(/(\d+\.\d+\.\d+[^\s]*)/);
+    const login = await this.runBinary(this.codexBin, ["login", "status"], process.cwd(), 5e3, "codex", this.codexHome);
+    const auth = parseAuthStatus(login.code, `${login.stdout}
+${login.stderr}`);
+    return {
+      targetId: this.id,
+      kind: this.kind,
+      state: auth.state === "authenticated" ? "healthy" : "unhealthy",
+      codexVersion: match?.[1] ?? null,
+      auth,
+      errorCode: auth.state === "authenticated" ? void 0 : "TARGET_AUTH",
+      message: auth.message
+    };
+  }
+  startCodex(request) {
+    return startSlice({ ...request, codexBin: this.codexBin, codexHome: this.codexHome });
+  }
+  async repositoryIdentity(repoPath) {
+    const result = await this.runGit({
+      cwd: repoPath,
+      argv: ["rev-parse", "--show-toplevel", "HEAD"],
+      timeoutMs: 1e4
+    });
+    if (result.code !== 0) throw new Error(result.stderr || "Git-Repository nicht verf\xFCgbar");
+    const [topLevel, headCommit] = result.stdout.trim().split(/\r?\n/);
+    const status = await this.runGit({ cwd: repoPath, argv: ["status", "--porcelain=v1"], timeoutMs: 1e4 });
+    return { topLevel, headCommit, clean: status.code === 0 && status.stdout.trim() === "" };
+  }
+  runCheck(request) {
+    const [command, ...args] = request.argv;
+    return this.runBinary(command, args, request.cwd, request.timeoutMs ?? 15 * 6e4, "repository-check");
+  }
+  runGit(request) {
+    return this.runBinary("git", request.argv, request.cwd, request.timeoutMs ?? 6e4, "repository-check");
+  }
+  async runBinary(command, args, cwd, timeoutMs, purpose, codexHome) {
+    const environment = buildChildEnvironment(process.env, purpose);
+    if (purpose === "codex" && codexHome) environment.CODEX_HOME = codexHome;
+    const running = startManagedProcess({
+      command,
+      args,
+      cwd,
+      env: environment,
+      timeoutMs,
+      killGraceMs: config2.limits.sliceKillGraceMs,
+      maxStdoutBytes: 4e5,
+      maxStderrBytes: 64e3
+    });
+    const result = await running.done;
+    return { code: result.code, stdout: result.stdout, stderr: result.error ?? result.stderr };
+  }
+};
+function parseAuthStatus(code, output) {
+  if (code !== 0) return { state: "unauthenticated", message: "Codex CLI ist nicht angemeldet" };
+  if (/logged in using chatgpt/i.test(output)) {
+    return { state: "authenticated", method: "chatgpt", message: "Codex CLI ist \xFCber ChatGPT angemeldet" };
+  }
+  if (/logged in using.*api/i.test(output)) {
+    return { state: "authenticated", method: "api-key", message: "Codex CLI ist \xFCber API-Key angemeldet" };
+  }
+  return { state: "authenticated", method: "unknown", message: "Codex CLI ist angemeldet" };
+}
+
 // src/execution/router.ts
 function healthError(health) {
   const code = health.errorCode ?? (health.auth.state === "authenticated" ? "TARGET_VERSION" : "TARGET_AUTH");
@@ -24229,7 +24211,7 @@ var ExecutionTargetRouter = class {
 };
 
 // src/execution/ssh/target.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { existsSync as existsSync5 } from "node:fs";
 import { dirname as dirname2, isAbsolute as isAbsolute2, relative, resolve as resolve4, sep as sep2 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24521,7 +24503,7 @@ var SshExecutionTarget = class {
   async doctor() {
     await this.prepare();
     const data = await this.invoke({
-      requestId: randomUUID2(),
+      requestId: randomUUID(),
       protocol: WORKER_PROTOCOL_VERSION,
       operation: "doctor",
       codexBin: this.options.codexBin,
@@ -24531,7 +24513,7 @@ var SshExecutionTarget = class {
   }
   startCodex(request) {
     if (!this.ready) throw new TargetError("TARGET_CONNECTIVITY", "Remote-Target wurde nicht vorbereitet", this.id, true);
-    const requestId = randomUUID2();
+    const requestId = randomUUID();
     let final;
     const process3 = startWorkerProcess(
       { host: this.options.host, sshBin: this.options.sshBin, configFile: this.options.configFile },
@@ -24573,7 +24555,7 @@ var SshExecutionTarget = class {
   async repositoryIdentity(repoPath) {
     await this.prepare();
     return this.invoke({
-      requestId: randomUUID2(),
+      requestId: randomUUID(),
       protocol: WORKER_PROTOCOL_VERSION,
       operation: "repository.identity",
       allowedRoot: this.options.remoteRoot,
@@ -24585,7 +24567,7 @@ var SshExecutionTarget = class {
     const checkName = Object.entries(config2.checks).find(([, check2]) => check2.argv.length === request.argv.length && check2.argv.every((value, index) => value === request.argv[index]))?.[0];
     if (!checkName) throw new TargetError("TARGET_POLICY", "Check ist nicht allowlisted", this.id);
     return this.invoke({
-      requestId: randomUUID2(),
+      requestId: randomUUID(),
       protocol: WORKER_PROTOCOL_VERSION,
       operation: "check.run",
       allowedRoot: this.options.remoteRoot,
@@ -24596,7 +24578,7 @@ var SshExecutionTarget = class {
   async runGit(request) {
     await this.prepare();
     return this.invoke({
-      requestId: randomUUID2(),
+      requestId: randomUUID(),
       protocol: WORKER_PROTOCOL_VERSION,
       operation: "git.run",
       allowedRoot: this.options.remoteRoot,
@@ -24643,7 +24625,7 @@ var SshExecutionTarget = class {
   async bootstrapAuth(codexHome, credentials) {
     await this.prepare();
     return this.invoke({
-      requestId: randomUUID2(),
+      requestId: randomUUID(),
       protocol: WORKER_PROTOCOL_VERSION,
       operation: "auth.bootstrap",
       codexHome,
@@ -24653,7 +24635,7 @@ var SshExecutionTarget = class {
   async loginAccessToken(codexHome, token) {
     await this.prepare();
     return this.invoke({
-      requestId: randomUUID2(),
+      requestId: randomUUID(),
       protocol: WORKER_PROTOCOL_VERSION,
       operation: "auth.login-token",
       codexBin: this.options.codexBin,
@@ -24667,7 +24649,7 @@ var SshExecutionTarget = class {
     this.workerEntry = await this.deployer.ensure();
     this.ready = true;
     const handshake = await this.invoke({
-      requestId: randomUUID2(),
+      requestId: randomUUID(),
       protocol: WORKER_PROTOCOL_VERSION,
       operation: "handshake"
     }, 2e4);
@@ -24810,6 +24792,17 @@ function createExecutionRuntime(configuration) {
     })
   };
 }
+
+// src/system-clock.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+function nowIso() {
+  return (/* @__PURE__ */ new Date()).toISOString();
+}
+function newId(prefix) {
+  return `${prefix}_${randomUUID2().slice(0, 12)}`;
+}
+var systemClock = { now: nowIso };
+var systemIdGenerator = { newId };
 
 // src/app/context.ts
 function createAppContext() {
@@ -25088,7 +25081,7 @@ function registerDiagnosticsTools(server2, ctx2) {
 }
 
 // src/checks.ts
-async function runChecks(store, clusterId, repoPath, names, target = new LocalExecutionTarget()) {
+async function runChecks(store, clusterId, repoPath, names, target) {
   const runs = [];
   const unknown2 = [];
   for (const name of names) {
@@ -25113,7 +25106,7 @@ function summarizeOutput(out) {
   const tail = lines.slice(-12).join("\n");
   return redact(tail.slice(0, 2e3));
 }
-async function diffSize(repoPath, target = new LocalExecutionTarget()) {
+async function diffSize(repoPath, target) {
   let files = 0;
   let lines = 0;
   const tracked = await target.runGit({ cwd: repoPath, argv: ["diff", "--numstat", "HEAD"], timeoutMs: 6e4 });
@@ -26025,11 +26018,10 @@ function parseJson(s) {
     return s;
   }
 }
-function buildResultArtifact(store, planId, opts = {}) {
+function buildResultArtifact(store, hyp, planId, opts = {}) {
   const plan = store.getPlan(planId);
   if (!plan) return null;
   const repo = plan.repo_path;
-  const hyp = new HypothesisRepo(store);
   const clusters = store.listClusters(planId).map((c) => ({
     id: c.id,
     ordinal: c.ordinal,
@@ -26258,8 +26250,8 @@ function renderSummaryMd(a) {
   ];
   return lines.join("\n");
 }
-function writeResultArtifact(store, planId, opts = {}) {
-  const artifact = buildResultArtifact(store, planId, opts);
+function writeResultArtifact(store, hyp, planId, opts = {}) {
+  const artifact = buildResultArtifact(store, hyp, planId, opts);
   if (!artifact) return null;
   const dir = join4(config2.home, "artifacts");
   mkdirSync5(dir, { recursive: true });
@@ -26282,7 +26274,7 @@ function writeResultArtifact(store, planId, opts = {}) {
 
 // src/app/tools/planning.ts
 function registerPlanningTools(server2, ctx2) {
-  const { store, execution, machine, worktrees, ok, err, executionTargetForCluster } = ctx2;
+  const { store, execution, hypRepo, machine, worktrees, ok, err, executionTargetForCluster } = ctx2;
   server2.registerTool(
     "cluster_plan",
     {
@@ -26482,7 +26474,7 @@ function registerPlanningTools(server2, ctx2) {
       }
     },
     async (a) => {
-      const res = writeResultArtifact(store, a.plan_id, {
+      const res = writeResultArtifact(store, hypRepo, a.plan_id, {
         originalUserRequest: a.original_request,
         interpretedGoal: a.interpreted_goal,
         finalAssessment: a.final_assessment,
