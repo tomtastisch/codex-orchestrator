@@ -1,9 +1,10 @@
 # Ports & Adapters
 
-The core of Codex Orchestrator depends only on **ports** (interfaces). Concrete
-technology sits behind them as **adapters** that are constructed and injected in
-one place — the composition root. Every port is interchangeable; swapping an
-adapter never touches domain or application code.
+Codex Orchestrator has three established port groups: persistence, clock/id,
+and execution. Their consumers depend on interfaces while composition code
+selects concrete adapters. These enforced seams do not imply that filesystem,
+MCP transport, worktree, review, updater, or every other infrastructure concern
+already has an interchangeable port.
 
 The dependency direction is enforced statically by
 `tests/architecture-boundary.test.mjs` and `tests/execution-boundary.test.mjs`,
@@ -21,47 +22,46 @@ truth in [`ssot/architecture.json`](../ssot/architecture.json).
 
 ### PersistenceStore
 
-`Store` in `src/db.ts` `implements PersistenceStore`, so the compiler guarantees
-the adapter satisfies the whole contract. The port exposes **no raw SQL gateway**
+`Store` in `src/db.ts` `implements PersistenceStore`, so the compiler checks
+that the adapter satisfies the contract. The port exposes no raw SQL gateway
 — every query is an intention-revealing, typed method returning a concrete row
-DTO (`PlanRow`, `TaskRow`, `ReviewRow`, …). Domain and application modules can
-never reach `store.db`; it is off the port and therefore compile-time
-unreachable from consumers. The concrete `Store` retains its `db` handle only for
-its own adapter-level and migration tests.
+DTO (`PlanRow`, `TaskRow`, `ReviewRow`, …). The declared persistence consumers
+receive the port, and the architecture contract rejects imports of the concrete
+adapter and raw `store.db` access. The concrete `Store` retains its `db` handle
+for adapter-level and migration tests.
 
 ### Clock / IdGenerator
 
 Reading the wall clock or generating identifiers are ambient side effects that
 make behaviour non-deterministic. `Store`, `HypothesisRepo` and `SessionManager`
 receive a `Clock` and an `IdGenerator` by constructor injection (defaulting to
-the system adapters); the composition root (`src/app/context.ts`) is the only
-wiring site. `tests/clock-injection.test.mjs` proves the seam by injecting a
-fixed clock and a counter id-generator and asserting the outputs are fully
-deterministic — the payoff of the inversion.
+the system adapters). The application bootstrap composition root
+(`src/app/context.ts`) injects the system adapters. `tests/clock-injection.test.mjs`
+proves the seam by injecting a fixed clock and a counter id-generator and
+asserting deterministic outputs.
 
 ### ExecutionTarget
 
-The one pre-existing hexagonal island. `router.ts` selects a target purely
-through the port; `local-target.ts` and `ssh/*` are adapters that never
-cross-import each other; `registry.ts` is the composition root that wires the
-concrete targets. This is the reference pattern the rest of the codebase now
-follows.
+`router.ts` selects a target through the port; `local-target.ts` and `ssh/*` are
+the concrete adapters. `execution/registry.ts` is the execution feature
+composition root that constructs the configured targets and router.
 
-## The composition root
+## Composition roots
 
-`src/server.ts` is a thin (~70-line) process entry point that contains no
-business logic: it builds the `AppContext`, registers the tool/prompt modules on
-the MCP server, and manages the instance-guard/reaper/graceful-shutdown
-lifecycle.
+`src/server.ts` and `src/app/context.ts` are the application bootstrap
+composition roots. `server.ts` is the process entry point: it builds the
+`AppContext`, registers the tool/prompt modules on the MCP server, and manages
+the instance-guard/reaper/graceful-shutdown lifecycle.
 
-`src/app/context.ts` (`createAppContext`) is the single place that constructs the
-concrete adapters (`Store`, execution runtime, `SessionManager`,
-`HypothesisRepo`, `WorktreeManager`) and the response helpers, and injects the
-`Clock`/`IdGenerator` ports.
+`src/app/context.ts` (`createAppContext`) constructs the application graph and
+the concrete persistence and clock/id dependencies. It delegates execution
+target construction to `src/execution/registry.ts`, the execution feature
+composition root.
 
 ```mermaid
 flowchart LR
-    CR["server.ts + app/context.ts<br/>(composition root)"]
+    CR["server.ts + app/context.ts<br/>(application bootstrap composition roots)"]
+    ER["execution/registry.ts<br/>(execution feature composition root)"]
     subgraph P["Ports"]
         PS[PersistenceStore]
         CK[Clock / IdGenerator]
@@ -73,7 +73,11 @@ flowchart LR
         LT[local-target.ts]
         SSH[ssh/*]
     end
-    CR -->|constructs + injects| A
+    CR -->|constructs + injects| DB
+    CR -->|injects| SC
+    CR --> ER
+    ER --> LT
+    ER --> SSH
     DB -. implements .-> PS
     SC -. implements .-> CK
     LT -. implements .-> ET
@@ -85,7 +89,14 @@ flowchart LR
 - No persistence consumer imports `db.js` or `node:sqlite`; they depend on `PersistenceStore`.
 - The persistence port declares no `readonly db` / raw SQL gateway type.
 - No consumer reaches through a raw `.db` gateway (`store.db.prepare(...)`) anywhere outside the adapter.
-- Domain-pure modules (`statemachine`, `prompts`, `resolve`) import no I/O at all — not `fs`, `child_process`, `node:sqlite`, `db.js`, nor `system-clock`.
+- Infrastructure-independent core services (`statemachine`, `prompts`, `resolve`) express infrastructure needs through a port and do not import the listed concrete I/O modules or adapters.
 - The clock/id ports have real consumers (`db.ts`, `hypotheses.ts`, `session.ts`) — the guard fails if the abstraction ever rots into dead code.
 - `server.ts` registers no tools directly and only wires the application layer; the tool modules never import the persistence adapter.
-- Only the composition roots (`server.ts`, `app/context.ts`) construct concrete adapters.
+- `server.ts` and `app/context.ts` are the application bootstrap composition roots; `execution/registry.ts` is the execution feature composition root.
+
+## Follow-up boundary
+
+Dynamic discovery, capability routing, and named module-communication contracts
+are follow-up scope in [issue #38](https://github.com/tomtastisch/codex-orchestrator/issues/38).
+The current execution registry is configured explicitly; this document does not
+present that future module-communication design as implemented.

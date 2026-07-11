@@ -1,10 +1,12 @@
 # Architecture
 
-Codex Orchestrator is a hexagonal (ports & adapters) system. Claude is the
-orchestrator/reviewer, the Codex CLI is the implementation executor, and a
+Codex Orchestrator applies hexagonal architecture at its established dependency
+boundaries. The established ports: persistence, clock/id, execution. Claude is
+the orchestrator/reviewer, the Codex CLI is the implementation executor, and a
 server-enforced state machine guarantees that nothing counts as done until
-reviews and checks are green. This document describes the layers, the runtime
-flow, and the boundaries that keep them honest.
+reviews and checks are green. This document describes the layers, runtime flow,
+and currently enforced boundaries without treating every infrastructure concern
+as an interchangeable port.
 
 - Ports & adapters detail: [`ports-and-adapters.md`](ports-and-adapters.md)
 - Module/file inventory and test mapping: [`module-reference.md`](module-reference.md)
@@ -12,20 +14,20 @@ flow, and the boundaries that keep them honest.
 
 ## Layers
 
-The core depends only on abstractions (ports). Infrastructure (SQLite, the
-filesystem, process spawning, SSH, the MCP transport) sits behind those ports as
-interchangeable adapters. The composition root (`src/server.ts` +
-`src/app/context.ts`) is the only place that constructs concrete adapters and
-wires them together.
+The infrastructure-independent core services use established ports instead of
+concrete persistence, clock/id, or execution adapters. SQLite and configured
+execution targets implement those seams. Filesystem, MCP transport, worktree,
+review, updater, and other infrastructure concerns are not claimed to be ported
+or interchangeable unless a code contract enforces that boundary.
 
 ```mermaid
 flowchart TD
     subgraph app["Application — src/app/ (use-cases)"]
         Tools["tools/{diagnostics,tasks,planning,knowledge}.ts<br/>17 MCP tools + 2 prompts"]
-        Ctx["context.ts — AppContext (composition root)"]
+        Ctx["context.ts — application bootstrap composition root"]
     end
 
-    subgraph domain["Domain — pure business rules (no I/O)"]
+    subgraph core["Infrastructure-independent core services"]
         SM["statemachine.ts — cluster gate"]
         RS["resolve.ts"]
         PR["prompts.ts"]
@@ -46,23 +48,28 @@ flowchart TD
         DB["db.ts — SQLite Store"]
         SC["system-clock.ts"]
         EX["execution/ — local + ssh targets"]
+        ER["execution/registry.ts — execution feature composition root"]
         WK["worker/ · runtime/ — process spawn, worker protocol"]
     end
 
-    Tools --> domain
+    Tools --> core
     Tools --> repos
     Tools --> ports
-    domain --> ports
+    core --> ports
     repos --> ports
-    Ctx -->|injects| adapters
+    Ctx -->|constructs + injects| DB
+    Ctx -->|injects| SC
+    Ctx --> ER
+    ER --> EX
     DB -. implements .-> PS
     SC -. implements .-> CK
     EX -. implements .-> ET
 ```
 
-**The dependency rule:** arrows point inward. Domain and application modules
-import ports, never adapters. `tests/architecture-boundary.test.mjs` and
-`tests/execution-boundary.test.mjs` enforce this statically on every push — a
+For the established boundaries, dependency arrows point from consumers to
+ports. `tests/architecture-boundary.test.mjs` enforces the declared persistence,
+clock/id, core-consumer, and composition-root contracts;
+`tests/execution-boundary.test.mjs` enforces the execution seam. A persistence
 consumer that reaches for `db.js`, `node:sqlite`, or a raw `store.db` gateway
 fails the build. See [`ports-and-adapters.md`](ports-and-adapters.md).
 

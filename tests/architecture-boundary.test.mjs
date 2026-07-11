@@ -39,13 +39,15 @@ function forbids(spec, name) {
 }
 
 test("the manifest is internally consistent", () => {
+    assert.ok(Array.isArray(manifest.corePortConsumers), "corePortConsumers must be an explicit list");
     assert.equal(manifest.adapters.persistence, "src/db.ts");
     assert.equal(manifest.ports.persistence, "src/ports/persistence.ts");
-    assert.ok(manifest.persistenceConsumers.length >= 8, "expected the known db.js consumers");
-    for (const pure of manifest.domainPure) {
+    assert.equal(manifest.ports.execution, "src/execution/types.ts");
+    assert.ok(manifest.persistenceConsumers.length >= 8);
+    for (const consumer of manifest.corePortConsumers) {
         assert.ok(
-            manifest.persistenceConsumers.includes(pure),
-            `${pure} is domain-pure but not listed as a persistence consumer`,
+            manifest.persistenceConsumers.includes(consumer),
+            `${consumer} is a core port consumer but not a persistence consumer`,
         );
     }
 });
@@ -108,22 +110,51 @@ test("the manifest metadata matches the implemented composition-root state", () 
     // state (the server split is done in this PR, not "a later cluster").
     assert.doesNotMatch(manifest.$comment, /later cluster/i, "$comment must not describe the server split as future work");
     for (const root of manifest.compositionRoots) assert.ok(existsSync(root), `composition root ${root} is missing`);
-    assert.ok(manifest.compositionRoots.includes("src/app/context.ts"), "context.ts is a composition root");
+    assert.deepEqual(
+        manifest.compositionRoots,
+        ["src/server.ts", "src/app/context.ts"],
+        "server.ts and app/context.ts are the application bootstrap composition roots",
+    );
+    assert.deepEqual(
+        manifest.featureCompositionRoots,
+        ["src/execution/registry.ts"],
+        "execution/registry.ts is the execution feature composition root",
+    );
+    for (const root of manifest.featureCompositionRoots) {
+        assert.ok(existsSync(root), `feature composition root ${root} is missing`);
+    }
     assert.ok(existsSync(manifest.toolModulesDir), "toolModulesDir must exist");
 });
 
 test("docs/architecture.md classifies modules consistently with the manifest", () => {
-    // The central architecture doc must not contradict ssot/architecture.json:
-    // hypotheses.ts is a persistence consumer (DAO), never domain-pure.
+    assert.ok(Array.isArray(manifest.corePortConsumers), "corePortConsumers must be an explicit list");
     const doc = readFileSync("docs/architecture.md", "utf8");
-    const m = doc.match(/subgraph domain\[[^\]]*\]([\s\S]*?)\n\s*end/);
-    assert.ok(m, "the 'Domain — pure' subgraph was not found in docs/architecture.md");
-    const domainBlock = m[1];
-    assert.doesNotMatch(domainBlock, /hypotheses/i, "hypotheses.ts must not sit in the domain-pure subgraph (it is a persistence consumer)");
-    for (const pure of manifest.domainPure) {
-        const base = pure.replace(/^src\//, "").replace(/\.ts$/, "");
-        assert.match(domainBlock, new RegExp(base), `the domain-pure subgraph should mention ${base}`);
+    const m = doc.match(/subgraph core\[[^\]]*\]([\s\S]*?)\n\s*end/);
+    assert.ok(m, "the infrastructure-independent core services subgraph was not found in docs/architecture.md");
+    const coreBlock = m[1];
+    assert.doesNotMatch(coreBlock, /hypotheses/i, "hypotheses.ts is a repository/DAO, not a core service");
+    for (const consumer of manifest.corePortConsumers) {
+        const base = consumer.replace(/^src\//, "").replace(/\.ts$/, "");
+        assert.match(coreBlock, new RegExp(base), `the core-services subgraph should mention ${base}`);
     }
+});
+
+test("maintainer docs state the established boundaries without overstating port coverage", () => {
+    const architecture = readFileSync("docs/architecture.md", "utf8");
+    const portsAndAdapters = readFileSync("docs/ports-and-adapters.md", "utf8");
+    const moduleReference = readFileSync("docs/module-reference.md", "utf8");
+
+    assert.match(moduleReference, /hypotheses\.ts[^\n]*repository\s*\/\s*DAO/i);
+    assert.match(architecture, /established ports:\s*persistence, clock\/id, execution/i);
+    assert.match(
+        portsAndAdapters,
+        /\[issue #38\]\(https:\/\/github\.com\/tomtastisch\/codex-orchestrator\/issues\/38\)/i,
+        "the dynamic module-communication follow-up must link issue #38",
+    );
+
+    const allMaintainerDocs = [architecture, portsAndAdapters, moduleReference].join("\n");
+    assert.doesNotMatch(allMaintainerDocs, /every (?:infrastructure dependency|port) is (?:already )?interchangeable/i);
+    assert.doesNotMatch(allMaintainerDocs, /filesystem[^\n]*sits behind (?:those )?ports as (?:an )?interchangeable adapter/i);
 });
 
 test("every persistence consumer actually depends on the persistence port", () => {
@@ -151,15 +182,16 @@ test("the adapter implements the port (imports it back)", () => {
     );
 });
 
-test("domain-pure modules have no I/O imports at all", () => {
-    for (const pure of manifest.domainPure) {
-        for (const spec of importsOf(pure)) {
-            assert.ok(!forbids(spec, "db"), `${pure} (domain) must not import the persistence adapter (${spec})`);
-            for (const forbidden of manifest.forbiddenDomainImports) {
-                assert.ok(
-                    !forbids(spec, forbidden),
-                    `${pure} is domain-pure and must not perform I/O (${spec})`,
-                );
+test("infrastructure-independent core modules import ports but no concrete I/O", () => {
+    assert.ok(Array.isArray(manifest.corePortConsumers), "corePortConsumers must be an explicit list");
+    for (const consumer of manifest.corePortConsumers) {
+        assert.ok(
+            importsOf(consumer).some((spec) => spec.includes("ports/")),
+            `${consumer} must express infrastructure needs through a port`,
+        );
+        for (const spec of importsOf(consumer)) {
+            for (const forbidden of manifest.forbiddenCoreImports) {
+                assert.ok(!forbids(spec, forbidden), `${consumer} must not import concrete I/O (${spec})`);
             }
         }
     }

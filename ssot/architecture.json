@@ -1,15 +1,17 @@
 {
-  "$comment": "Hexagonal layer manifest (Issue #32). Single source of truth for the persistence boundary. Consumed by tests/architecture-boundary.test.mjs, which scans import specifiers repo-wide and fails if any layer's dependency direction rots. Paths are repo-relative POSIX. server.ts and app/context.ts are the composition roots and are intentionally allowed to import the concrete adapter; the god-module split into use-cases (src/app/tools/*, 73-line composition root) is done in this PR.",
+  "$comment": "Hexagonal boundary manifest (Issue #32). Single source of truth for the established persistence, clock/id, and execution ports. Consumed by tests/architecture-boundary.test.mjs, which enforces the declared dependency directions. Paths are repo-relative POSIX. This manifest does not claim that every infrastructure concern already has an interchangeable port.",
   "ports": {
     "persistence": "src/ports/persistence.ts",
-    "clock": "src/ports/clock.ts"
+    "clock": "src/ports/clock.ts",
+    "execution": "src/execution/types.ts"
   },
   "adapters": {
     "persistence": "src/db.ts",
     "clock": "src/system-clock.ts"
   },
   "compositionRoots": ["src/server.ts", "src/app/context.ts"],
-  "$compositionNote": "server.ts is the process entry/composition root: it holds no business logic and registers no tools directly — it builds the AppContext and delegates to the application layer (src/app/). context.ts is the wiring factory that constructs the concrete Store adapter. Both may import the adapter; the tool modules under src/app/tools/ may not.",
+  "featureCompositionRoots": ["src/execution/registry.ts"],
+  "$compositionNote": "server.ts and app/context.ts are the application bootstrap composition roots. server.ts is the process entry point and delegates tool registration to src/app/; app/context.ts constructs the application graph and concrete persistence/clock dependencies. execution/registry.ts is the execution feature composition root and constructs the configured local or SSH execution adapters.",
   "toolModulesDir": "src/app/tools",
   "persistenceConsumers": [
     "src/artifact.ts",
@@ -29,9 +31,9 @@
   },
   "clockConsumers": ["src/db.ts", "src/hypotheses.ts", "src/session.ts"],
   "$clockNote": "The Clock/IdGenerator ports (src/ports/clock.ts) are injected by the composition root (src/app/context.ts) into these consumers; each depends on the port, not on ambient nowIso/newId. Enforced by tests/architecture-boundary.test.mjs.",
-  "$domainPureNote": "Modules proven free of BOTH I/O imports AND raw store.db access, enforced by tests/architecture-boundary.test.mjs. hypotheses.ts is intentionally excluded: HypothesisRepo is the hypothesis repository (DAO). It now orchestrates persistence exclusively through typed PersistenceStore methods (no raw SQL), but is classified a persistence consumer rather than domain-pure to reflect its repository role. The port exposes no raw SQL gateway; no consumer touches store.db.",
-  "domainPure": ["src/statemachine.ts", "src/prompts.ts", "src/resolve.ts"],
-  "forbiddenDomainImports": [
+  "$corePortConsumersNote": "Infrastructure-independent core services that express infrastructure needs through an established port and may therefore not import the listed concrete I/O modules or adapters. HypothesisRepo is intentionally excluded because hypotheses.ts is a repository/DAO and persistence consumer. The classification proves only the declared boundaries; it does not imply that every infrastructure concern is ported.",
+  "corePortConsumers": ["src/statemachine.ts", "src/prompts.ts", "src/resolve.ts"],
+  "forbiddenCoreImports": [
     "node:sqlite",
     "sqlite",
     "node:fs",
@@ -40,6 +42,7 @@
     "child_process",
     "node:os",
     "os",
-    "system-clock"
+    "system-clock",
+    "execution/local-target"
   ]
 }

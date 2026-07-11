@@ -11,19 +11,21 @@ directly assignable to what it protects.
 | **Ports** | `src/ports/persistence.ts` | `PersistenceStore` port + row DTOs + `SCHEMA_VERSION` |
 | | `src/ports/clock.ts` | `Clock` / `IdGenerator` ports |
 | | `src/execution/types.ts` | `ExecutionTarget` port |
-| **Domain** | `src/statemachine.ts` | Cluster gate / transition rules (pure) |
-| | `src/hypotheses.ts` | Versioned, append-only hypotheses (`HypothesisRepo`) |
-| | `src/resolve.ts`, `src/prompts.ts`, `src/gate.ts` | Model resolution, slice prompts, hypothesis gate |
-| **Application** | `src/app/context.ts` | `AppContext` + composition (`createAppContext`) |
+| **Infrastructure-independent core services** | `src/statemachine.ts` | Cluster gate / transition rules through the persistence port |
+| | `src/resolve.ts`, `src/prompts.ts` | Model resolution and slice prompts through the persistence port |
+| **Repository / DAO** | `src/hypotheses.ts` | `HypothesisRepo` repository/DAO for versioned, append-only hypotheses |
+| **Domain rules** | `src/gate.ts` | Hypothesis gate |
+| **Application** | `src/app/context.ts` | `AppContext` + application bootstrap composition (`createAppContext`) |
 | | `src/app/prompts.ts` | The 2 MCP prompts |
 | | `src/app/tools/{diagnostics,tasks,planning,knowledge}.ts` | The 17 MCP tools, grouped by use-case |
 | **Adapters** | `src/db.ts`, `src/db/migrations.ts` | SQLite `Store` (implements `PersistenceStore`) |
 | | `src/system-clock.ts` | System `Clock` / `IdGenerator` |
-| | `src/execution/local-target.ts`, `src/execution/ssh/*`, `src/execution/{router,registry,errors}.ts` | Execution targets + routing + wiring |
+| | `src/execution/local-target.ts`, `src/execution/ssh/*`, `src/execution/{router,errors}.ts` | Execution target adapters + routing |
 | | `src/session.ts` | Session manager: slice loop, resume, inject, limits, reaper |
 | | `src/checks.ts`, `src/worktree.ts`, `src/snapshot.ts`, `src/artifact.ts` | Check runner, worktree isolation/merge, snapshots, artifacts |
 | | `src/runtime/*`, `src/worker/*` | Process spawn, environment, worker protocol |
-| **Composition root** | `src/server.ts` | Thin entry point: wires everything, no business logic |
+| **Application bootstrap composition roots** | `src/server.ts`, `src/app/context.ts` | Process entry point and application graph wiring |
+| **Execution feature composition root** | `src/execution/registry.ts` | Constructs the configured execution targets and router |
 | **Cross-cutting** | `src/config*.ts`, `src/redact.ts`, `src/sandbox.ts`, `src/codex.ts`, `src/updater.ts`, `src/doctor.ts`, `src/auth/bootstrap.ts`, `src/version.ts`, `src/types.ts` | Config, redaction, sandbox policy, Codex/update/doctor, auth bootstrap |
 
 ## Tests by concern
@@ -33,7 +35,7 @@ directly assignable to what it protects.
 | **Architecture boundaries** | `architecture-boundary`, `execution-boundary` |
 | **Persistence & migrations** | `persistence`, `migrations`, `clock-injection` |
 | **Domain: state machine / gate** | `statemachine`, `cluster-gate`, `gate` |
-| **Domain: hypotheses** | `hypotheses`, `hypothesis-update` |
+| **Repository / DAO: hypotheses** | `hypotheses`, `hypothesis-update` |
 | **Application / tools** | `commands`, `resolve`, `prompts`, `agents`, `config-agents` |
 | **Execution (local + SSH)** | `execution-registry`, `router`, `local-target`, `ssh-client`, `ssh-protocol`, `ssh-target`, `worker`, `worker-deploy`, `remote-acceptance` |
 | **Isolation & security** | `isolation`, `security`, `security-boundaries`, `project-boundary`, `redundancy`, `integrity` |

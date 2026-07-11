@@ -56,15 +56,18 @@ owns = [
   "ports",
   "adapters",
   "compositionRoots",
+  "featureCompositionRoots",
   "persistenceConsumers",
   "forbiddenPersistenceImports",
-  "domainPure",
-  "forbiddenDomainImports",
+  "corePortConsumers",
+  "forbiddenCoreImports",
 ]
 consumers = [
   "src/ports/persistence.ts (PersistenceStore port)",
   "src/ports/clock.ts (Clock/IdGenerator ports)",
+  "src/execution/types.ts (ExecutionTarget port)",
   "src/db.ts (Store implements PersistenceStore)",
   "src/system-clock.ts (systemClock/systemIdGenerator adapters)",
+  "src/execution/registry.ts (execution feature composition root)",
 ]
 contract_test = "tests/architecture-boundary.test.mjs"
