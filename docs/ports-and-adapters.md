@@ -95,9 +95,18 @@ flowchart LR
 - `server.ts` registers no tools directly and only wires the application layer; the tool modules never import the persistence adapter.
 - `server.ts` and `app/context.ts` are the application bootstrap composition roots; `execution/registry.ts` is the execution feature composition root.
 
+These rules do not make every tool module port-only. The planning tool currently
+imports the concrete infrastructure adapter `src/worktree.ts` and the concrete
+output adapters `src/snapshot.ts` and `src/artifact.ts` directly. This known,
+explicitly allow-listed state is recorded in `ssot/architecture.json`; it is not
+covered by the persistence, clock/id, or execution ports and must not be cited as
+if those seams already abstract it.
+
 ## Follow-up boundary
 
 Dynamic discovery, capability routing, and named module-communication contracts
 are follow-up scope in [issue #38](https://github.com/tomtastisch/codex-orchestrator/issues/38).
-The current execution registry is configured explicitly; this document does not
-present that future module-communication design as implemented.
+That work includes replacing the planning tool's direct worktree, snapshot, and
+artifact dependencies with appropriate named contracts. The current execution
+registry is configured explicitly; this document does not present that future
+module-communication design as implemented.

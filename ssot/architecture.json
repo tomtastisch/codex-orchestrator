@@ -13,6 +13,10 @@
   "featureCompositionRoots": ["src/execution/registry.ts"],
   "$compositionNote": "server.ts and app/context.ts are the application bootstrap composition roots. server.ts is the process entry point and delegates tool registration to src/app/; app/context.ts constructs the application graph and concrete persistence/clock dependencies. execution/registry.ts is the execution feature composition root and constructs the configured local or SSH execution adapters.",
   "toolModulesDir": "src/app/tools",
+  "knownUnportedToolDependencies": {
+    "src/app/tools/planning.ts": ["src/worktree.ts", "src/snapshot.ts", "src/artifact.ts"]
+  },
+  "$knownUnportedToolDependenciesNote": "These concrete planning-tool dependencies are part of the current architecture and are not covered by the three established port groups. Moving them behind named module contracts belongs to follow-up issue #38; this allow-list must not be expanded implicitly.",
   "persistenceConsumers": [
     "src/artifact.ts",
     "src/checks.ts",

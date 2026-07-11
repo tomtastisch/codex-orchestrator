@@ -167,6 +167,49 @@ test("maintainer docs state the established boundaries without overstating port 
     assert.doesNotMatch(allMaintainerDocs, /filesystem[^\n]*sits behind (?:those )?ports as (?:an )?interchangeable adapter/i);
 });
 
+test("Copilot governance is bounded by the architecture SSOT", () => {
+    const governance = readFileSync(".github/copilot-instructions.md", "utf8");
+
+    assert.doesNotMatch(
+        governance,
+        /domain and application layers depend only on ports/i,
+        "review governance must not present partial port coverage as repository-wide dependency inversion",
+    );
+    assert.doesNotMatch(
+        governance,
+        /wired in one composition root/i,
+        "review governance must not collapse the declared composition roots into one root",
+    );
+
+    for (const portGroup of Object.keys(manifest.ports)) {
+        assert.match(governance, new RegExp(`\\b${portGroup}\\b`, "i"), `governance must name the ${portGroup} port group`);
+    }
+    for (const root of [...manifest.compositionRoots, ...manifest.featureCompositionRoots]) {
+        assert.match(governance, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `governance must name ${root}`);
+    }
+
+    assert.deepEqual(
+        manifest.knownUnportedToolDependencies,
+        {
+            "src/app/tools/planning.ts": ["src/worktree.ts", "src/snapshot.ts", "src/artifact.ts"],
+        },
+        "the SSOT must record the concrete planning-tool dependencies that are intentionally not ported yet",
+    );
+    for (const [consumer, dependencies] of Object.entries(manifest.knownUnportedToolDependencies)) {
+        const imports = importsOf(consumer);
+        for (const dependency of dependencies) {
+            const moduleName = dependency.replace(/^src\//, "").replace(/\.ts$/, "");
+            assert.ok(imports.some((specifier) => forbids(specifier, moduleName)), `${consumer} no longer imports ${dependency}`);
+            assert.match(governance, new RegExp(`\\b${moduleName}\\b`, "i"), `governance must disclose ${dependency}`);
+        }
+    }
+    assert.match(
+        governance,
+        /https:\/\/github\.com\/tomtastisch\/codex-orchestrator\/issues\/38/i,
+        "governance must bound future module-port work to follow-up #38",
+    );
+});
+
 test("clock/id docs require explicit dependencies instead of hidden system defaults", () => {
     const portsAndAdapters = readFileSync("docs/ports-and-adapters.md", "utf8");
     assert.doesNotMatch(

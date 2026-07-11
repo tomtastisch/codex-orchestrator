@@ -8,21 +8,36 @@ and [`../AGENTS.md`](../AGENTS.md); the full review/merge gate is documented in
 ## What this project is
 
 An MCP server that couples Claude (orchestrator/reviewer) with the Codex CLI
-(executor) through a gated, checkpoint-slice workflow. The codebase is hexagonal
-(ports & adapters): domain and application layers depend only on ports; concrete
-infrastructure sits behind adapters wired in one composition root.
+(executor) through a gated, checkpoint-slice workflow. The codebase has three
+established port groups: persistence, clock/id, and execution. Their declared
+consumers and adapters are recorded in `ssot/architecture.json`. Concrete
+adapters for these seams are wired in the application bootstrap composition
+roots `src/server.ts` and `src/app/context.ts`, or in the execution feature
+composition root `src/execution/registry.ts`.
+
+Port coverage is not repository-wide. In particular,
+`src/app/tools/planning.ts` still depends directly on the concrete `worktree`,
+`snapshot`, and `artifact` modules. These known dependencies are allowed by the
+current architecture; moving them behind named module contracts is follow-up
+[#38](https://github.com/tomtastisch/codex-orchestrator/issues/38), not a claim
+reviewers should impose on this change.
 
 ## Review priorities
 
 1. **Correctness first.** Flag real defects: wrong logic, unhandled errors,
    race conditions, broken state transitions, incorrect SQL, off-by-one and
    nullability bugs. Give a concrete failing scenario for each finding.
-2. **Architecture boundaries.** The dependency direction points inward. Reject
-   any domain/application module that imports a concrete adapter (`db.js`,
-   `node:sqlite`, `system-clock`), reaches a raw `store.db` gateway, or performs
-   ambient I/O in a domain-pure module. New adapters must implement the relevant
-   port; new tools depend on the injected `AppContext` (plus read-only process
-   `config`), not on other concretes.
+2. **Architecture boundaries.** Enforce the seams and consumer classifications
+   declared in `ssot/architecture.json`; do not infer that every application
+   dependency already has a port. Reject persistence consumers that import
+   `db.js` or `node:sqlite`, declared clock/execution consumers that import their
+   concrete adapters, raw `store.db` access outside the persistence adapter, and
+   ambient I/O in a declared domain-pure module. New adapters for an established
+   seam must implement its port. New tools use the injected `AppContext` for
+   established context services; read-only process `config` and the recorded
+   `worktree`/`snapshot`/`artifact` dependencies remain explicit exceptions
+   pending #38. Do not expand those exceptions without updating the SSOT and its
+   contract test.
 3. **Security (fail-closed).** `danger-full-access` stays unreachable; slice
    network is off by default; `repo_check` runs allow-listed argv only; secrets
    (`auth.json`, tokens) are never logged, echoed in events/tool results, or
