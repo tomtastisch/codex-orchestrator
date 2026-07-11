@@ -31,6 +31,8 @@
   },
   "clockConsumers": ["src/db.ts", "src/hypotheses.ts", "src/session.ts"],
   "$clockNote": "The Clock/IdGenerator ports (src/ports/clock.ts) are injected by the composition root (src/app/context.ts) into these consumers; each depends on the port, not on ambient nowIso/newId. Enforced by tests/architecture-boundary.test.mjs.",
+  "executionPortConsumers": ["src/session.ts", "src/checks.ts", "src/execution/router.ts"],
+  "$executionNote": "Application services that execute target-specific operations consume the ExecutionTarget port without importing concrete local or SSH adapters. Concrete target selection remains in the declared composition and adapter layers. Enforced by tests/execution-boundary.test.mjs.",
   "$corePortConsumersNote": "Infrastructure-independent core services that express infrastructure needs through an established port and may therefore not import the listed concrete I/O modules or adapters. HypothesisRepo is excluded because hypotheses.ts is a repository/DAO. resolve.ts is excluded because it is an application service that imports concrete configuration and repository-boundary validation. The classification proves only the declared boundaries; it does not imply that every infrastructure concern is ported.",
   "corePortConsumers": ["src/statemachine.ts", "src/prompts.ts"],
   "$applicationServicesNote": "Infrastructure-aware orchestration services. resolve.ts coordinates persistence with concrete configuration and Git repository validation; session.ts coordinates slice lifecycle and execution targets; checks.ts coordinates configured checks and Git diff inspection.",

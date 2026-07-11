@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { extractImports } from "./helpers/imports.mjs";
 
 // src/execution/ is the one genuine ports-&-adapters (hexagonal) island in this
@@ -11,10 +11,23 @@ import { extractImports } from "./helpers/imports.mjs";
 // These tests lock that boundary so the dependency direction cannot silently rot.
 
 const DIR = "src/execution";
+const manifest = JSON.parse(readFileSync("ssot/architecture.json", "utf8"));
 
 /** Every import specifier an execution module uses, in any form (see helpers/imports.mjs). */
 function importsOf(relPath) {
     return extractImports(readFileSync(join(DIR, relPath), "utf8"));
+}
+
+/** Every import specifier a repo-relative source module uses. */
+function sourceImportsOf(srcPath) {
+    return extractImports(readFileSync(srcPath, "utf8"));
+}
+
+/** Resolve a relative source import to its repo-relative TypeScript path. */
+function importedSourcePath(srcPath, specifier) {
+    if (!specifier.startsWith(".")) return null;
+    const resolved = join(dirname(srcPath), specifier.replace(/\.js$/, ".ts"));
+    return relative(".", resolved);
 }
 
 // The top-level god-modules the execution layer must never couple to.
@@ -37,6 +50,28 @@ test("the port and the router depend only on abstractions, never on a concrete a
                 spec,
                 /local-target|\/ssh\//,
                 `${file} inverts the dependency: it must not import a concrete adapter (${spec})`,
+            );
+        }
+    }
+});
+
+test("declared execution consumers depend on the port, never concrete target adapters", () => {
+    assert.deepEqual(
+        manifest.executionPortConsumers,
+        ["src/session.ts", "src/checks.ts", "src/execution/router.ts"],
+        "the architecture SSOT must enumerate the established ExecutionTarget consumers",
+    );
+    for (const consumer of manifest.executionPortConsumers) {
+        const imports = sourceImportsOf(consumer);
+        assert.ok(
+            imports.some((specifier) => importedSourcePath(consumer, specifier) === manifest.ports.execution),
+            `${consumer} must consume the ExecutionTarget port`,
+        );
+        for (const specifier of imports) {
+            assert.doesNotMatch(
+                specifier,
+                /execution\/local-target|execution\/ssh\//,
+                `${consumer} must receive ExecutionTarget from composition (${specifier})`,
             );
         }
     }
