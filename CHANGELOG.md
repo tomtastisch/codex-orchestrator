@@ -4,25 +4,34 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
-- Record the acknowledged Anthropic community marketplace submission as pending
-  review without claiming approval or listing.
-- Update GitHub workflows to `actions/checkout@v7` and
-  `actions/setup-node@v6`.
-- Pin remote acceptance to the explicit `macos-15` runner while GitHub moves
-  the floating `macos-latest` label from macOS 15 to macOS 26.
-- Record the Build with Claude contribution PR and Cross AI Tools crawler-only
-  discovery state without implying external approval.
-
 ### Changed
 
+- Established a full hexagonal (ports & adapters) architecture across the core
+  (issue #32). Introduced a `PersistenceStore` port with typed row DTOs that the
+  SQLite `Store` implements, plus `Clock`/`IdGenerator` ports; moved the nine
+  `db.js` consumers onto the ports so no domain/application module depends on the
+  persistence adapter or `node:sqlite`. Removed the raw SQL gateway entirely.
+- Decomposed the 1007-line `server.ts` god-module into a 73-line composition
+  root plus application use-case modules under `src/app/` (the 17 MCP tools and
+  2 prompts). The external MCP tool surface is unchanged and byte-identical.
+- Added repo-wide boundary contract tests (`tests/architecture-boundary.test.mjs`)
+  that statically enforce the layer dependency direction, and excluded the
+  generated `bundle/` artifacts from CodeQL scanning (source is scanned via
+  `src/`; dependency CVEs are covered by `npm audit`).
 - Reconciled README platform, installation, prompt, tool, authentication and
-  distribution claims with the released 1.5.2 implementation.
+  distribution claims with the implemented behavior; recorded the acknowledged
+  Anthropic `claude-community` submission as pending review, the Build with
+  Claude contribution PR and the Cross AI Tools crawler-only discovery state,
+  all without implying external approval or listing.
 - Corrected Anthropic distribution terminology: reviewed third-party
   submissions target `claude-community`; `claude-plugins-official` is curated
   separately and has no application process.
 - Added an automated release workflow that runs after green main CI on version
   changes and retains exactly one current stable GitHub release and version
   tag while preserving history in this changelog and Git.
+- Updated GitHub workflows to `actions/checkout@v7` and `actions/setup-node@v6`,
+  and pinned remote acceptance to the explicit `macos-15` runner while GitHub
+  moves the floating `macos-latest` label from macOS 15 to macOS 26.
 
 ## 1.5.2 - 2026-07-06
 

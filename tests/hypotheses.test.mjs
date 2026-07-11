@@ -5,11 +5,12 @@ import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { Store, SCHEMA_VERSION } from "../dist/db.js";
 import { HypothesisRepo } from "../dist/hypotheses.js";
+import { createSystemHypothesisRepo, createSystemStore } from "./helpers/system-deps.mjs";
 
 function freshRepo() {
   const dir = mkdtempSync(join(tmpdir(), "orch-hyp-"));
-  const store = new Store(join(dir, "s.sqlite"));
-  return { store, repo: new HypothesisRepo(store) };
+  const store = createSystemStore(join(dir, "s.sqlite"));
+  return { store, repo: createSystemHypothesisRepo(store) };
 }
 
 test("schema_version wird beim Öffnen gesetzt", () => {
@@ -114,6 +115,47 @@ test("Laden nach Task und Cluster", () => {
   assert.equal(repo.listByCluster("C2").length, 1);
   assert.equal(repo.latestForTask("T_A").initialAssumption, "a");
   assert.equal(repo.latestForTask("T_UNKNOWN"), undefined);
+});
+
+test("listByTask/Cluster: das zurückgegebene Objekt widerspricht nie dem Query-Prädikat", () => {
+  // Regression: bindToTask aktualisiert nur die Header-Spalten, der Snapshot
+  // behält den Erstellungszustand (taskId=null). Über listByTask gefundene
+  // Hypothesen müssen dennoch .taskId === gesuchter Task tragen.
+  const { repo } = freshRepo();
+  const h = repo.create({ initialAssumption: "unbunden", confidenceBefore: 0.5 });
+  assert.equal(h.taskId, null, "erstellt ohne Task-Bindung");
+  repo.bindToTask(h.id, "T_BIND", "C_BIND");
+
+  const byTask = repo.listByTask("T_BIND");
+  assert.equal(byTask.length, 1);
+  assert.equal(byTask[0].taskId, "T_BIND", "listByTask muss die autoritative Header-Provenienz überlagern");
+  assert.equal(repo.latestForTask("T_BIND").taskId, "T_BIND");
+
+  const byCluster = repo.listByCluster("C_BIND");
+  assert.equal(byCluster.length, 1);
+  assert.equal(byCluster[0].clusterId, "C_BIND", "listByCluster muss die autoritative Header-Provenienz überlagern");
+});
+
+test("listHypothesisHeaders/hypothesisIdsByColumn: id-Tiebreaker macht created_at-Gleichstände deterministisch", () => {
+  // Regression: der einfache addHypothesis()-Pfad ließ created_at früher NULL —
+  // ORDER BY created_at war dann nicht wohldefiniert. addHypothesis stempelt
+  // created_at jetzt, und der `, id`-Tiebreaker ordnet Gleichstände stabil.
+  // Fixe Uhr => alle created_at identisch => nur der id-Tiebreaker entscheidet.
+  const dir = mkdtempSync(join(tmpdir(), "orch-hyp-ord-"));
+  const seq = ["H_c", "H_a", "H_b"];
+  let i = 0;
+  let other = 0;
+  const store = new Store(join(dir, "s.sqlite"),
+    { now: () => "2020-01-01T00:00:00.000Z" },
+    { newId: (prefix) => (prefix === "H" ? seq[i++] : `${prefix}_${other++}`) });
+  const plan = store.createPlan("goal", null, "/repo"); // zieht P_-id, nicht aus seq
+  store.addHypothesis(plan.id, "c", null); // H_c
+  store.addHypothesis(plan.id, "a", null); // H_a
+  store.addHypothesis(plan.id, "b", null); // H_b
+
+  const sorted = ["H_a", "H_b", "H_c"]; // created_at gleich => nach id sortiert
+  assert.deepEqual(store.hypothesisIdsByColumn("plan_id", plan.id), sorted);
+  assert.deepEqual(store.listHypothesisHeaders().map((r) => r.id), sorted);
 });
 
 test("drei Prüfergebnisse: confirmed | partially_confirmed | refuted", () => {

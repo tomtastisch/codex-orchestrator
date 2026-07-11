@@ -1,0 +1,56 @@
+{
+  "$comment": "Hexagonal boundary manifest (Issue #32). Single source of truth for the established persistence, clock/id, and execution ports. Consumed by tests/architecture-boundary.test.mjs, which enforces the declared dependency directions. Paths are repo-relative POSIX. This manifest does not claim that every infrastructure concern already has an interchangeable port.",
+  "ports": {
+    "persistence": "src/ports/persistence.ts",
+    "clock": "src/ports/clock.ts",
+    "execution": "src/execution/types.ts"
+  },
+  "adapters": {
+    "persistence": "src/db.ts",
+    "clock": "src/system-clock.ts"
+  },
+  "compositionRoots": ["src/server.ts", "src/app/context.ts"],
+  "featureCompositionRoots": ["src/execution/registry.ts"],
+  "$compositionNote": "server.ts and app/context.ts are the application bootstrap composition roots. server.ts is the process entry point and delegates tool registration to src/app/; app/context.ts constructs the application graph and concrete persistence/clock dependencies. execution/registry.ts is the execution feature composition root and constructs the configured local or SSH execution adapters.",
+  "toolModulesDir": "src/app/tools",
+  "knownUnportedToolDependencies": {
+    "src/app/tools/planning.ts": ["src/worktree.ts", "src/snapshot.ts", "src/artifact.ts"]
+  },
+  "$knownUnportedToolDependenciesNote": "These concrete planning-tool dependencies are part of the current architecture and are not covered by the three established port groups. Moving them behind named module contracts belongs to follow-up issue #38; this allow-list must not be expanded implicitly.",
+  "persistenceConsumers": [
+    "src/artifact.ts",
+    "src/checks.ts",
+    "src/hypotheses.ts",
+    "src/prompts.ts",
+    "src/resolve.ts",
+    "src/session.ts",
+    "src/snapshot.ts",
+    "src/statemachine.ts"
+  ],
+  "forbiddenPersistenceImports": ["node:sqlite", "sqlite"],
+  "$adapterAllowListNote": "Completeness guard (repo-wide): tests/architecture-boundary.test.mjs scans EVERY src/**/*.ts (not just the hand-maintained consumer lists) and fails if any file imports the persistence adapter (src/db.ts) or node:sqlite unless it is listed here. A new unclassified module that reaches for the adapter — directly or by re-exporting it through a barrel, which still requires importing it — therefore cannot slip through. Keep these lists minimal.",
+  "adapterImportAllowList": {
+    "persistenceAdapter": ["src/app/context.ts"],
+    "sqlite": ["src/db.ts", "src/db/migrations.ts"]
+  },
+  "clockConsumers": ["src/db.ts", "src/hypotheses.ts", "src/session.ts"],
+  "$clockNote": "The Clock/IdGenerator ports (src/ports/clock.ts) are injected by the composition root (src/app/context.ts) into these consumers; each depends on the port, not on ambient nowIso/newId. Enforced by tests/architecture-boundary.test.mjs.",
+  "executionPortConsumers": ["src/session.ts", "src/checks.ts", "src/execution/router.ts"],
+  "$executionNote": "Application services that execute target-specific operations consume the ExecutionTarget port without importing concrete local or SSH adapters. Concrete target selection remains in the declared composition and adapter layers. Enforced by tests/execution-boundary.test.mjs.",
+  "$corePortConsumersNote": "Infrastructure-independent core services that express infrastructure needs through an established port and may therefore not import the listed concrete I/O modules or adapters. HypothesisRepo is excluded because hypotheses.ts is a repository/DAO. resolve.ts is excluded because it is an application service that imports concrete configuration and repository-boundary validation. The classification proves only the declared boundaries; it does not imply that every infrastructure concern is ported.",
+  "corePortConsumers": ["src/statemachine.ts", "src/prompts.ts"],
+  "$applicationServicesNote": "Infrastructure-aware orchestration services. resolve.ts coordinates persistence with concrete configuration and Git repository validation; session.ts coordinates slice lifecycle and execution targets; checks.ts coordinates configured checks and Git diff inspection.",
+  "applicationServices": ["src/resolve.ts", "src/session.ts", "src/checks.ts"],
+  "forbiddenCoreImports": [
+    "node:sqlite",
+    "sqlite",
+    "node:fs",
+    "fs",
+    "node:child_process",
+    "child_process",
+    "node:os",
+    "os",
+    "system-clock",
+    "execution/local-target"
+  ]
+}

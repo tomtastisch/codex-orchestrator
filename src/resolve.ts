@@ -1,5 +1,5 @@
 import { config, modelForClass, type ModelClass } from "./config.js";
-import type { Store } from "./db.js";
+import type { PersistenceStore } from "./ports/persistence.js";
 import type { Effort } from "./types.js";
 import { assertGitRepositoryRoot } from "./project-boundary.js";
 
@@ -12,7 +12,7 @@ export function resolveModel(model: string, effort: Effort): string {
 }
 
 /** Repo-Pfad zu einem Cluster über den zugehörigen Plan bestimmen. */
-export function repoPathForCluster(store: Store, clusterId: string): string | null {
+export function repoPathForCluster(store: PersistenceStore, clusterId: string): string | null {
   const cluster = store.getCluster(clusterId);
   if (!cluster) return null;
   const plan = store.getPlan(cluster.plan_id);
@@ -25,7 +25,7 @@ export function repoPathForCluster(store: Store, clusterId: string): string | nu
 }
 
 /** Worktree-Pfad des jüngsten Tasks eines Clusters (für scope:worktree). */
-export function latestWorktreeForCluster(store: Store, clusterId: string): string | null {
+export function latestWorktreeForCluster(store: PersistenceStore, clusterId: string): string | null {
   const tasks = store.listTasks({ clusterId });
   const withWt = tasks.filter((t) => t.worktree);
   const last = withWt[withWt.length - 1];

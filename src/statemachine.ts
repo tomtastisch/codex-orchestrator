@@ -1,4 +1,4 @@
-import type { ClusterRow, Store } from "./db.js";
+import type { ClusterRow, DecisionRow, PersistenceStore } from "./ports/persistence.js";
 import type { ClusterStatus } from "./types.js";
 
 export type TransitionAction =
@@ -72,7 +72,7 @@ const ALLOWED: Record<TransitionAction, ClusterStatus[]> = {
 };
 
 export class ClusterStateMachine {
-  constructor(private store: Store) {}
+  constructor(private store: PersistenceStore) {}
 
   /** Prüft, ob Cluster N gestartet werden darf (Vorgänger confirmed + Retro). */
   private predecessorsReady(cluster: ClusterRow): { ok: boolean; blocking: string[] } {
@@ -85,10 +85,7 @@ export class ClusterStateMachine {
         blocking.push(`${c.id} ist ${c.status}, nicht confirmed`);
         continue;
       }
-      const retro = this.store.db
-        .prepare("SELECT COUNT(*) AS n FROM retros WHERE cluster_id=?")
-        .get(c.id) as { n: number };
-      if (retro.n === 0) blocking.push(`${c.id} confirmed, aber Retrospektive fehlt`);
+      if (this.store.countRetros(c.id) === 0) blocking.push(`${c.id} confirmed, aber Retrospektive fehlt`);
     }
     return { ok: blocking.length === 0, blocking };
   }
@@ -100,7 +97,7 @@ export class ClusterStateMachine {
     const hasFindings = Array.isArray(findings) && findings.length > 0;
     if (!hasFindings) return { ok: true };
     // Auffälligkeiten -> es braucht eine explizite Nutzerentscheidung (oder stehende Präferenz).
-    const accepts = (d: any) => d && (d.decision === "accept" || d.decision === "proceed");
+    const accepts = (d: DecisionRow | undefined) => d != null && (d.decision === "accept" || d.decision === "proceed");
     const pref = this.store.standingPreference(cluster.plan_id, "cluster_findings");
     if (accepts(pref)) return { ok: true };
     const decision = this.store.latestDecision(cluster.id, "cluster_findings");

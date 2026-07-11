@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative, win32 } from "node:path";
+import { extractImports } from "./helpers/imports.mjs";
 
 // src/execution/ is the one genuine ports-&-adapters (hexagonal) island in this
 // codebase: `types.ts` defines the ExecutionTarget port, `router.ts` is the
@@ -10,17 +11,36 @@ import { join } from "node:path";
 // These tests lock that boundary so the dependency direction cannot silently rot.
 
 const DIR = "src/execution";
+const manifest = JSON.parse(readFileSync("ssot/architecture.json", "utf8"));
 
-/** Relative import specifiers used by an execution module. */
+/** Every import specifier an execution module uses, in any form (see helpers/imports.mjs). */
 function importsOf(relPath) {
-    const source = readFileSync(join(DIR, relPath), "utf8");
-    return [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]);
+    return extractImports(readFileSync(join(DIR, relPath), "utf8"));
+}
+
+/** Every import specifier a repo-relative source module uses. */
+function sourceImportsOf(srcPath) {
+    return extractImports(readFileSync(srcPath, "utf8"));
+}
+
+/** Resolve a relative source import to its repo-relative TypeScript path. */
+function importedSourcePath(srcPath, specifier, pathApi = { dirname, join, relative }) {
+    if (!specifier.startsWith(".")) return null;
+    const resolved = pathApi.join(pathApi.dirname(srcPath), specifier.replace(/\.js$/, ".ts"));
+    return pathApi.relative(".", resolved).replaceAll("\\", "/");
 }
 
 // The top-level god-modules the execution layer must never couple to.
 const FORBIDDEN_GOD_MODULES = /(?:^|\/)(?:db|server)\.js$/;
 const ADAPTER_FILES = ["local-target.ts", "ssh/target.ts", "ssh/client.ts", "ssh/deploy.ts", "ssh/protocol.ts"];
 const ALL_FILES = ["types.ts", "router.ts", "errors.ts", "registry.ts", ...ADAPTER_FILES];
+
+test("repo-relative import paths use POSIX separators on Windows", () => {
+    assert.equal(
+        importedSourcePath("src\\session.ts", "./execution/types.js", win32),
+        manifest.ports.execution,
+    );
+});
 
 test("no execution module couples to the db or server god-modules", () => {
     for (const file of ALL_FILES) {
@@ -37,6 +57,28 @@ test("the port and the router depend only on abstractions, never on a concrete a
                 spec,
                 /local-target|\/ssh\//,
                 `${file} inverts the dependency: it must not import a concrete adapter (${spec})`,
+            );
+        }
+    }
+});
+
+test("declared execution consumers depend on the port, never concrete target adapters", () => {
+    assert.deepEqual(
+        manifest.executionPortConsumers,
+        ["src/session.ts", "src/checks.ts", "src/execution/router.ts"],
+        "the architecture SSOT must enumerate the established ExecutionTarget consumers",
+    );
+    for (const consumer of manifest.executionPortConsumers) {
+        const imports = sourceImportsOf(consumer);
+        assert.ok(
+            imports.some((specifier) => importedSourcePath(consumer, specifier) === manifest.ports.execution),
+            `${consumer} must consume the ExecutionTarget port`,
+        );
+        for (const specifier of imports) {
+            assert.doesNotMatch(
+                specifier,
+                /execution\/local-target|execution\/ssh\//,
+                `${consumer} must receive ExecutionTarget from composition (${specifier})`,
             );
         }
     }

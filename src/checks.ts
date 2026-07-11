@@ -1,7 +1,6 @@
 import { config } from "./config.js";
 import { redact } from "./runtime/redaction.js";
-import type { Store } from "./db.js";
-import { LocalExecutionTarget } from "./execution/local-target.js";
+import type { PersistenceStore } from "./ports/persistence.js";
 import type { ExecutionTarget } from "./execution/types.js";
 
 export interface CheckRun {
@@ -18,11 +17,11 @@ export interface CheckRun {
  * in die confirm-Bedingung ein.
  */
 export async function runChecks(
-  store: Store,
+  store: PersistenceStore,
   clusterId: string,
   repoPath: string,
   names: string[],
-  target: ExecutionTarget = new LocalExecutionTarget(),
+  target: ExecutionTarget,
 ): Promise<{ runs: CheckRun[]; allGreen: boolean; unknown: string[] }> {
   const runs: CheckRun[] = [];
   const unknown: string[] = [];
@@ -56,7 +55,7 @@ function summarizeOutput(out: string): string {
  */
 export async function diffSize(
   repoPath: string,
-  target: ExecutionTarget = new LocalExecutionTarget(),
+  target: ExecutionTarget,
 ): Promise<{ files: number; lines: number }> {
   let files = 0;
   let lines = 0;

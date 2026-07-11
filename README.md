@@ -23,7 +23,7 @@ Current version: 1.5.2
 |---|---|---|
 | Claude Code CLI | Production ready | First-party GitHub marketplace |
 | Claude Desktop MCPB | Released; technical verification passed | Latest GitHub release, version 1.5.2 |
-| claude.ai Remote MCP | In development | Planned for release 1.6.0 |
+| claude.ai Remote MCP | In development | Planned for a future release |
 
 The repository ships a production-ready Claude Code plugin and the released
 Claude Desktop MCPB. Claude Desktop is not a prerequisite for the Claude Code
@@ -32,7 +32,7 @@ plugin. The Desktop artifact, checksum, startup, MCP handshake,
 The remaining conversation-level slash-prompt run is an operator acceptance
 check, not an unreleased implementation item. claude.ai cannot start this local
 stdio server; its separate HTTP/OAuth connector therefore remains in
-development for 1.6.0.
+development for a future release.
 
 The externally installed server runtime is continuously verified with
 Node.js 22.13–22.x and Node.js 24.x on Ubuntu, macOS and Windows. Claude Desktop's
@@ -48,6 +48,22 @@ runs on the oldest supported runtime.
 The canonical quality gate enforces these production-code coverage floors:
 75 % lines, 70 % branches and 75 % functions. CodeQL scans both
 JavaScript/TypeScript and GitHub Actions workflow code.
+
+---
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | Hexagonal layers, runtime flow, cluster lifecycle, security model |
+| [`docs/ports-and-adapters.md`](docs/ports-and-adapters.md) | Ports, adapters, composition root, enforced boundaries |
+| [`docs/usage.md`](docs/usage.md) | End-to-end walkthrough (goal → confirmed change), per-task model/effort |
+| [`docs/remote-execution.md`](docs/remote-execution.md) | Remote Codex execution over SSH and persistent authentication |
+| [`docs/module-reference.md`](docs/module-reference.md) | Source modules by layer and the test-to-concern mapping |
+| [`docs/review-policy.md`](docs/review-policy.md) | Copilot review layer, independent QA-agent fallback, merge gate, release policy |
+| [`docs/development.md`](docs/development.md) | Build, test, coverage, bundle, benchmark commands and contribution rules |
+| [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | Binding rules for the orchestrator (Claude) and executor (Codex) |
+| [`.github/copilot-instructions.md`](.github/copilot-instructions.md) | GitHub Copilot review instructions |
 
 ---
 
@@ -74,52 +90,13 @@ instead of chat history.
 
 ## How it works
 
-```mermaid
-flowchart TD
-    User(["User"]) --> Claude["Claude<br/>orchestrator + reviewer"]
-    Claude -->|"MCP tools"| SM
+Claude drives MCP tool calls; the server enforces the gates and persists all
+state in SQLite so the workflow survives context compaction and restarts. Each
+Codex assignment runs as a sequence of bounded, resumable slices; a cluster
+reaches `confirmed` only with a passing review **and** green server-run checks.
 
-    subgraph SRV["codex-orchestrator MCP server"]
-        direction TB
-        SM["Session manager<br/>slice loop, resume, inject, limits, reaper"]
-        FSM["State machine<br/>confirm gated on review + green checks"]
-        Checks["Check runner<br/>allow-listed commands only"]
-        WT["Worktree manager<br/>isolation + gated merge"]
-        Store[("SQLite store<br/>plans, clusters, tasks, events,<br/>hypotheses, reviews, checks")]
-    end
-
-    SM -->|"codex exec / resume (--json)"| Codex["Codex CLI<br/>sandbox, model, effort per task"]
-    Codex -->|"SLICE_RESULT"| SM
-    Checks -->|"exit codes"| FSM
-    WT --> Git[("git worktrees")]
-    Codex --> Git
-    SM --> Store
-    FSM --> Store
-    Checks --> Store
-```
-
-The cluster lifecycle is enforced by the server — a cluster reaches `confirmed`
-only with a passing review **and** green server-run checks:
-
-```mermaid
-stateDiagram-v2
-    [*] --> planned
-    planned --> active: start (predecessors confirmed + retro done)
-    active --> submitted: submit
-    submitted --> in_review: review (runs declared checks)
-    in_review --> needs_changes: request_changes
-    needs_changes --> active: targeted fix, resume Codex
-    in_review --> confirmed: confirm — only if review confirmed AND checks green
-    in_review --> blocked: block
-    active --> blocked: limit breach
-    confirmed --> [*]: retro (mandatory), then next cluster
-```
-
-Each Codex assignment runs as a sequence of bounded slices. At every slice
-boundary the server parses the structured result, persists events, and applies
-queued control actions (pause, cancel, injected instructions). Small tasks run
-as a single synchronous slice; long tasks run in the background while Claude
-polls with a long-poll `task_wait`.
+See [`docs/architecture.md`](docs/architecture.md) for the layer diagram, the
+runtime flow and the cluster-lifecycle chart.
 
 ## Prerequisites
 
@@ -150,9 +127,8 @@ Required software and state:
   access to the user-specific plugin cache.
 
 Never paste `auth.json`, OAuth tokens or API keys into Claude or into an
-installation command. See [Remote Codex execution and persistent
-authentication](#remote-codex-execution-and-persistent-authentication) before
-configuring a second host.
+installation command. See [`docs/remote-execution.md`](docs/remote-execution.md)
+before configuring a second host.
 
 ## Installation
 
@@ -242,9 +218,9 @@ schemas, then applies independent adoption, quality and editorial criteria.
 The first-party commands in this README remain valid independently of those
 external listings.
 
-### Claude Desktop MCPB (released in 1.5.2)
+### Claude Desktop MCPB
 
-Claude Desktop does not install Claude Code plugins. Release 1.5.2 provides a
+Claude Desktop does not install Claude Code plugins. The project provides a
 dedicated MCP Bundle (`.mcpb`, formerly `.dxt`) for local installation. It uses
 stdio and runs only on the local machine. It does not request, copy or bundle
 `auth.json`, OAuth tokens or API keys; the child Codex CLI uses the existing
@@ -318,7 +294,7 @@ and the bundle format is maintained in the
 
 ### claude.ai Remote MCP (in development)
 
-claude.ai cannot run this repository's local stdio plugin. Release 1.6.0 will
+claude.ai cannot run this repository's local stdio plugin. A future release will
 provide a self-hosted, OAuth-protected Streamable HTTP connector for an
 operator-controlled host. Do not expose the current stdio process through a
 public tunnel and do not upload local Codex credentials to claude.ai.
@@ -351,61 +327,11 @@ projects fully separated:
 Without `ORCH_HOME` the store defaults to `<cwd>/.orchestrator`, so separate
 project directories are isolated automatically.
 
-## Remote Codex execution and persistent authentication
+## Remote Codex execution
 
-Create `.orchestrator/config.json` in the project from which Claude is started:
-
-```json
-{
-  "version": 1,
-  "execution": {
-    "mode": "remote-preferred",
-    "fallback": "connectivity-only",
-    "remote": {
-      "id": "devbox",
-      "transport": "ssh",
-      "host": "devbox",
-      "repository": {
-        "localRoot": "/Users/me/projects",
-        "remoteRoot": "/home/me/projects"
-      },
-      "codexBin": "codex",
-      "workerRoot": "~/.cache/codex-orchestrator",
-      "codexHome": "~/.codex",
-      "auth": {
-        "strategy": "sync-file",
-        "source": "/Users/me/.codex/auth.json"
-      }
-    }
-  }
-}
-```
-
-The source must be an owner-controlled regular file with no group or world
-permissions (`chmod 600 ~/.codex/auth.json`). The credential is transferred in
-the validated worker protocol, written atomically to the persistent remote
-`codexHome` with mode `0600`, and never included in task events or tool results.
-Every slash-command preflight and task resolves `~/` against the remote user's
-home, starts Codex with that exact `CODEX_HOME` and performs a fresh
-`codex login status` check. If the remote file
-is missing or stale, `sync-file` installs or refreshes it and then repeats the
-check. This survives Claude, plugin and target restarts as long as the remote
-home directory persists.
-
-For managed environments, use a secret manager command instead of a file:
-
-```json
-"auth": {
-  "strategy": "access-token",
-  "secretCommand": ["security", "find-generic-password", "-s", "codex-access-token", "-w"]
-}
-```
-
-The command output is passed only through stdin to `codex login
---with-access-token`; it is not stored by the orchestrator. `existing` is the
-strictest strategy and fails if the remote Codex installation is not already
-authenticated. Local fallback is permitted only for retryable connectivity
-errors, never for authentication, host-key, protocol or repository mismatches.
+The orchestrator can run Codex slices on a remote host over SSH while Claude
+stays local, with credentials that persist across restarts and are never exposed
+to Claude. See [`docs/remote-execution.md`](docs/remote-execution.md).
 
 ## MCP prompts and tools
 
@@ -438,129 +364,26 @@ errors, never for authentication, host-key, protocol or repository mismatches.
 | `audit_log` | Read the secret-redacted security audit trail |
 | `codex_update` | Check/apply Codex CLI updates (stable or pre-release channel) |
 
-## Example: from a goal to a confirmed change
+## Usage
 
-A minimal end-to-end walkthrough of what the orchestrator actually does. Claude
-drives these tool calls; the server enforces the gates.
-
-**1. Goal → plan.** Claude turns a request ("add input validation to the signup
-endpoint and cover it with tests") into a persistent, gated plan:
-
-```jsonc
-cluster_plan({
-  goal: "Validate signup input and test it",
-  repo_path: "/path/to/app",
-  clusters: [{
-    id: "C1", name: "signup-validation", goal: "Reject invalid signups + tests",
-    acceptance: ["invalid email/'' password rejected with 400", "new unit tests pass"],
-    model_policy: { model: "gpt-5.5", effort: "high", sandbox: "workspace-write" },
-    review_strategy: { checks: ["npm_test", "typecheck"] }
-  }]
-})
-// → { plan_id: "P_…", clusters: [{ id: "C1", status: "planned" }] }
-```
-
-**2. Start the gate, delegate to Codex.**
-
-```jsonc
-cluster_transition({ cluster_id: "C1", action: "start" })   // → status: "active"
-hypotheses({
-  action: "create", plan_id: "P_…", cluster_id: "C1",
-  initial_assumption: "Input validation can be added without changing valid requests",
-  confidence_before: 0.8,
-  critical_questions: ["Which clients rely on current coercion?"],
-  falsification_plan: ["Run existing compatibility tests"]
-})
-// → { hypothesis: { id: "H_…" } }
-task_start({
-  cluster_id: "C1", hypothesis_id: "H_…",
-  sandbox: "workspace-write", model: "gpt-5.5", effort: "high",
-  slice_budget: { max_minutes: 10 }, wait_for: "started", worktree: "auto",
-  instructions: "Add validation to the signup handler; add unit tests. Report a SLICE_RESULT.",
-  acceptance_criteria: ["invalid signups rejected with 400", "new tests pass"]
-})
-// → { task_id: "T_…", status: "running", worktree: "…/worktrees/T_…" }
-```
-
-**3. Supervise the slices.** Claude long-polls and reacts:
-
-```jsonc
-task_wait({ task_id: "T_…", cursor: 0 })
-// checkpoint → optionally task_control({ action: "inject", message: "also trim whitespace" })
-// submission → the SLICE_RESULT reports: tests "npm test: pass"
-```
-
-**4. Review — and the gate that makes it trustworthy.** The server independently
-re-runs the declared checks; a self-reported "pass" that actually exited non-zero
-is caught and the submission is refused.
-
-```jsonc
-cluster_transition({ cluster_id: "C1", action: "submit" })
-cluster_transition({ cluster_id: "C1", action: "review", payload: { status: "confirmed" } })
-// runs npm_test + typecheck server-side
-
-cluster_transition({ cluster_id: "C1", action: "confirm" })
-// ✗ if a check is red   → { ok: false, error: "confirm verweigert", reasons: ["Check 'npm_test' exit=1"] }
-// ✓ if all green        → { ok: true, status: "confirmed" }
-```
-
-If review found problems instead: `request_changes` → a targeted correction task
-resumes the same Codex session, then back to review.
-
-**5. Confirm → retro → durable snapshot.**
-
-```jsonc
-cluster_transition({ cluster_id: "C1", action: "retro", payload: { content: "…lessons…" } })
-cluster_merge({ cluster_id: "C1", task_id: "T_…" })       // merge the reviewed worktree
-plan_snapshot({ plan_id: "P_…", format: "toon" })          // compact, compaction-proof state
-```
-
-The point: **"Codex says done" never ends a cluster** — only a passing review plus
-green server-run checks does. Everything above is persisted, so the workflow
-survives context compaction and server restarts.
-
-## Per-task model & effort control
-
-Every task specifies **which model** does the work and **how hard it thinks**:
-
-```jsonc
-{
-  "model": "gpt-5.5",          // or "auto", validated against models_list
-  "effort": "xhigh",            // low | medium | high | xhigh
-  "sandbox": "read-only",       // or workspace-write
-  "slice_budget": { "max_minutes": 8 }
-}
-```
-
-Invalid combinations are rejected before Codex is ever started. The escalation
-rule (two failed correction slices → next effort step or stronger model) is
-part of the skill and the `models_list` output.
+A full end-to-end walkthrough (goal → gated plan → supervised slices → review →
+confirm → snapshot) and per-task model/effort control are in the
+[usage guide](docs/usage.md).
 
 ## Security model (fail-closed)
 
-- `danger-full-access` is disabled server-side and not reachable via any tool
-  parameter.
-- Codex runs with `--ignore-user-config`: isolated from global plugins,
-  personality and trust settings; auth still comes from `CODEX_HOME`.
-- Network access for slices is **off by default**, enabled per task only.
-- `repo_check` executes allow-listed argv commands only — no free-form shell
-  from either model.
-- Per-task `extra_config` passes through a category blocklist (`sandbox*`,
-  `mcp_servers*`, `hooks*`, `shell_environment_policy*`, `danger*`, …) so it
-  cannot be used for process or environment injection.
-- Hard limits per task (max slices, max runtime, max diff size) → breach sets
-  `blocked` and hands the decision to the orchestrator.
-- The event log is append-only; every confirm references review and check IDs.
+`danger-full-access` is disabled server-side and unreachable via any tool
+parameter; Codex runs with `--ignore-user-config`; slice network is off by
+default; `repo_check` runs allow-listed argv only; per-task `extra_config` is
+gated by a category blocklist; the audit trail is append-only and
+secret-redacted. Full detail: [`docs/architecture.md`](docs/architecture.md#security-model-fail-closed).
 
 ## Multi-project isolation
 
-- One store per project (`ORCH_HOME`, default `<cwd>/.orchestrator`).
-- Tasks are stamped with the owning process PID; the startup reaper only fails
-  tasks of **dead** processes — a concurrently running instance of another
-  project is never touched.
-- A second instance on the same store logs a loud warning; SQLite runs in WAL
-  mode with a busy timeout.
-- Codex threads are isolated per task by design.
+One store per project (`ORCH_HOME`, default `<cwd>/.orchestrator`); tasks are
+stamped with the owning PID and the reaper only fails tasks of dead processes,
+so a concurrent instance of another project is never touched. Detail:
+[`docs/architecture.md`](docs/architecture.md#multi-project-isolation).
 
 ## Staying up to date
 
@@ -599,41 +422,8 @@ unknown file configuration fields fail validation.
 
 ## Development
 
-```bash
-npm ci
-npm run build        # TypeScript → dist/
-npm test             # unit tests (parser, state machine, isolation) — no API calls
-npm run test:coverage # production-only coverage; enforce 75/70/75 floors
-npm run bundle       # single-file bundle → bundle/server.mjs
-npm run verify:bundle # reproducibly rebuild and compare both release bundles
-npm run benchmark    # 7 MCP starts; enforce size and p95 latency budgets
-npm run test:remote  # real loopback OpenSSH, synthetic auth and fake Codex slice
-npm run test:remote:real # real local Codex auth; no model turn
-node scripts/modelcheck.mjs    # model/effort validation (no API)
-node scripts/bundlecheck.mjs   # MCP handshake against the bundle (no API)
-node scripts/e2e-mcp.mjs       # end-to-end with a real Codex slice (uses your Codex account)
-node scripts/e2e-m1m3.mjs      # worktree, pause/inject/resume, merge (uses your Codex account)
-```
-
-The portable CI matrix runs the type, unit and reproducible-bundle checks on
-Ubuntu, macOS and Windows with both supported Node.js LTS lines. The unit suite
-includes protocol and fake-SSH coverage. `npm run test:remote` adds a real
-OpenSSH transport: it creates ephemeral host and user keys, deploys
-the actual worker bundle, bootstraps a synthetic credential, executes one fake
-Codex slice, creates a fresh target instance and confirms that authentication
-still works after the local source credential has been removed. CI runs this
-acceptance test on macOS.
-
-`npm run test:remote:real` repeats the persistence check with the current local
-Codex binary and private `auth.json`. It does not execute a model turn. Both
-remote tests use only temporary directories, terminate their owned `sshd`
-process and remove all temporary keys and credentials before exit.
-
-The release benchmark fails when either bundle exceeds its size budget or when
-the p95 MCP cold-start/Doctor latency exceeds its budget. Current limits are
-1.25 MiB for `bundle/server.mjs`, 256 KiB for `bundle/worker.mjs`, 2,500 ms for
-cold start and 1,500 ms for Doctor. Override only the sample count with
-`ORCH_BENCHMARK_ITERATIONS=5..50`; release budgets are intentionally fixed.
+Build, test, coverage, bundle, benchmark and remote-test commands, plus the
+contribution rules, are in [`docs/development.md`](docs/development.md).
 
 ## License
 

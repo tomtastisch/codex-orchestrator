@@ -108,3 +108,34 @@ Sparring is not implementation. You make the final decision.
 6. Merge only when the reviewer approves the exact head, all required checks
    are green, and there are zero unresolved review threads. Read back the
    unresolved thread count immediately before merge.
+
+## Self-application of the governance
+This `CLAUDE.md` and `AGENTS.md` are binding for Claude and Codex **whenever they
+work on this project or operate through the plugin** — not only for external
+users. Read them at the start of a working session and follow them yourself.
+When the orchestrator drives Codex on a *target* project, the executor role is
+delivered into that project (`ensureAgentsMd` writes/merges the executor
+`AGENTS.md` into the working directory, respecting an existing one; the slice
+prompt embeds the `SLICE_RESULT` contract). Propagating the *review* governance
+(`.github/copilot-instructions.md` / review rules) into the target project is
+tracked as a dedicated feature (issue #34).
+
+## Post-merge issue reconciliation (mandatory after every merge)
+After a pull request merges — into `main` **or** into an über-PR it belonged to —
+reconcile the open issue set before starting the next implementation cluster:
+1. Re-read every open issue touched by, or in the area of, the merged change.
+2. Classify and label each with the minimal vocabulary:
+   - `status: covered-by-pr` — fully implemented by the merge; close it, linking the PR.
+   - `status: needs-verification` — the original failure mode is plausibly
+     eliminated by the change (e.g. a persistence bug that the SSOT/port/cache
+     rework may prevent) but is not yet regression-proven; verify before closing.
+   - `status: needs-update` — the body/scope is now stale because the
+     architecture moved (e.g. from concrete modules to ports/adapters).
+   - `type: follow-up` + an `area:` label (`architecture`, `ci`, `docs`,
+     `governance`) for newly-spun-off work.
+3. Link relationships explicitly (`blocked-by`, duplicates, supersedes) and set a
+   sensible execution order (priority).
+4. Apply a label only after a quick issue-body readback — never blanket-label.
+
+Claude performs this reconciliation directly, or delegates it to Codex as a
+read-only analysis slice; either way the result is recorded on the issues.

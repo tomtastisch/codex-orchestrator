@@ -11,7 +11,8 @@
  * `hypothesis_versions`-Tabelle hält jede Version als serialisierten Snapshot.
  * Damit ist jede Änderung lückenlos nachvollziehbar.
  */
-import { newId, nowIso, type Store } from "./db.js";
+import type { Clock, IdGenerator } from "./ports/clock.js";
+import type { PersistenceStore } from "./ports/persistence.js";
 import type { HypothesisStatus } from "./types.js";
 
 /** Ergebnis der Hypothesenprüfung nach Ausführung (Cluster 3). */
@@ -144,12 +145,12 @@ function normFalsification(fs?: (FalsificationStep | string)[]): FalsificationSt
   );
 }
 
-function normEvidence(es?: (EvidenceItem | string)[]): EvidenceItem[] {
+function normEvidence(es: (EvidenceItem | string)[] | undefined, clock: Clock): EvidenceItem[] {
   if (!es) return [];
   return es.map((e) =>
     typeof e === "string"
-      ? { source: "note", observation: e, ts: nowIso() }
-      : { source: e.source, observation: e.observation, ts: e.ts ?? nowIso() },
+      ? { source: "note", observation: e, ts: clock.now() }
+      : { source: e.source, observation: e.observation, ts: e.ts ?? clock.now() },
   );
 }
 
@@ -159,11 +160,11 @@ function normEvidence(es?: (EvidenceItem | string)[]): EvidenceItem[] {
  * Serialisierung. Statuswechsel/Versionierung laufen in Transaktionen.
  */
 export class HypothesisRepo {
-  constructor(private store: Store) {}
-
-  private get db() {
-    return this.store.db;
-  }
+  constructor(
+    private store: PersistenceStore,
+    private readonly clock: Clock,
+    private readonly ids: IdGenerator,
+  ) {}
 
   /** Serialisiert eine Hypothese in ein stabiles, maschinenlesbares Objekt. */
   static serialize(h: Hypothesis): Record<string, unknown> {
@@ -221,8 +222,8 @@ export class HypothesisRepo {
       throw new Error("initialAssumption ist erforderlich");
     }
     const confidenceBefore = clampConfidence(input.confidenceBefore, "confidenceBefore");
-    const id = newId("H");
-    const ts = nowIso();
+    const id = this.ids.newId("H");
+    const ts = this.clock.now();
     const h: Hypothesis = {
       id,
       planId: input.planId ?? null,
@@ -245,38 +246,31 @@ export class HypothesisRepo {
       updatedAt: ts,
     };
     return this.store.tx(() => {
-      this.db
-        .prepare(
-          `INSERT INTO hypotheses
-             (id, plan_id, task_id, cluster_id, text, status, evidence,
-              result, latest_version, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        )
-        .run(
-          h.id,
-          h.planId ?? "", // Header-Spalte ist NOT NULL (Legacy); Snapshot behält echtes null.
-          h.taskId,
-          h.clusterId,
-          h.initialAssumption,
-          h.status,
-          null,
-          h.result,
-          h.version,
-          h.createdAt,
-          h.updatedAt,
-        );
+      this.store.insertHypothesisHeader({
+        id: h.id,
+        planId: h.planId ?? "", // Header-Spalte ist NOT NULL (Legacy); Snapshot behält echtes null.
+        taskId: h.taskId,
+        clusterId: h.clusterId,
+        text: h.initialAssumption,
+        status: h.status,
+        result: h.result,
+        latestVersion: h.version,
+        createdAt: h.createdAt,
+        updatedAt: h.updatedAt,
+      });
       this.writeVersion(h);
       return h;
     });
   }
 
   private writeVersion(h: Hypothesis): void {
-    this.db
-      .prepare(
-        `INSERT INTO hypothesis_versions (id, hypothesis_id, version, snapshot_json, created_at)
-         VALUES (?,?,?,?,?)`,
-      )
-      .run(newId("HV"), h.id, h.version, JSON.stringify(HypothesisRepo.serialize(h)), h.updatedAt);
+    this.store.insertHypothesisVersion({
+      id: this.ids.newId("HV"),
+      hypothesisId: h.id,
+      version: h.version,
+      snapshotJson: JSON.stringify(HypothesisRepo.serialize(h)),
+      createdAt: h.updatedAt,
+    });
   }
 
   /**
@@ -288,7 +282,7 @@ export class HypothesisRepo {
     return this.store.tx(() => {
       const current = this.get(id);
       if (!current) throw new Error(`Hypothese ${id} nicht gefunden`);
-      const ts = nowIso();
+      const ts = this.clock.now();
       const result = patch.result ?? current.result;
       const followUpQuestions =
         patch.followUpQuestions !== undefined ? patch.followUpQuestions : current.followUpQuestions;
@@ -322,29 +316,21 @@ export class HypothesisRepo {
           ? normFalsification(patch.falsificationPlan)
           : current.falsificationPlan,
         evidence: patch.addEvidence
-          ? [...current.evidence, ...normEvidence(patch.addEvidence)]
+          ? [...current.evidence, ...normEvidence(patch.addEvidence, this.clock)]
           : current.evidence,
         taskId: patch.taskId !== undefined ? patch.taskId : current.taskId,
         clusterId: patch.clusterId !== undefined ? patch.clusterId : current.clusterId,
         updatedAt: ts,
       };
-      this.db
-        .prepare(
-          `UPDATE hypotheses
-             SET status=?, result=?, latest_version=?, updated_at=?,
-                 task_id=?, cluster_id=?, evidence=?
-           WHERE id=?`,
-        )
-        .run(
-          next.status,
-          next.result,
-          next.version,
-          next.updatedAt,
-          next.taskId,
-          next.clusterId,
-          next.evidence.length ? JSON.stringify(next.evidence) : null,
-          id,
-        );
+      this.store.updateHypothesisHeader(id, {
+        status: next.status,
+        result: next.result,
+        latestVersion: next.version,
+        updatedAt: next.updatedAt,
+        taskId: next.taskId,
+        clusterId: next.clusterId,
+        evidenceJson: next.evidence.length ? JSON.stringify(next.evidence) : null,
+      });
       this.writeVersion(next);
       return next;
     });
@@ -352,42 +338,37 @@ export class HypothesisRepo {
 
   /** Lädt die neueste Version einer Hypothese. */
   get(id: string): Hypothesis | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT snapshot_json FROM hypothesis_versions
-         WHERE hypothesis_id=? ORDER BY version DESC LIMIT 1`,
-      )
-      .get(id) as { snapshot_json: string } | undefined;
-    if (!row) return undefined;
-    return HypothesisRepo.deserialize(JSON.parse(row.snapshot_json));
+    const snapshot = this.store.latestHypothesisSnapshot(id);
+    if (snapshot === undefined) return undefined;
+    return HypothesisRepo.deserialize(JSON.parse(snapshot));
   }
 
   /** Lädt eine konkrete Version. */
   getVersion(id: string, version: number): Hypothesis | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? AND version=?`,
-      )
-      .get(id, version) as { snapshot_json: string } | undefined;
-    if (!row) return undefined;
-    return HypothesisRepo.deserialize(JSON.parse(row.snapshot_json));
+    const snapshot = this.store.hypothesisSnapshotAt(id, version);
+    if (snapshot === undefined) return undefined;
+    return HypothesisRepo.deserialize(JSON.parse(snapshot));
   }
 
   /** Alle Versionen einer Hypothese (aufsteigend) — vollständige Historie. */
   listVersions(id: string): Hypothesis[] {
-    const rows = this.db
-      .prepare(
-        `SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version`,
-      )
-      .all(id) as { snapshot_json: string }[];
-    return rows.map((r) => HypothesisRepo.deserialize(JSON.parse(r.snapshot_json)));
+    return this.store
+      .hypothesisSnapshots(id)
+      .map((snapshot) => HypothesisRepo.deserialize(JSON.parse(snapshot)));
   }
 
   private listByColumn(column: "task_id" | "cluster_id" | "plan_id", value: string): Hypothesis[] {
-    const ids = this.db
-      .prepare(`SELECT id FROM hypotheses WHERE ${column}=? ORDER BY created_at`)
-      .all(value) as { id: string }[];
-    return ids.map((r) => this.get(r.id)).filter((h): h is Hypothesis => !!h);
+    // The header columns (hypotheses.task_id/cluster_id/plan_id) are the
+    // AUTHORITATIVE provenance source; the immutable version snapshot keeps the
+    // creation-state value (often null, since bindToTask only updates the
+    // header — see its doc). Overlay the queried provenance onto the returned
+    // object so it never contradicts the predicate it was found by.
+    const field = column === "task_id" ? "taskId" : column === "cluster_id" ? "clusterId" : "planId";
+    return this.store
+      .hypothesisIdsByColumn(column, value)
+      .map((hid) => this.get(hid))
+      .filter((h): h is Hypothesis => !!h)
+      .map((h) => ({ ...h, [field]: value }));
   }
 
   listByTask(taskId: string): Hypothesis[] {
@@ -407,11 +388,15 @@ export class HypothesisRepo {
    * Aktualisiert NUR die Header-Spalten (für listByTask/listByCluster) und lässt
    * die versionierten Snapshots unangetastet — Binden ist Provenienz, keine
    * inhaltliche Revision, erzeugt daher keine neue Version.
+   *
+   * Die Header-Spalte `hypotheses.task_id`/`cluster_id` ist damit die
+   * AUTORITATIVE Verknüpfung; das `taskId`/`clusterId`-Feld im Snapshot bildet
+   * bewusst nur den Erstellungszustand ab. Konsumenten, die über die Bindung
+   * filtern, nutzen listByTask/listByCluster (die die autoritative Provenienz
+   * überlagern), nicht das rohe Snapshot-Feld.
    */
   bindToTask(id: string, taskId: string, clusterId: string | null): void {
-    this.db
-      .prepare("UPDATE hypotheses SET task_id=?, cluster_id=COALESCE(?, cluster_id) WHERE id=?")
-      .run(taskId, clusterId, id);
+    this.store.bindHypothesisToTask(id, taskId, clusterId);
   }
 
   /** Neueste (rich) Hypothese, die an einen Task gebunden ist — für das Gate. */

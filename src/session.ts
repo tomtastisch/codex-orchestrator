@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { config } from "./config.js";
-import { Store, type TaskRow, newId } from "./db.js";
-import { LocalExecutionTarget } from "./execution/local-target.js";
+import type { PersistenceStore, TaskRow } from "./ports/persistence.js";
+import type { Clock, IdGenerator } from "./ports/clock.js";
 import type { ExecutionTarget } from "./execution/types.js";
 import { buildFirstSlicePrompt, buildResumeSlicePrompt } from "./prompts.js";
 import { detectReportDiscrepancies } from "./events.js";
@@ -47,11 +47,10 @@ export class SessionManager {
   private waiters: (() => void)[] = [];
 
   constructor(
-    private store: Store,
-    private readonly targetFor: (id: string) => ExecutionTarget = (() => {
-      const local = new LocalExecutionTarget();
-      return () => local;
-    })(),
+    private store: PersistenceStore,
+    private readonly targetFor: (id: string) => ExecutionTarget,
+    private readonly ids: IdGenerator,
+    private readonly clock: Clock,
   ) {
     this.emitter.setMaxListeners(0);
   }
@@ -75,11 +74,9 @@ export class SessionManager {
       if (t.codex_pid && isProcessAlive(t.codex_pid)) {
         try { process.kill(t.codex_pid, "SIGTERM"); } catch { /* schon weg */ }
       }
-      this.store.updateTask(t.id, { status: "failed", ended_at: new Date().toISOString(), codex_pid: null });
-      this.store.addEvent(t.id, "task_status", {
-        status: "failed",
-        reason: `Reaper: verwaister Prozess (owner_pid=${t.owner_pid ?? "?"}, codex_pid=${t.codex_pid ?? "?"}) nach Restart/Crash. Resume via task_control.`,
-      });
+      const reason = `Reaper: verwaister Prozess (owner_pid=${t.owner_pid ?? "?"}, codex_pid=${t.codex_pid ?? "?"}) nach Restart/Crash. Resume via task_control.`;
+      this.store.updateTask(t.id, { codex_pid: null });
+      this.finish(t.id, "failed", reason);
       n++;
     }
     return n;
@@ -122,7 +119,7 @@ export class SessionManager {
   }
 
   createTask(args: StartArgs): TaskRow {
-    const id = newId("T");
+    const id = this.ids.newId("T");
     return this.store.createTask({
       id,
       cluster_id: args.clusterId,
@@ -171,7 +168,9 @@ export class SessionManager {
 
   private elapsedMinutes(task: TaskRow): number {
     if (!task.started_at) return 0;
-    return (Date.now() - Date.parse(task.started_at)) / 60000;
+    // Runtime budget is measured against the injected Clock so the max-minutes
+    // limit is deterministically testable (a fake clock can jump the deadline).
+    return (Date.parse(this.clock.now()) - Date.parse(task.started_at)) / 60000;
   }
 
   private async loop(taskId: string, stopCondition: string | null): Promise<void> {
@@ -191,7 +190,7 @@ export class SessionManager {
         return;
       }
       if (!task.started_at) {
-        this.store.updateTask(taskId, { started_at: new Date().toISOString() });
+        this.store.updateTask(taskId, { started_at: this.clock.now() });
         task = this.store.getTask(taskId)!;
       } else if (this.elapsedMinutes(task) > config.limits.maxTaskMinutes) {
         this.limitBreach(taskId, `max_task_minutes (${config.limits.maxTaskMinutes}) überschritten`);
@@ -342,7 +341,7 @@ export class SessionManager {
   }
 
   private finish(taskId: string, status: TaskRow["status"], reason: string): void {
-    this.store.updateTask(taskId, { status, ended_at: new Date().toISOString() });
+    this.store.updateTask(taskId, { status, ended_at: this.clock.now() });
     this.store.addEvent(taskId, "task_status", { status, reason });
     // Cluster 5: zugehörigen agent_job-Audit-Datensatz abschließen.
     try { this.store.finishAgentJobByTask(taskId, status, reason); } catch { /* best effort */ }
@@ -350,10 +349,8 @@ export class SessionManager {
   }
 
   private limitBreach(taskId: string, reason: string): void {
-    this.store.updateTask(taskId, { status: "blocked", ended_at: new Date().toISOString() });
     this.store.addEvent(taskId, "limit_breach", { reason });
-    this.store.addEvent(taskId, "task_status", { status: "blocked", reason });
-    this.emit(taskId);
+    this.finish(taskId, "blocked", reason);
   }
 
   // ---- Steuerung (task_control) ----

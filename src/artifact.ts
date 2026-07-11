@@ -17,7 +17,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { config } from "./config.js";
-import { SCHEMA_VERSION, type Store } from "./db.js";
+import { SCHEMA_VERSION, type PersistenceStore } from "./ports/persistence.js";
 import { HypothesisRepo } from "./hypotheses.js";
 import { redactDeep } from "./redact.js";
 
@@ -71,17 +71,21 @@ function parseJson(s: string | null | undefined): unknown {
 }
 
 /** Baut das vollständige Artefakt-Objekt (inkl. deterministischer Prüfsumme). */
-export function buildResultArtifact(store: Store, planId: string, opts: ArtifactOptions = {}): ResultArtifact | null {
+export function buildResultArtifact(
+  store: PersistenceStore,
+  hyp: HypothesisRepo,
+  planId: string,
+  opts: ArtifactOptions = {},
+): ResultArtifact | null {
   const plan = store.getPlan(planId);
   if (!plan) return null;
   const repo = plan.repo_path;
-  const hyp = new HypothesisRepo(store);
 
   const clusters = store.listClusters(planId).map((c) => ({
     id: c.id, ordinal: c.ordinal, name: c.name, status: c.status, goal: c.goal,
     acceptance: parseJson(c.acceptance_json), review_strategy: parseJson(c.review_strategy_json),
     latest_review: (() => { const r = store.latestReview(c.id); return r ? { status: r.status, ts: r.ts } : null; })(),
-    checks: store.checksForCluster(c.id).map((k: any) => ({ cmd: k.cmd, exit_code: k.exit_code })),
+    checks: store.checksForCluster(c.id).map((k) => ({ cmd: k.cmd, exit_code: k.exit_code })),
   }));
 
   // Alles strikt auf DIESEN Plan begrenzen (ein Store kann mehrere Pläne halten) —
@@ -106,9 +110,7 @@ export function buildResultArtifact(store: Store, planId: string, opts: Artifact
   // Rich-Hypothesen dieses Plans: plan_id ODER an einen Cluster/Task des Plans gebunden.
   // Neueste Version = "Hypothese", volle Versionshistorie = "hypothesisUpdates".
   const richIds = new Set<string>();
-  const allHeaders = store.db.prepare(
-    "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at"
-  ).all() as { id: string; plan_id: string | null; cluster_id: string | null; task_id: string | null }[];
+  const allHeaders = store.listHypothesisHeaders();
   const headers = allHeaders.filter((h) =>
     h.plan_id === planId ||
     (h.cluster_id && clusterIds.has(h.cluster_id)) ||
@@ -116,11 +118,16 @@ export function buildResultArtifact(store: Store, planId: string, opts: Artifact
   );
   const hypotheses: any[] = [];
   const hypothesisUpdates: any[] = [];
-  for (const { id } of headers) {
+  for (const header of headers) {
+    const { id } = header;
     const versions = hyp.listVersions(id);
     if (!versions.length) continue; // Legacy-Freitext-Hypothesen ohne Snapshot überspringen.
     richIds.add(id);
-    hypotheses.push(HypothesisRepo.serialize(versions[versions.length - 1]));
+    hypotheses.push(HypothesisRepo.serialize({
+      ...versions[versions.length - 1],
+      taskId: header.task_id,
+      clusterId: header.cluster_id,
+    }));
     for (const v of versions) hypothesisUpdates.push(HypothesisRepo.serialize(v));
   }
 
@@ -153,7 +160,7 @@ export function buildResultArtifact(store: Store, planId: string, opts: Artifact
   if (nameOnly) filesChanged = nameOnly.split("\n").filter(Boolean);
 
   const testsRun = clusters.flatMap((c) =>
-    store.checksForCluster(c.id).map((k: any) => ({ cluster_id: c.id, cmd: k.cmd, exit_code: k.exit_code })),
+    store.checksForCluster(c.id).map((k) => ({ cluster_id: c.id, cmd: k.cmd, exit_code: k.exit_code })),
   );
 
   const findings = reviews.flatMap((r: any) =>
@@ -298,8 +305,13 @@ export interface WriteArtifactResult {
 }
 
 /** Erzeugt Dateien, registriert das Artefakt in der DB und gibt die Pfade zurück. */
-export function writeResultArtifact(store: Store, planId: string, opts: ArtifactOptions = {}): WriteArtifactResult | null {
-  const artifact = buildResultArtifact(store, planId, opts);
+export function writeResultArtifact(
+  store: PersistenceStore,
+  hyp: HypothesisRepo,
+  planId: string,
+  opts: ArtifactOptions = {},
+): WriteArtifactResult | null {
+  const artifact = buildResultArtifact(store, hyp, planId, opts);
   if (!artifact) return null;
   const dir = join(config.home, "artifacts");
   mkdirSync(dir, { recursive: true });

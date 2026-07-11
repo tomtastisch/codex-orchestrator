@@ -1,7 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { randomUUID } from "node:crypto";
 import type {
   ClusterStatus,
   EventKind,
@@ -10,17 +9,33 @@ import type {
 } from "./types.js";
 import { runMigrations } from "./db/migrations.js";
 import { redactDeep, redactText } from "./redact.js";
+import type { Clock, IdGenerator } from "./ports/clock.js";
+import {
+  SCHEMA_VERSION,
+  type AgentJobRow,
+  type ArtifactRow,
+  type AuditEventRow,
+  type CheckRow,
+  type ClusterRow,
+  type DecisionRow,
+  type EventRow,
+  type HypothesisHeaderInsert,
+  type HypothesisHeaderRow,
+  type HypothesisHeaderUpdate,
+  type HypothesisReviewRow,
+  type HypothesisRow,
+  type HypothesisVersionInsert,
+  type PersistenceStore,
+  type PlanRow,
+  type ReviewRow,
+  type TaskRow,
+} from "./ports/persistence.js";
 
-export function nowIso(): string {
-  return new Date().toISOString();
-}
-
-export function newId(prefix: string): string {
-  return `${prefix}_${randomUUID().slice(0, 12)}`;
-}
-
-/** Aktuelle Schema-Version. Bei additiven Migrationen hochzählen. */
-export const SCHEMA_VERSION = 4;
+// Row shapes and SCHEMA_VERSION now live with the persistence port so consumers
+// depend on the port, not the SQLite adapter. Re-exported here for the store's
+// own tests, which construct the adapter directly.
+export { SCHEMA_VERSION };
+export type { ClusterRow, EventRow, PlanRow, TaskRow };
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS plans (
@@ -127,37 +142,14 @@ CREATE TABLE IF NOT EXISTS checks (
 );
 `;
 
-export interface PlanRow {
-  id: string; goal: string; constraints: string | null;
-  repo_path: string; created_at: string; status: string;
-}
-export interface ClusterRow {
-  id: string; plan_id: string; ordinal: number; name: string; goal: string;
-  tasks_json: string; acceptance_json: string; risks_json: string | null;
-  model_policy_json: string; review_strategy_json: string;
-  parallel_ok: number; status: ClusterStatus;
-}
-export interface TaskRow {
-  id: string; cluster_id: string | null; codex_session_id: string | null;
-  worktree: string | null; branch: string | null; repo_path: string;
-  sandbox: string; model: string; effort: string; instructions: string;
-  acceptance_json: string | null; max_minutes: number; network: number;
-  status: TaskStatus; slice_count: number; started_at: string | null;
-  ended_at: string | null; last_slice_type: string | null; last_summary: string | null;
-  extra_config_json: string | null; owner_pid: number | null; codex_pid: number | null;
-  target_id: string; target_kind: "local" | "ssh";
-  repository_commit: string | null; worker_version: string | null;
-  routing_reason: string | null; fallback_from: string | null;
-  hypothesis_id: string | null;
-}
-export interface EventRow {
-  seq: number; task_id: string; ts: string; kind: string; payload_json: string;
-}
-
-export class Store {
+export class Store implements PersistenceStore {
   readonly db: DatabaseSync;
 
-  constructor(dbPath: string) {
+  constructor(
+    dbPath: string,
+    private readonly clock: Clock,
+    private readonly ids: IdGenerator,
+  ) {
     const directory = dirname(dbPath);
     mkdirSync(directory, { recursive: true });
     if (process.platform !== "win32") chmodSync(directory, 0o700);
@@ -168,6 +160,15 @@ export class Store {
     // Schreibkonflikte gleichzeitiger Instanzen abfedern statt SQLITE_BUSY werfen.
     this.db.exec("PRAGMA busy_timeout = 5000;");
     this.db.exec(SCHEMA);
+    // Two migration runners with two independent markers, applied in order:
+    //   1. runMigrations(db): PRAGMA user_version -> CURRENT_SCHEMA_VERSION (task
+    //      routing columns);
+    //   2. this.runMigrations(): meta.schema_version -> SCHEMA_VERSION (hypothesis
+    //      versioning + Cluster-5 ledger tables).
+    // They cover disjoint concerns; both are idempotent and their terminal
+    // markers are pinned by tests/migrations.test.mjs so neither can drift
+    // silently. Consolidating them onto one runner/marker is tracked separately
+    // (follow-up issue) and is out of scope for the #32 ports/adapters refactor.
     runMigrations(this.db);
     this.runMigrations();
   }
@@ -254,10 +255,10 @@ export class Store {
 
   // ---- plans ----
   createPlan(goal: string, constraints: string | null, repoPath: string): PlanRow {
-    const id = newId("P");
+    const id = this.ids.newId("P");
     this.db.prepare(
       "INSERT INTO plans(id,goal,constraints,repo_path,created_at,status) VALUES(?,?,?,?,?,?)"
-    ).run(id, goal, constraints, repoPath, nowIso(), "active");
+    ).run(id, goal, constraints, repoPath, this.clock.now(), "active");
     return this.getPlan(id)!;
   }
   getPlan(id: string): PlanRow | undefined {
@@ -338,11 +339,16 @@ export class Store {
 
   // ---- events (append-only) ----
   addEvent(taskId: string, kind: EventKind, payload: unknown): EventRow {
+    // Capture the timestamp and payload once so the persisted row and the
+    // returned object are always identical (a fake/advancing clock must not make
+    // the returned event drift from what was actually stored).
+    const ts = this.clock.now();
+    const payloadJson = JSON.stringify(payload ?? {});
     const info = this.db.prepare(
       "INSERT INTO events(task_id,ts,kind,payload_json) VALUES(?,?,?,?)"
-    ).run(taskId, nowIso(), kind, JSON.stringify(payload ?? {}));
+    ).run(taskId, ts, kind, payloadJson);
     const seq = Number(info.lastInsertRowid);
-    return { seq, task_id: taskId, ts: nowIso(), kind, payload_json: JSON.stringify(payload ?? {}) };
+    return { seq, task_id: taskId, ts, kind, payload_json: payloadJson };
   }
   eventsAfter(taskId: string, cursor: number, kinds?: string[], limit = 200): EventRow[] {
     let rows: EventRow[];
@@ -364,13 +370,24 @@ export class Store {
       .get(taskId) as unknown as { m: number | null };
     return r?.m ?? 0;
   }
+  /**
+   * Fail a task and, in the same transaction, close its latest open agent job.
+   * Timestamps come from the injected clock (no ambient `new Date()`), and the
+   * agent-job ledger cannot be left stuck as `queued` behind a failed task.
+   */
+  failTask(taskId: string, summary: string): void {
+    this.tx(() => {
+      this.updateTask(taskId, { status: "failed", ended_at: this.clock.now() });
+      this.finishAgentJobByTask(taskId, "failed", summary);
+    });
+  }
 
   // ---- injections ----
   addInjection(taskId: string, message: string, priority: string): string {
-    const id = newId("I");
+    const id = this.ids.newId("I");
     this.db.prepare(
       "INSERT INTO injections(id,task_id,ts,priority,message,delivered_at) VALUES(?,?,?,?,?,NULL)"
-    ).run(id, taskId, nowIso(), priority, message);
+    ).run(id, taskId, this.clock.now(), priority, message);
     return id;
   }
   pendingInjections(taskId: string): { id: string; message: string; priority: string }[] {
@@ -380,52 +397,128 @@ export class Store {
   }
   markInjectionsDelivered(ids: string[]): void {
     const stmt = this.db.prepare("UPDATE injections SET delivered_at=? WHERE id=?");
-    for (const id of ids) stmt.run(nowIso(), id);
+    for (const id of ids) stmt.run(this.clock.now(), id);
   }
 
   // ---- hypotheses ----
   addHypothesis(planId: string, text: string, evidence: string | null): string {
-    const id = newId("H");
+    const id = this.ids.newId("H");
+    // created_at is stamped here too (not only on the versioned path via
+    // insertHypothesisHeader): a NULL created_at would sort first and make the
+    // created_at ordering below non-deterministic across the legacy/rich split.
+    const ts = this.clock.now();
     this.db.prepare(
-      "INSERT INTO hypotheses(id,plan_id,text,status,evidence,updated_at) VALUES(?,?,?,?,?,?)"
-    ).run(id, planId, text, "open", evidence, nowIso());
+      "INSERT INTO hypotheses(id,plan_id,text,status,evidence,created_at,updated_at) VALUES(?,?,?,?,?,?,?)"
+    ).run(id, planId, text, "open", evidence, ts, ts);
     return id;
   }
   setHypothesis(id: string, status: HypothesisStatus, evidence: string | null): void {
     this.db.prepare("UPDATE hypotheses SET status=?, evidence=COALESCE(?,evidence), updated_at=? WHERE id=?")
-      .run(status, evidence, nowIso(), id);
+      .run(status, evidence, this.clock.now(), id);
   }
-  listHypotheses(planId: string): any[] {
-    return this.db.prepare("SELECT * FROM hypotheses WHERE plan_id=? ORDER BY updated_at").all(planId);
+  listHypotheses(planId: string): HypothesisRow[] {
+    return this.db.prepare("SELECT * FROM hypotheses WHERE plan_id=? ORDER BY updated_at").all(planId) as unknown as HypothesisRow[];
+  }
+  listHypothesisHeaders(): HypothesisHeaderRow[] {
+    return this.db.prepare(
+      // `, id` is a stable tiebreaker: legacy rows may share or lack created_at,
+      // and SQLite leaves equal/NULL sort keys in undefined order otherwise.
+      "SELECT id, plan_id, cluster_id, task_id FROM hypotheses ORDER BY created_at, id"
+    ).all() as unknown as HypothesisHeaderRow[];
+  }
+
+  // ---- hypothesis versioning (append-only snapshots; owns HypothesisRepo's SQL) ----
+  insertHypothesisHeader(h: HypothesisHeaderInsert): void {
+    this.db.prepare(
+      `INSERT INTO hypotheses
+         (id, plan_id, task_id, cluster_id, text, status, evidence,
+          result, latest_version, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(h.id, h.planId, h.taskId, h.clusterId, h.text, h.status, null,
+      h.result, h.latestVersion, h.createdAt, h.updatedAt);
+  }
+  updateHypothesisHeader(id: string, h: HypothesisHeaderUpdate): void {
+    this.db.prepare(
+      `UPDATE hypotheses
+         SET status=?, result=?, latest_version=?, updated_at=?,
+             task_id=?, cluster_id=?, evidence=?
+       WHERE id=?`
+    ).run(h.status, h.result, h.latestVersion, h.updatedAt, h.taskId, h.clusterId, h.evidenceJson, id);
+  }
+  insertHypothesisVersion(v: HypothesisVersionInsert): void {
+    this.db.prepare(
+      `INSERT INTO hypothesis_versions (id, hypothesis_id, version, snapshot_json, created_at)
+       VALUES (?,?,?,?,?)`
+    ).run(v.id, v.hypothesisId, v.version, v.snapshotJson, v.createdAt);
+  }
+  latestHypothesisSnapshot(id: string): string | undefined {
+    const row = this.db.prepare(
+      "SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version DESC LIMIT 1"
+    ).get(id) as unknown as { snapshot_json: string } | undefined;
+    return row?.snapshot_json;
+  }
+  hypothesisSnapshotAt(id: string, version: number): string | undefined {
+    const row = this.db.prepare(
+      "SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? AND version=?"
+    ).get(id, version) as unknown as { snapshot_json: string } | undefined;
+    return row?.snapshot_json;
+  }
+  hypothesisSnapshots(id: string): string[] {
+    const rows = this.db.prepare(
+      "SELECT snapshot_json FROM hypothesis_versions WHERE hypothesis_id=? ORDER BY version"
+    ).all(id) as unknown as { snapshot_json: string }[];
+    return rows.map((r) => r.snapshot_json);
+  }
+  hypothesisIdsByColumn(column: "task_id" | "cluster_id" | "plan_id", value: string): string[] {
+    // Fixed, fully-literal SQL per scope column — no string interpolation into
+    // the statement, so there is no SQL-injection surface even in principle.
+    // `, id` is a stable tiebreaker so latestForTask() ("last element") stays
+    // deterministic even when created_at is equal or NULL on legacy rows.
+    const SQL = {
+      task_id: "SELECT id FROM hypotheses WHERE task_id=? ORDER BY created_at, id",
+      cluster_id: "SELECT id FROM hypotheses WHERE cluster_id=? ORDER BY created_at, id",
+      plan_id: "SELECT id FROM hypotheses WHERE plan_id=? ORDER BY created_at, id",
+    } as const;
+    const rows = this.db.prepare(SQL[column]).all(value) as unknown as { id: string }[];
+    return rows.map((r) => r.id);
+  }
+  bindHypothesisToTask(id: string, taskId: string, clusterId: string | null): void {
+    this.db.prepare("UPDATE hypotheses SET task_id=?, cluster_id=COALESCE(?, cluster_id) WHERE id=?")
+      .run(taskId, clusterId, id);
   }
 
   // ---- reviews / retros / checks ----
   addReview(clusterId: string, status: string, findings: unknown, fixes: unknown, impact: unknown): string {
-    const id = newId("R");
+    const id = this.ids.newId("R");
     this.db.prepare(
       "INSERT INTO reviews(id,cluster_id,ts,status,findings_json,fixes_json,impact_json) VALUES(?,?,?,?,?,?,?)"
-    ).run(id, clusterId, nowIso(), status, JSON.stringify(findings ?? null),
+    ).run(id, clusterId, this.clock.now(), status, JSON.stringify(findings ?? null),
       JSON.stringify(fixes ?? null), JSON.stringify(impact ?? null));
     return id;
   }
-  latestReview(clusterId: string): any | undefined {
-    return this.db.prepare("SELECT * FROM reviews WHERE cluster_id=? ORDER BY ts DESC LIMIT 1").get(clusterId);
+  latestReview(clusterId: string): ReviewRow | undefined {
+    return this.db.prepare("SELECT * FROM reviews WHERE cluster_id=? ORDER BY ts DESC LIMIT 1").get(clusterId) as unknown as ReviewRow | undefined;
   }
   addRetro(clusterId: string, content: string): string {
-    const id = newId("RT");
+    const id = this.ids.newId("RT");
     this.db.prepare("INSERT INTO retros(id,cluster_id,ts,content) VALUES(?,?,?,?)")
-      .run(id, clusterId, nowIso(), content);
+      .run(id, clusterId, this.clock.now(), content);
     return id;
+  }
+  countRetros(clusterId: string): number {
+    const r = this.db.prepare("SELECT COUNT(*) AS n FROM retros WHERE cluster_id=?")
+      .get(clusterId) as unknown as { n: number };
+    return r?.n ?? 0;
   }
   addCheck(clusterId: string, cmd: string, exitCode: number | null, summary: string): string {
-    const id = newId("CK");
+    const id = this.ids.newId("CK");
     this.db.prepare(
       "INSERT INTO checks(id,cluster_id,cmd,exit_code,summary,ts) VALUES(?,?,?,?,?,?)"
-    ).run(id, clusterId, cmd, exitCode, summary, nowIso());
+    ).run(id, clusterId, cmd, exitCode, summary, this.clock.now());
     return id;
   }
-  checksForCluster(clusterId: string): any[] {
-    return this.db.prepare("SELECT * FROM checks WHERE cluster_id=? ORDER BY ts").all(clusterId);
+  checksForCluster(clusterId: string): CheckRow[] {
+    return this.db.prepare("SELECT * FROM checks WHERE cluster_id=? ORDER BY ts").all(clusterId) as unknown as CheckRow[];
   }
 
   // ---- user_decisions (Cluster 4: Nachkontrolle-Gate + Präferenzen) ----
@@ -433,32 +526,32 @@ export class Store {
     planId: string | null; clusterId: string | null; topic: string;
     question: string | null; decision: string; remember: boolean;
   }): string {
-    const id = newId("UD");
+    const id = this.ids.newId("UD");
     this.db.prepare(
       "INSERT INTO user_decisions(id,plan_id,cluster_id,topic,question,decision,remember,created_at) VALUES(?,?,?,?,?,?,?,?)"
-    ).run(id, d.planId, d.clusterId, d.topic, d.question, d.decision, d.remember ? 1 : 0, nowIso());
+    ).run(id, d.planId, d.clusterId, d.topic, d.question, d.decision, d.remember ? 1 : 0, this.clock.now());
     return id;
   }
   /** Neueste Entscheidung zu einem Thema für einen Cluster. */
-  latestDecision(clusterId: string, topic: string): any | undefined {
+  latestDecision(clusterId: string, topic: string): DecisionRow | undefined {
     return this.db.prepare(
       "SELECT * FROM user_decisions WHERE cluster_id=? AND topic=? ORDER BY created_at DESC LIMIT 1"
-    ).get(clusterId, topic);
+    ).get(clusterId, topic) as unknown as DecisionRow | undefined;
   }
   /** Stehende Präferenz (remember=1) für einen Plan/ein Thema — plan-weit gültig. */
-  standingPreference(planId: string | null, topic: string): any | undefined {
+  standingPreference(planId: string | null, topic: string): DecisionRow | undefined {
     return this.db.prepare(
       "SELECT * FROM user_decisions WHERE topic=? AND remember=1 AND (plan_id IS ? OR plan_id=?) ORDER BY created_at DESC LIMIT 1"
-    ).get(topic, planId, planId);
+    ).get(topic, planId, planId) as unknown as DecisionRow | undefined;
   }
-  listDecisions(filter?: { clusterId?: string; planId?: string }): any[] {
+  listDecisions(filter?: { clusterId?: string; planId?: string }): DecisionRow[] {
     if (filter?.clusterId) {
-      return this.db.prepare("SELECT * FROM user_decisions WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
+      return this.db.prepare("SELECT * FROM user_decisions WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId) as unknown as DecisionRow[];
     }
     if (filter?.planId) {
-      return this.db.prepare("SELECT * FROM user_decisions WHERE plan_id=? ORDER BY created_at").all(filter.planId);
+      return this.db.prepare("SELECT * FROM user_decisions WHERE plan_id=? ORDER BY created_at").all(filter.planId) as unknown as DecisionRow[];
     }
-    return this.db.prepare("SELECT * FROM user_decisions ORDER BY created_at").all();
+    return this.db.prepare("SELECT * FROM user_decisions ORDER BY created_at").all() as unknown as DecisionRow[];
   }
 
   // ---- agent_jobs (Cluster 5: auditierbare Codex-Job-Historie) ----
@@ -466,11 +559,11 @@ export class Store {
     taskId: string | null; clusterId: string | null; hypothesisId: string | null;
     model: string; effort: string; sandbox: string; status: string;
   }): string {
-    const id = newId("AJ");
+    const id = this.ids.newId("AJ");
     this.db.prepare(
       `INSERT INTO agent_jobs(id,task_id,cluster_id,hypothesis_id,model,effort,sandbox,status,started_at)
        VALUES(?,?,?,?,?,?,?,?,?)`
-    ).run(id, j.taskId, j.clusterId, j.hypothesisId, j.model, j.effort, j.sandbox, j.status, nowIso());
+    ).run(id, j.taskId, j.clusterId, j.hypothesisId, j.model, j.effort, j.sandbox, j.status, this.clock.now());
     return id;
   }
   /** Schließt den letzten offenen Job eines Tasks ab (Status + Zusammenfassung). */
@@ -480,12 +573,12 @@ export class Store {
     ).get(taskId) as { id: string } | undefined;
     if (!row) return;
     this.db.prepare("UPDATE agent_jobs SET status=?, summary=COALESCE(?,summary), ended_at=? WHERE id=?")
-      .run(status, summary, nowIso(), row.id);
+      .run(status, summary, this.clock.now(), row.id);
   }
-  listAgentJobs(filter?: { clusterId?: string; taskId?: string }): any[] {
-    if (filter?.taskId) return this.db.prepare("SELECT * FROM agent_jobs WHERE task_id=? ORDER BY started_at").all(filter.taskId);
-    if (filter?.clusterId) return this.db.prepare("SELECT * FROM agent_jobs WHERE cluster_id=? ORDER BY started_at").all(filter.clusterId);
-    return this.db.prepare("SELECT * FROM agent_jobs ORDER BY started_at").all();
+  listAgentJobs(filter?: { clusterId?: string; taskId?: string }): AgentJobRow[] {
+    if (filter?.taskId) return this.db.prepare("SELECT * FROM agent_jobs WHERE task_id=? ORDER BY started_at").all(filter.taskId) as unknown as AgentJobRow[];
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM agent_jobs WHERE cluster_id=? ORDER BY started_at").all(filter.clusterId) as unknown as AgentJobRow[];
+    return this.db.prepare("SELECT * FROM agent_jobs ORDER BY started_at").all() as unknown as AgentJobRow[];
   }
 
   // ---- hypothesis_reviews (Cluster 5: lokale Nachkontrolle je Hypothese) ----
@@ -493,18 +586,18 @@ export class Store {
     hypothesisId: string | null; clusterId: string | null; reviewer: string;
     status: string; findings: unknown; synthesis: string | null;
   }): string {
-    const id = newId("HR");
+    const id = this.ids.newId("HR");
     this.db.prepare(
       `INSERT INTO hypothesis_reviews(id,hypothesis_id,cluster_id,reviewer,status,findings_json,synthesis,created_at)
        VALUES(?,?,?,?,?,?,?,?)`
     ).run(id, r.hypothesisId, r.clusterId, r.reviewer, r.status,
-      JSON.stringify(r.findings ?? null), r.synthesis, nowIso());
+      JSON.stringify(r.findings ?? null), r.synthesis, this.clock.now());
     return id;
   }
-  listHypothesisReviews(filter?: { hypothesisId?: string; clusterId?: string }): any[] {
-    if (filter?.hypothesisId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE hypothesis_id=? ORDER BY created_at").all(filter.hypothesisId);
-    if (filter?.clusterId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId);
-    return this.db.prepare("SELECT * FROM hypothesis_reviews ORDER BY created_at").all();
+  listHypothesisReviews(filter?: { hypothesisId?: string; clusterId?: string }): HypothesisReviewRow[] {
+    if (filter?.hypothesisId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE hypothesis_id=? ORDER BY created_at").all(filter.hypothesisId) as unknown as HypothesisReviewRow[];
+    if (filter?.clusterId) return this.db.prepare("SELECT * FROM hypothesis_reviews WHERE cluster_id=? ORDER BY created_at").all(filter.clusterId) as unknown as HypothesisReviewRow[];
+    return this.db.prepare("SELECT * FROM hypothesis_reviews ORDER BY created_at").all() as unknown as HypothesisReviewRow[];
   }
 
   // ---- artifacts (Cluster 5/6: versionierte Ergebnisartefakte) ----
@@ -512,16 +605,16 @@ export class Store {
     planId: string | null; kind: string; path: string;
     schemaVersion: number | null; artifactVersion: number | null; checksum: string | null;
   }): string {
-    const id = newId("AF");
+    const id = this.ids.newId("AF");
     this.db.prepare(
       `INSERT INTO artifacts(id,plan_id,kind,path,schema_version,artifact_version,checksum,created_at)
        VALUES(?,?,?,?,?,?,?,?)`
-    ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, nowIso());
+    ).run(id, a.planId, a.kind, a.path, a.schemaVersion, a.artifactVersion, a.checksum, this.clock.now());
     return id;
   }
-  listArtifacts(planId?: string): any[] {
-    if (planId) return this.db.prepare("SELECT * FROM artifacts WHERE plan_id=? ORDER BY created_at").all(planId);
-    return this.db.prepare("SELECT * FROM artifacts ORDER BY created_at").all();
+  listArtifacts(planId?: string): ArtifactRow[] {
+    if (planId) return this.db.prepare("SELECT * FROM artifacts WHERE plan_id=? ORDER BY created_at").all(planId) as unknown as ArtifactRow[];
+    return this.db.prepare("SELECT * FROM artifacts ORDER BY created_at").all() as unknown as ArtifactRow[];
   }
   latestArtifactVersion(planId: string | null, kind: string): number {
     const r = this.db.prepare(
@@ -535,17 +628,17 @@ export class Store {
     actor: string | null; action: string; resource: string | null;
     detail: unknown; redacted?: boolean;
   }): string {
-    const id = newId("AU");
+    const id = this.ids.newId("AU");
     // Cluster 7: Detail immer durch die Redaction schicken — nie ungescrubbte Secrets im Audit-Log.
     const safeDetail = redactDeep(e.detail ?? null);
     this.db.prepare(
       `INSERT INTO audit_events(id,ts,actor,action,resource,detail_json,redacted)
        VALUES(?,?,?,?,?,?,?)`
-    ).run(id, nowIso(), e.actor, e.action, redactText(e.resource ?? "") || null,
+    ).run(id, this.clock.now(), e.actor, e.action, redactText(e.resource ?? "") || null,
       JSON.stringify(safeDetail), 1);
     return id;
   }
-  listAuditEvents(limit = 500): any[] {
-    return this.db.prepare("SELECT * FROM audit_events ORDER BY ts DESC LIMIT ?").all(limit);
+  listAuditEvents(limit = 500): AuditEventRow[] {
+    return this.db.prepare("SELECT * FROM audit_events ORDER BY ts DESC LIMIT ?").all(limit) as unknown as AuditEventRow[];
   }
 }

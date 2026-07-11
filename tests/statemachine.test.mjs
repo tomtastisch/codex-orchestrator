@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
-import { Store } from "../dist/db.js";
 import { ClusterStateMachine } from "../dist/statemachine.js";
+import { createSystemStore } from "./helpers/system-deps.mjs";
 
 function freshStore() {
   const dir = mkdtempSync(join(tmpdir(), "orch-test-"));
-  return new Store(join(dir, "s.sqlite"));
+  return createSystemStore(join(dir, "s.sqlite"));
 }
 
 function seedCluster(store, planId, id, ordinal, checks = [], parallel = 0) {

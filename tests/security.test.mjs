@@ -3,14 +3,13 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
-import { Store } from "../dist/db.js";
-import { HypothesisRepo } from "../dist/hypotheses.js";
 import { buildResultArtifact, renderToln } from "../dist/artifact.js";
 import { checkSandboxPolicy, classifySandbox, ALLOWED_SANDBOXES, DEFAULT_SANDBOX } from "../dist/sandbox.js";
 import { redactText, redactDeep, containsSecret } from "../dist/redact.js";
+import { createSystemHypothesisRepo, createSystemStore } from "./helpers/system-deps.mjs";
 
 function freshStore() {
-  return new Store(join(mkdtempSync(join(tmpdir(), "orch-sec-")), "s.sqlite"));
+  return createSystemStore(join(mkdtempSync(join(tmpdir(), "orch-sec-")), "s.sqlite"));
 }
 
 // -------- Sandbox-Policy --------
@@ -80,13 +79,13 @@ test("audit_events speichern keine Secrets", () => {
 test("das .toln-Artefakt enthält keine Secrets (Evidenz wird gescrubbt)", () => {
   const store = freshStore();
   const plan = store.createPlan("goal", null, "/tmp/demo-repo");
-  const hyp = new HypothesisRepo(store);
+  const hyp = createSystemHypothesisRepo(store);
   const h = hyp.create({ planId: plan.id, initialAssumption: "x", confidenceBefore: 0.5 });
   hyp.update(h.id, {
     result: "confirmed", status: "confirmed",
     addEvidence: ["Env geleakt: OPENAI_API_KEY=leak-secret-abcdef123456"],
   });
-  const a = buildResultArtifact(store, plan.id);
+  const a = buildResultArtifact(store, hyp, plan.id);
   const toln = renderToln(a);
   assert.ok(!containsSecret(toln), "Artefakt enthält ein Secret");
   assert.ok(!containsSecret(JSON.stringify(a)), "Artefakt-Objekt enthält ein Secret");

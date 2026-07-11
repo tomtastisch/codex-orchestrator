@@ -1,4 +1,4 @@
-import type { TaskRow } from "./db.js";
+import type { TaskRow } from "./ports/persistence.js";
 
 /** Verbindliches Slice-Abschlussformat (Plan §5.3). */
 export const SLICE_RESULT_SPEC = `
